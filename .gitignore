@@ -1,0 +1,31 @@
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# Rust
+target/
+
+# Node (tooling)
+node_modules/
+
+# Godot
+.godot/
+.import/
+export_presets.cfg
+*.translation
+android/build/
+
+# Simulation outputs / local data
+/out/
+/replays/local/
+*.log
