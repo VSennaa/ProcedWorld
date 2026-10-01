@@ -255,6 +255,7 @@ RAM: evite builds pesados em paralelo com outros serviços.
 1. Ler `CLAUDE.md` e `docs/STATUS.md` (se não existir, criá-lo na primeira sessão).
 2. `git fetch` e conferir branch atual; continuar a branch indicada em `STATUS.md`.
 3. Confirmar em que fase o projeto está e respeitar o que ela permite.
+4. Rodar a auditoria de cotas (skill `quota-audit`) e decidir quem trabalha.
 
 **Durante**
 - Trabalhar em passos pequenos e verificáveis; commitar a cada passo coerente.
@@ -272,6 +273,14 @@ RAM: evite builds pesados em paralelo com outros serviços.
 - Merge em `main`, criação de tags/releases.
 - Mudanças na VPS (deploy, portas, serviços, custos), criação de recursos pagos.
 - Qualquer uso de chave de API real.
+
+**Agentes, subagentes e cotas** — ver [docs/process/agentes-e-cotas.md](docs/process/agentes-e-cotas.md).
+- Claude é o supervisor; tarefas independentes vão para subagentes Codex cujo modelo é escolhido pelo
+  **Jev Router** (skill `jev-subagents`, script `tools/agents/jev-codex.sh`).
+- **Auto-auditoria obrigatória** (skill `quota-audit`): checar a cota do Claude (`get_usage`), do Codex
+  e do OpenRouter (`tools/agents/quota-check.sh`) no início da sessão, antes de cada lote de
+  subagentes e no fim das tarefas grandes. Claude ≥ 75% ⇒ delegar; tudo esgotado ⇒ commit, push,
+  handoff e retomada agendada. O projeto nunca pode ficar parado sem próximo passo agendado.
 
 **Sugestão para o fluxo de desenvolvimento**: instalar o próprio *ai-memory* na VPS para dar memória
 persistente e handoff entre sessões de agentes de código — complementar a `docs/STATUS.md`, não
