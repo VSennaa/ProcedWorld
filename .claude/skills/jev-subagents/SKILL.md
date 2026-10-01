@@ -6,19 +6,19 @@ description: Delegate tasks to Codex (ChatGPT) subagents whose model is chosen p
 # Jev subagents (Claude supervises)
 
 Tool: `tools/agents/jev-codex.sh <task-name> <prompt-file> [read-only|workspace-write]`.
-It asks `typesafe/jev-router` (OpenRouter) to pick a model for the task (`max_tokens: 1`, the choice
-comes in the response `model`), checks the model supports tools, falls back to
-`JEV_FALLBACK_MODEL` (default `deepseek/deepseek-v4-flash`), then runs `codex exec` on that model
-through OpenRouter. Every decision is appended to `.agent-runs/decisions.jsonl` (gitignored): it is
-also early calibration data for the T1 layer (ADR-0005).
+OpenRouter is used ONLY for Jev's decision (`typesafe/jev-router`, `max_tokens: 1`, choice in the
+response `model`; ~US$ 0.00001-0.002). The pick is mapped to a Codex model (exact `openai/*` match,
+else nearest output price in log scale among `JEV_CODEX_MODELS`) and Codex runs the task on the
+**ChatGPT login**. Never run task execution through OpenRouter. Low credit or router error →
+`JEV_FALLBACK_MODEL` (gpt-6-sol). Decisions go to `.agent-runs/decisions.jsonl` (gitignored), also
+early calibration data for the T1 layer (ADR-0005). Policy: `docs/process/agentes-e-cotas.md`.
 
 Why one model per task: letting Jev Router route every request of a Codex session breaks on the
-second request ("No models satisfy the decisions policy"), because the conversation carries
-model-specific reasoning items.
+second request ("No models satisfy the decisions policy").
 
 ## Requirements
-- `OPENROUTER_API_KEY` in the environment (never print it, never put it in a file).
-- `codex` on PATH (or `CODEX_BIN`). Codex reads `AGENTS.md` (UTF-8 rule, no git commands).
+- `OPENROUTER_API_KEY` in the environment (decision only; never print it, never put it in a file).
+- `codex` on PATH (or `CODEX_BIN`), logged in with ChatGPT; its quota is what execution spends. Codex reads `AGENTS.md` (UTF-8 rule, no git commands).
 
 ## Procedure
 1. **Split** the work into independent tasks, each owning distinct files. Never let two subagents
@@ -28,12 +28,10 @@ model-specific reasoning items.
    write, acceptance criteria, what not to touch. Keep project rules (CLAUDE.md §8) explicit.
    Name only the files the task really needs to read: "read every pillar" pushed one run to 412k tokens.
 4. **Audit first** (skill `quota-audit`), then **launch** in the background with `run_in_background`,
-   **at most 2 in parallel** (4 parallel runs with big contexts got 402 from OpenRouter with US$ 3 left,
-   because it reserves the worst case of every in-flight request):
+   **at most 2 in parallel** (keeps Codex rate limits and review load manageable):
    `ls prompts/*.md | xargs -P 2 -I{} sh -c 'tools/agents/jev-codex.sh "$(basename {} .md)" {}'`
-   The script refuses to start below `JEV_MIN_CREDIT` (default US$ 1.00) and exits 75.
    Do not edit the files they own while they run. Do not poll; wait for the exit notification.
 5. **Review** every result: `git diff`, check encoding (no `�`), consistency with ADRs and other
    files, no scope creep. Fix or rerun; subagent output is a draft, not a decision.
-6. **Commit** on the proper branch and report (in Portuguese): which model Jev picked per task,
+6. **Commit** on the proper branch and report (in Portuguese): Jev's pick and the Codex model per task,
    tokens, failures, what still needs the user's approval.

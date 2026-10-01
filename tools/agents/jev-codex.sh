@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
-# Delegate one task to a Codex subagent. Jev Router (OpenRouter) picks the model once per task;
-# Codex then runs the whole task on that model (Jev cannot switch models mid-session: the second
-# request of an agent loop fails with "No models satisfy the decisions policy").
+# Delegate one task to a Codex subagent running on the ChatGPT login. Jev Router (OpenRouter) only
+# DECIDES the model; OpenRouter credit is spent on that decision alone (~US$ 0.0002-0.002), never on
+# executing the task.
+#
+# Jev Router chooses among all OpenRouter models and cannot be restricted, so its pick is mapped to a
+# Codex model: an exact match if Codex has it, otherwise the Codex model whose OpenRouter output price
+# is closest in log scale (price is the proxy for the capability tier Jev judged necessary).
 #
 # Usage: tools/agents/jev-codex.sh <task-name> <prompt-file> [sandbox]
 #   sandbox: read-only | workspace-write (default)
-# Env:   OPENROUTER_API_KEY (required), CODEX_BIN, JEV_FALLBACK_MODEL
-# Output: .agent-runs/<task-name>.{log,out.txt}, decisions appended to .agent-runs/decisions.jsonl
+# Env:   OPENROUTER_API_KEY (required, decision only), CODEX_BIN, JEV_CODEX_MODELS, JEV_FALLBACK_MODEL,
+#        JEV_MIN_CREDIT
+# Output: .agent-runs/<task-name>.{log,out.txt}; decisions appended to .agent-runs/decisions.jsonl
 set -euo pipefail
 
 name=${1:?task name}; prompt_file=${2:?prompt file}; sandbox=${3:-workspace-write}
@@ -14,67 +19,78 @@ name=${1:?task name}; prompt_file=${2:?prompt file}; sandbox=${3:-workspace-writ
 root=$(git rev-parse --show-toplevel)
 runs="$root/.agent-runs"; mkdir -p "$runs"
 codex_bin=${CODEX_BIN:-codex}
-fallback=${JEV_FALLBACK_MODEL:-deepseek/deepseek-v4-flash}
+export JEV_CODEX_MODELS=${JEV_CODEX_MODELS:-gpt-6-astra,gpt-6-sol,gpt-6-luna}
+export JEV_FALLBACK_MODEL=${JEV_FALLBACK_MODEL:-gpt-6-sol}
+min_credit=${JEV_MIN_CREDIT:-0.10}
 py=$(command -v python3 || command -v python)
-min_credit=${JEV_MIN_CREDIT:-1.0}
 
-# 0. Credit preflight: OpenRouter reserves worst-case cost of in-flight requests and answers 402
-#    even with balance left, so refuse to start below a safety margin (exit 75 = try again later).
+# 0. Credit preflight for the decision call (exit 75 = try again later). If it fails, Codex still
+#    runs on the fallback model: the project must not stop because of the router.
 remaining=$("$root/tools/agents/quota-check.sh" | "$py" -c 'import json,sys; o=json.load(sys.stdin)["openrouter"]; r=o.get("limit_remaining_usd"); print("" if r is None else r)')
+skip_jev=0
 if [ -n "$remaining" ] && "$py" -c "import sys; sys.exit(0 if float('$remaining') < float('$min_credit') else 1)"; then
-  echo "[$name] OpenRouter credit US\$ $remaining below JEV_MIN_CREDIT=$min_credit; not starting" >&2
-  exit 75
+  echo "[$name] OpenRouter credit US\$ $remaining below JEV_MIN_CREDIT=$min_credit; using fallback model" >&2
+  skip_jev=1
 fi
 
-# 1. Jev picks a model. max_tokens=1: we only want the routing decision, reported in `model`.
-pick=$("$py" - "$prompt_file" "$fallback" <<'PY'
-import json, os, sys, urllib.request
+# 1. Jev decides (max_tokens=1; the choice comes back in `model`), then map it to a Codex model.
+pick=$(SKIP_JEV=$skip_jev "$py" - "$prompt_file" <<'PY'
+import json, math, os, sys, urllib.request
 prompt = open(sys.argv[1], encoding="utf-8").read()
-fallback = sys.argv[2]
+codex_models = os.environ["JEV_CODEX_MODELS"].split(",")
+out = {"jev_choice": None, "model": os.environ["JEV_FALLBACK_MODEL"], "mapping": "fallback",
+       "decision_cost": 0, "reason": ""}
 def call(url, body=None):
     req = urllib.request.Request(url, data=json.dumps(body).encode() if body else None,
         headers={"Authorization": "Bearer " + os.environ["OPENROUTER_API_KEY"],
                  "Content-Type": "application/json"})
     return json.load(urllib.request.urlopen(req, timeout=60))
-out = {"model": fallback, "decision_cost": 0, "fallback": True, "reason": ""}
-try:
-    r = call("https://openrouter.ai/api/v1/chat/completions", {
-        "model": "typesafe/jev-router", "max_tokens": 1, "usage": {"include": True},
-        "messages": [
-            {"role": "system", "content": "You are an autonomous coding and writing agent with shell "
-             "tools, working on a multi-step task in a repository."},
-            {"role": "user", "content": prompt[:6000]}]})
-    chosen = r["model"]
-    models = call("https://openrouter.ai/api/v1/models")["data"]
-    tools_ok = any(m["id"] == chosen and "tools" in m.get("supported_parameters", []) for m in models)
-    out.update(decision_cost=r.get("usage", {}).get("cost", 0))
-    if tools_ok:
-        out.update(model=chosen, fallback=False)
-    else:
-        out["reason"] = f"jev chose {chosen} without tool support"
-except Exception as e:
-    out["reason"] = f"jev error: {e}"
+if os.environ.get("SKIP_JEV") == "1":
+    out["reason"] = "low OpenRouter credit"
+else:
+    try:
+        r = call("https://openrouter.ai/api/v1/chat/completions", {
+            "model": "typesafe/jev-router", "max_tokens": 1, "usage": {"include": True},
+            "messages": [
+                {"role": "system", "content": "You are an autonomous coding and writing agent with shell "
+                 "tools, working on a multi-step task in a repository."},
+                # The task head is enough to judge difficulty and keeps the decision cheap.
+                {"role": "user", "content": prompt[:2000]}]})
+        chosen = r["model"]
+        out.update(jev_choice=chosen, decision_cost=r.get("usage", {}).get("cost", 0))
+        slug = chosen.split("/", 1)[-1]
+        if chosen.startswith("openai/") and slug in codex_models:
+            out.update(model=slug, mapping="exact")
+        else:
+            price = {m["id"]: float(m["pricing"]["completion"])
+                     for m in call("https://openrouter.ai/api/v1/models")["data"]
+                     if float(m["pricing"].get("completion") or -1) > 0}
+            anchors = {c: price["openai/" + c] for c in codex_models if "openai/" + c in price}
+            if chosen in price and anchors:
+                best = min(anchors, key=lambda c: abs(math.log(anchors[c]) - math.log(price[chosen])))
+                out.update(model=best, mapping="price-tier")
+            else:
+                out["reason"] = f"no price for {chosen}"
+    except Exception as e:
+        out["reason"] = f"jev error: {e}"
 print(json.dumps(out))
 PY
 )
 model=$("$py" -c 'import json,sys; print(json.loads(sys.argv[1])["model"])' "$pick")
-echo "[$name] model: $model ($pick)"
+echo "[$name] codex model: $model ($pick)"
 
-# 2. Codex runs the task on the chosen model through OpenRouter.
+# 2. Codex runs the task on the ChatGPT login (default provider), on the chosen model.
 start=$(date +%s); status=0
-"$codex_bin" exec -C "$root" -s "$sandbox" \
-  -c model_provider=openrouter \
-  -c 'model_providers.openrouter.name="OpenRouter"' \
-  -c 'model_providers.openrouter.base_url="https://openrouter.ai/api/v1"' \
-  -c 'model_providers.openrouter.env_key="OPENROUTER_API_KEY"' \
-  -m "$model" -o "$runs/$name.out.txt" - < "$prompt_file" > "$runs/$name.log" 2>&1 || status=$?
+"$codex_bin" exec -C "$root" -s "$sandbox" -m "$model" \
+  -o "$runs/$name.out.txt" - < "$prompt_file" > "$runs/$name.log" 2>&1 || status=$?
 tokens=$(grep -A1 '^tokens used' "$runs/$name.log" | tail -1 | tr -dc '0-9' || true)
 
 "$py" - "$name" "$pick" "$status" "${tokens:-0}" "$(( $(date +%s) - start ))" >> "$runs/decisions.jsonl" <<'PY'
 import json, sys, datetime
 name, pick, status, tokens, secs = sys.argv[1:]
 rec = {"ts": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
-       "task": name, **json.loads(pick), "exit": int(status), "tokens": int(tokens or 0), "seconds": int(secs)}
+       "task": name, **json.loads(pick), "executor": "codex-chatgpt", "exit": int(status),
+       "tokens": int(tokens or 0), "seconds": int(secs)}
 print(json.dumps(rec))
 PY
 echo "[$name] exit $status, tokens ${tokens:-?}"
