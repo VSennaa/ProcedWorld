@@ -38,6 +38,12 @@ O crédito de lá existe para as decisões, que custam entre US$ 0,00001 e US$ 0
    **Limitação**: o benchmark mede vigilância de segurança de um agente de código em Rails, não escrita
    de documentos. É um indicador de capacidade geral de agente, não verdade absoluta. Atualizar o JSON
    quando o Akita publicar uma nova versão.
+2b. **Escolha da Anthropic (Opus, Sonnet, Fable, Haiku) roda no próprio Claude**, desde que o Claude
+   tenha **pelo menos 20% de cota livre** na maior das janelas (5 h ou semanal), reservados para
+   supervisionar o Codex. O supervisor checa `get_usage`; se houver folga, exporta `JEV_CLAUDE_OK=1`.
+   O script então não roda o Codex: registra a decisão (`executor: claude`) e sai com código 76, e o
+   Claude executa a tarefa com a ferramenta Agent no modelo correspondente. Sem folga, a escolha é
+   mapeada para o Codex normalmente.
 3. O Codex roda a tarefa inteira com esse modelo **pela conta do ChatGPT**.
 4. Sem crédito para a decisão (abaixo de `JEV_MIN_CREDIT`, padrão US$ 0,10) ou com erro no Jev, usa
    `JEV_FALLBACK_MODEL` (padrão `gpt-6-sol`) — o roteador nunca para o projeto.
@@ -79,6 +85,7 @@ Use sempre a **maior** porcentagem entre a janela de 5 h e a semanal.
 | Situação | Ação |
 |---|---|
 | Claude < 75% | Claude trabalha normalmente; delega o que for paralelizável |
+| Claude com menos de 20% livre | Escolhas da Anthropic feitas pelo Jev vão para o Codex, não para o Claude |
 | Claude ≥ 75% | Claude passa a só supervisionar: escreve o handoff em `docs/STATUS.md`, faz commit e delega a próxima tarefa |
 | OpenRouter com saldo < US$ 0,10 | Subagentes continuam, mas no modelo padrão (`JEV_FALLBACK_MODEL`), sem decisão do Jev; avisar o usuário |
 | Codex (ChatGPT) ≥ 90% ou limite atingido | Usar opencode + DeepSeek |

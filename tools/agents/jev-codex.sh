@@ -12,7 +12,10 @@
 # Usage: tools/agents/jev-codex.sh <task-name> <prompt-file> [sandbox]
 #   sandbox: read-only | workspace-write (default)
 # Env:   OPENROUTER_API_KEY (required, decision only), CODEX_BIN, JEV_CODEX_MODELS, JEV_FALLBACK_MODEL,
-#        JEV_MIN_CREDIT
+#        JEV_MIN_CREDIT, JEV_CLAUDE_OK
+# Anthropic picks: when the supervisor (Claude) has quota to spare it sets JEV_CLAUDE_OK=1; then an
+# `anthropic/*` pick is NOT run on Codex: the script records it and exits 76 so Claude runs the task
+# itself (Agent tool). Without JEV_CLAUDE_OK the pick is mapped to Codex as usual.
 # Output: .agent-runs/<task-name>.{log,out.txt}; decisions appended to .agent-runs/decisions.jsonl
 set -euo pipefail
 
@@ -95,6 +98,18 @@ print(json.dumps(out))
 PY
 )
 model=$("$py" -c 'import json,sys; print(json.loads(sys.argv[1])["model"])' "$pick")
+jev_choice=$("$py" -c 'import json,sys; print(json.loads(sys.argv[1]).get("jev_choice") or "")' "$pick")
+
+if [ "${JEV_CLAUDE_OK:-0}" = "1" ] && [[ "$jev_choice" == anthropic/* ]]; then
+  "$py" - "$name" "$pick" >> "$runs/decisions.jsonl" <<'PY2'
+import json, sys, datetime
+rec = {"ts": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+       "task": sys.argv[1], **json.loads(sys.argv[2]), "executor": "claude", "exit": 76}
+print(json.dumps(rec))
+PY2
+  echo "[$name] executor: claude ($jev_choice) - run it with the Agent tool"
+  exit 76
+fi
 echo "[$name] codex model: $model ($pick)"
 
 # 2. Codex runs the task on the ChatGPT login (default provider), on the chosen model.

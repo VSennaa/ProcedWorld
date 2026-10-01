@@ -15,6 +15,11 @@ model). Keep that JSON updated with new benchmark versions. Codex runs the task 
 `JEV_FALLBACK_MODEL` (gpt-6-sol). Decisions go to `.agent-runs/decisions.jsonl` (gitignored), also
 early calibration data for the T1 layer (ADR-0005). Policy: `docs/process/agentes-e-cotas.md`.
 
+Anthropic picks run on Claude itself: before launching, call `get_usage`; if the higher of the
+5-hour/weekly windows leaves >= 20% free, export `JEV_CLAUDE_OK=1`. The script then exits 76 for an
+`anthropic/*` pick (decision logged as `executor: claude`) and you run that task with the Agent tool
+on the matching model (opus/sonnet/haiku/fable), same prompt file. Below 20% free, leave it unset.
+
 Why one model per task: letting Jev Router route every request of a Codex session breaks on the
 second request ("No models satisfy the decisions policy").
 
