@@ -29,3 +29,6 @@ android/build/
 /out/
 /replays/local/
 *.log
+
+# Subagent runs (prompts, logs, Jev decisions)
+/.agent-runs/
