@@ -16,6 +16,15 @@ runs="$root/.agent-runs"; mkdir -p "$runs"
 codex_bin=${CODEX_BIN:-codex}
 fallback=${JEV_FALLBACK_MODEL:-deepseek/deepseek-v4-flash}
 py=$(command -v python3 || command -v python)
+min_credit=${JEV_MIN_CREDIT:-1.0}
+
+# 0. Credit preflight: OpenRouter reserves worst-case cost of in-flight requests and answers 402
+#    even with balance left, so refuse to start below a safety margin (exit 75 = try again later).
+remaining=$("$root/tools/agents/quota-check.sh" | "$py" -c 'import json,sys; o=json.load(sys.stdin)["openrouter"]; r=o.get("limit_remaining_usd"); print("" if r is None else r)')
+if [ -n "$remaining" ] && "$py" -c "import sys; sys.exit(0 if float('$remaining') < float('$min_credit') else 1)"; then
+  echo "[$name] OpenRouter credit US\$ $remaining below JEV_MIN_CREDIT=$min_credit; not starting" >&2
+  exit 75
+fi
 
 # 1. Jev picks a model. max_tokens=1: we only want the routing decision, reported in `model`.
 pick=$("$py" - "$prompt_file" "$fallback" <<'PY'

@@ -26,8 +26,12 @@ model-specific reasoning items.
 2. **Commit** the current state first so subagent edits can be reviewed and reverted with git.
 3. **Write one prompt file per task** in the scratchpad: context files to read, the exact file(s) to
    write, acceptance criteria, what not to touch. Keep project rules (CLAUDE.md §8) explicit.
-4. **Launch** in the background with `run_in_background`, at most 4 in parallel:
-   `ls prompts/*.md | xargs -P 4 -I{} sh -c 'tools/agents/jev-codex.sh "$(basename {} .md)" {}'`
+   Name only the files the task really needs to read: "read every pillar" pushed one run to 412k tokens.
+4. **Audit first** (skill `quota-audit`), then **launch** in the background with `run_in_background`,
+   **at most 2 in parallel** (4 parallel runs with big contexts got 402 from OpenRouter with US$ 3 left,
+   because it reserves the worst case of every in-flight request):
+   `ls prompts/*.md | xargs -P 2 -I{} sh -c 'tools/agents/jev-codex.sh "$(basename {} .md)" {}'`
+   The script refuses to start below `JEV_MIN_CREDIT` (default US$ 1.00) and exits 75.
    Do not edit the files they own while they run. Do not poll; wait for the exit notification.
 5. **Review** every result: `git diff`, check encoding (no `�`), consistency with ADRs and other
    files, no scope creep. Fix or rerun; subagent output is a draft, not a decision.

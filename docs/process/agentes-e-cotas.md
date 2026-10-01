@@ -37,6 +37,13 @@ porque o histórico carrega itens de raciocínio específicos do modelo anterior
 entre US$ 0,0002 e US$ 0,004. O custo da execução depende do modelo escolhido; sempre audite o saldo
 antes de disparar lotes.
 
+**Incidente de 2026-10-01 (primeiro lote, 12 pilares do GDD, 4 em paralelo)**: 2 pilares concluídos,
+o resto falhou com `402 Payment Required` com US$ 3 de saldo, porque o OpenRouter reserva o custo
+máximo de cada requisição em andamento. Os prompts pediam para ler todos os pilares, e uma execução
+chegou a 412 mil tokens. Correções: no máximo 2 em paralelo; prompts citam só os arquivos necessários;
+o script checa o saldo antes de começar e recusa abaixo de `JEV_MIN_CREDIT` (padrão US$ 1,00), com
+código de saída 75.
+
 ## 3. Auto-auditoria de cotas (o projeto não pode congelar)
 
 ### Fontes
