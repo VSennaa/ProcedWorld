@@ -7,8 +7,10 @@ description: Delegate tasks to Codex (ChatGPT) subagents whose model is chosen p
 
 Tool: `tools/agents/jev-codex.sh <task-name> <prompt-file> [read-only|workspace-write]`.
 OpenRouter is used ONLY for Jev's decision (`typesafe/jev-router`, `max_tokens: 1`, choice in the
-response `model`; ~US$ 0.00001-0.002). The pick is mapped to a Codex model (exact `openai/*` match,
-else nearest output price in log scale among `JEV_CODEX_MODELS`) and Codex runs the task on the
+response `model`; ~US$ 0.00001-0.002). The pick is mapped to a Codex model: exact `openai/*` match, else
+the cheapest Codex model whose score in `tools/agents/model-scores.json` (Akita's LLM benchmark) is
+>= the score of Jev's pick (unbenchmarked picks borrow the score of the closest-priced benchmarked
+model). Keep that JSON updated with new benchmark versions. Codex runs the task on the
 **ChatGPT login**. Never run task execution through OpenRouter. Low credit or router error →
 `JEV_FALLBACK_MODEL` (gpt-6-sol). Decisions go to `.agent-runs/decisions.jsonl` (gitignored), also
 early calibration data for the T1 layer (ADR-0005). Policy: `docs/process/agentes-e-cotas.md`.

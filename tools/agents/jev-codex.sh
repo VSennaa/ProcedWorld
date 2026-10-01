@@ -4,8 +4,10 @@
 # executing the task.
 #
 # Jev Router chooses among all OpenRouter models and cannot be restricted, so its pick is mapped to a
-# Codex model: an exact match if Codex has it, otherwise the Codex model whose OpenRouter output price
-# is closest in log scale (price is the proxy for the capability tier Jev judged necessary).
+# Codex model by capability, using tools/agents/model-scores.json (Fabio Akita's LLM benchmark):
+#   the CHEAPEST Codex model whose score >= the score of Jev's pick.
+# If Jev's pick is not in the benchmark, its score is estimated from the benchmarked model with the
+# closest OpenRouter output price (log scale). Exact match when Jev picks a Codex model directly.
 #
 # Usage: tools/agents/jev-codex.sh <task-name> <prompt-file> [sandbox]
 #   sandbox: read-only | workspace-write (default)
@@ -19,7 +21,8 @@ name=${1:?task name}; prompt_file=${2:?prompt file}; sandbox=${3:-workspace-writ
 root=$(git rev-parse --show-toplevel)
 runs="$root/.agent-runs"; mkdir -p "$runs"
 codex_bin=${CODEX_BIN:-codex}
-export JEV_CODEX_MODELS=${JEV_CODEX_MODELS:-gpt-6-astra,gpt-6-sol,gpt-6-luna}
+export JEV_CODEX_MODELS=${JEV_CODEX_MODELS:-gpt-6-astra,gpt-6-sol,gpt-6-luna,gpt-5.6-sol,gpt-5.6-terra,gpt-5.6-luna,gpt-5.5}
+export JEV_SCORES="$root/tools/agents/model-scores.json"
 export JEV_FALLBACK_MODEL=${JEV_FALLBACK_MODEL:-gpt-6-sol}
 min_credit=${JEV_MIN_CREDIT:-0.10}
 py=$(command -v python3 || command -v python)
@@ -59,18 +62,33 @@ else:
         chosen = r["model"]
         out.update(jev_choice=chosen, decision_cost=r.get("usage", {}).get("cost", 0))
         slug = chosen.split("/", 1)[-1]
+        scores = json.load(open(os.environ["JEV_SCORES"], encoding="utf-8"))["scores"]
         if chosen.startswith("openai/") and slug in codex_models:
             out.update(model=slug, mapping="exact")
         else:
-            price = {m["id"]: float(m["pricing"]["completion"])
-                     for m in call("https://openrouter.ai/api/v1/models")["data"]
-                     if float(m["pricing"].get("completion") or -1) > 0}
-            anchors = {c: price["openai/" + c] for c in codex_models if "openai/" + c in price}
-            if chosen in price and anchors:
-                best = min(anchors, key=lambda c: abs(math.log(anchors[c]) - math.log(price[chosen])))
-                out.update(model=best, mapping="price-tier")
+            mapping = "benchmark"
+            target = scores.get(chosen, {}).get("score")
+            if target is None:
+                # Not benchmarked: borrow the score of the benchmarked model priced closest to it.
+                price = {m["id"]: float(m["pricing"]["completion"])
+                         for m in call("https://openrouter.ai/api/v1/models")["data"]
+                         if float(m["pricing"].get("completion") or -1) > 0}
+                known = [k for k in scores if k in price]
+                if chosen in price and known:
+                    near = min(known, key=lambda k: abs(math.log(price[k]) - math.log(price[chosen])))
+                    target, mapping = scores[near]["score"], f"benchmark-estimated-from:{near}"
+            codex = {c: scores["openai/" + c] for c in codex_models if "openai/" + c in scores}
+            ok = [c for c in codex if codex[c]["score"] >= (target or 0)]
+            if target is not None and ok:
+                best = min(ok, key=lambda c: (codex[c]["cost_usd"], -codex[c]["score"]))
+                out.update(model=best, mapping=mapping, jev_choice_score=target,
+                           codex_score=codex[best]["score"])
+            elif target is not None and codex:
+                best = max(codex, key=lambda c: (codex[c]["score"], -codex[c]["cost_usd"]))
+                out.update(model=best, mapping=mapping + ":best-available", jev_choice_score=target,
+                           codex_score=codex[best]["score"])
             else:
-                out["reason"] = f"no price for {chosen}"
+                out["reason"] = f"cannot score {chosen}"
     except Exception as e:
         out["reason"] = f"jev error: {e}"
 print(json.dumps(out))

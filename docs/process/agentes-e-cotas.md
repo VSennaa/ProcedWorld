@@ -24,11 +24,20 @@ O crédito de lá existe para as decisões, que custam entre US$ 0,00001 e US$ 0
 1. O script envia o início da tarefa (2.000 caracteres) ao **Jev Router** (`typesafe/jev-router`)
    com `max_tokens: 1`. O Jev decide o modelo e o informa no campo `model` da resposta.
 2. O Jev escolhe entre todos os modelos do OpenRouter e não aceita restrição. A escolha é mapeada para
-   um modelo do Codex (`JEV_CODEX_MODELS`, padrão `gpt-6-astra,gpt-6-sol,gpt-6-luna`):
+   um modelo do Codex **por capacidade**, usando o benchmark de LLMs do Fabio Akita, guardado em
+   [`tools/agents/model-scores.json`](../../tools/agents/model-scores.json) (fonte e data no arquivo):
    - **exato** se o Jev escolheu um modelo `openai/*` que o Codex tem;
-   - **por faixa de preço** nos outros casos: o modelo do Codex com preço de saída mais próximo
-     (escala logarítmica). O preço indica o nível de capacidade que o Jev julgou necessário.
-     Ex.: `claude-sonnet-5.5` e `kimi-k3` → `gpt-6-sol`.
+   - senão, o **modelo do Codex mais barato com nota ≥ à nota do modelo escolhido pelo Jev**;
+   - se o modelo do Jev não está no benchmark, a nota é estimada pelo modelo do benchmark com preço de
+     saída mais próximo no OpenRouter (escala logarítmica).
+
+   Com o benchmark v4 (2026-09-23): `claude-opus-5.5` (100) → `gpt-5.6-terra` (100, US$ 9,52);
+   `kimi-k3` (85) e `deepseek-v4-flash` (86) → `gpt-6-luna` (95,5, US$ 0,84). O `gpt-6-sol` (91) só é
+   usado se o Jev o escolher exatamente, porque o `gpt-6-luna` tem nota maior e custa menos.
+
+   **Limitação**: o benchmark mede vigilância de segurança de um agente de código em Rails, não escrita
+   de documentos. É um indicador de capacidade geral de agente, não verdade absoluta. Atualizar o JSON
+   quando o Akita publicar uma nova versão.
 3. O Codex roda a tarefa inteira com esse modelo **pela conta do ChatGPT**.
 4. Sem crédito para a decisão (abaixo de `JEV_MIN_CREDIT`, padrão US$ 0,10) ou com erro no Jev, usa
    `JEV_FALLBACK_MODEL` (padrão `gpt-6-sol`) — o roteador nunca para o projeto.
