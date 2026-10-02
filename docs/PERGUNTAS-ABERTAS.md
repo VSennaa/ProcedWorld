@@ -2,40 +2,17 @@
 
 Consolidação das perguntas abertas de GDD, SDD, `docs/STATUS.md` e ADRs ainda propostos ou parcialmente abertos. Recomendações são propostas para orientar a decisão do dono do projeto; não representam decisões aprovadas.
 
-## Bloqueiam a próxima fase
+## Bloqueiam a aprovação do SDD
 
-A próxima fase depende da aprovação do GDD e depois da especificação do SDD. Prioridade considera dependências, impacto sistêmico e gates explícitos.
+Prioridade ordenada pelo que impede fechar contratos ou aprovar a especificação. GDD aprovado em 2026-10-01; perguntas de produto remanescentes ficam na seção própria.
 
-1. **Qual é o escopo inicial dos fenômenos mágicos e como eles interagem com tecnologia, sociedade e Entropia?** Bloqueia GDD.
-2. **Quais regras de interferência na Entropia limitam ações, custo catastrófico e recompensas?** Bloqueia GDD.
-3. **Como impedir inflação e colapso econômico ao longo de uma partida infinita?** Bloqueia GDD.
-4. **Como leis afetam migração automática e quais limiares definem revolução moderada ou severa?** Bloqueia GDD.
-5. **Como ordenar ações automatizadas em relação às ações humanas sem vantagem sistemática?** Bloqueia GDD.
-6. **Qual política de propriedade e credenciais será usada para a chave Jev/Runware: operador ou jogador?** Bloqueia SDD.
-7. **A stack proposta no ADR-0007 será ratificada?** Bloqueia SDD.
-8. **Qual será a hospedagem do Laya quando ocorrer a migração de Jev?** Bloqueia SDD.
-9. **Como o sistema define presença e trata queda de conexão durante um turno?** Bloqueia SDD.
-10. **Quais política de backup, limites operacionais e gates de promoção serão adotados?** Bloqueia SDD.
+1. **Qual política de backup será adotada?** Bloqueia SDD.
+2. **Quais limites operacionais e gates de promoção serão adotados?** Bloqueia SDD.
+3. **Qual janela, fuso e moeda definem o teto diário de custo?** Bloqueia SDD.
+4. **Como medir e testar resistência a prompt injection?** Bloqueia SDD.
+5. **Qual contrato de transporte e geração/versionamento de tipos será usado?** Bloqueia SDD.
 
 ## Design de jogo
-
-### Fenômenos mágicos: escopo e expressão
-
-- **Pergunta:** Qual catálogo inicial de fenômenos mágicos existe, quais seus gatilhos e como uma sociedade adere, proíbe ou regulamenta cada prática? A magia tem expressão no mapa, como locais, recursos ou anomalias? Como difere da tecnologia em requisitos de adesão, risco e reação dos vizinhos?
-- **Origens:** GDD 00 — Visão; GDD 02 — Mapa e tiles; GDD 05 — Tecnologia; GDD 06 — Sociedade e governo; GDD 08 — Entropia e eventos.
-- **Por que importa:** Define mecânicas transversais e conteúdo inicial que afetam exploração, progresso, leis e eventos.
-- **Opções:** (1) Catálogo pequeno com fenômenos raros e efeitos sistêmicos; (2) fenômenos principalmente narrativos, com poucos efeitos mecânicos; (3) adiar magia para depois do MVP.
-- **Recomendação:** Começar com poucos fenômenos mecânicos, com requisitos e riscos explícitos e integração consistente entre mapa, tecnologia e leis.
-- **Bloqueia:** aprovação do GDD.
-
-### Interferência na Entropia
-
-- **Pergunta:** Quais ações permitem interferir na Entropia, como se calcula o custo catastrófico e o que concede um sucesso raro sem violar a justiça?
-- **Origens:** GDD 08 — Entropia e eventos.
-- **Por que importa:** Define risco e agência do jogador sobre o sistema diretor de eventos.
-- **Opções:** (1) Sem interferência direta; (2) ações limitadas com custo e risco escalados pela ambição; (3) ações por recurso raro e limites por era.
-- **Recomendação:** Limitar as ações a templates validados, com risco determinístico baseado na seed e custo crescente conforme a ambição.
-- **Bloqueia:** aprovação do GDD.
 
 ### Economia em ciclo infinito
 
@@ -46,12 +23,12 @@ A próxima fase depende da aprovação do GDD e depois da especificação do SDD
 - **Recomendação:** Simular limites de produção e estoque com manutenção recorrente; calibrar por saldo/população e tempo de recuperação, sem escalar apenas pelo avanço do turno.
 - **Bloqueia:** aprovação do GDD.
 
-### Migração e revoltas
+### Revoltas
 
-- **Pergunta:** Leis podem restringir a migração automática? Quais limiares separam revolução moderada de severa?
+- **Pergunta:** Quais limiares separam revolução moderada de severa?
 - **Origens:** GDD 04 — Cidades e população; GDD 06 — Sociedade e governo.
 - **Por que importa:** Conecta políticas de governo à estabilidade, população e distribuição territorial.
-- **Opções:** (1) Leis apenas influenciam migração; (2) leis podem restringi-la com custos sociais; (3) sem proibição, apenas incentivos. Para revoltas: limiares fixos, faixas graduais ou avaliação por múltiplos fatores.
+- **Opções:** limiares fixos, faixas graduais ou avaliação por múltiplos fatores.
 - **Recomendação:** Permitir restrições legais com efeitos e custos visíveis; definir severidade por faixas de indicadores observáveis, calibradas no harness.
 - **Bloqueia:** aprovação do GDD.
 
@@ -84,15 +61,6 @@ A próxima fase depende da aprovação do GDD e depois da especificação do SDD
 
 ## IA
 
-### Clave do modelo de decisão
-
-- **Pergunta:** A chave Jev/Runware/OpenRouter usada pelo jogo pertence ao operador do servidor ou ao jogador?
-- **Origens:** STATUS — Perguntas abertas; ADR-0002 — subdecisão sobre chaves; ADR README — ADR-0002, chaves Proposto.
-- **Por que importa:** Define quem paga, controla cotas e assume a gestão do segredo para chamadas T1.
-- **Opções:** (1) Chave do operador, com custo repassado/limitado; (2) chave do jogador; (3) aceitar ambas com precedência configurável.
-- **Recomendação:** Preferir chave do operador com orçamento global e por jogador, mantendo fallback T0; avaliar chave do jogador como alternativa para servidores auto-hospedados.
-- **Bloqueia:** aprovação do SDD.
-
 ### Hospedagem do Laya
 
 - **Pergunta:** Onde será hospedado o Laya na migração de Jev, considerando que a VPS de referência não tem GPU?
@@ -112,24 +80,6 @@ A próxima fase depende da aprovação do GDD e depois da especificação do SDD
 - **Bloqueia:** aprovação do SDD.
 
 ## Técnica e stack
-
-### Ratificação da stack
-
-- **Pergunta:** O usuário ratifica a stack proposta no ADR-0007: Rust, Godot 4, PostgreSQL, Markdown + SQLite FTS5, Docker Compose e GitHub Actions?
-- **Origens:** STATUS — Perguntas abertas; ADR README — ADR-0007 Proposto; ADR-0007 — Stack tecnológica.
-- **Por que importa:** A stack condiciona contratos, ferramentas, deployment e início de desenvolvimento de produção.
-- **Opções:** (1) Ratificar integralmente; (2) ratificar com alterações pontuais; (3) reabrir alternativas de núcleo/cliente/banco.
-- **Recomendação:** Ratificar Rust após spikes positivos e decidir explicitamente eventuais exceções antes do SDD final.
-- **Bloqueia:** aprovação do SDD.
-
-### Presença e queda de conexão
-
-- **Pergunta:** Como definir precisamente “presente” e o que ocorre se a conexão cair no meio do turno?
-- **Origens:** GDD 01 — Loop e turnos; ADR-0008 — Turno sem relógio; ADR README — ADR-0008 aceito, consequência em aberto.
-- **Por que importa:** Define quando o Governador assume e quando o mundo pode avançar sem prender os demais jogadores.
-- **Opções:** (1) Presença enquanto sessão ativa no mundo, com desconexão removendo o jogador da espera; (2) manter presença até confirmação ou reconexão; (3) janela curta de reconexão antes da substituição pelo Governador.
-- **Recomendação:** Definir presença como sessão ativa no mundo; após desconexão, permitir reconexão ao mesmo turno e então transferir o restante da jogada ao Governador por regra explícita.
-- **Bloqueia:** aprovação do SDD.
 
 ### Protocolo cliente-servidor
 
@@ -200,6 +150,11 @@ A próxima fase depende da aprovação do GDD e depois da especificação do SDD
 
 Nenhuma pergunta aberta de produto aparece diretamente nas seções consultadas. A janela de custo diário, que afeta a experiência do jogador, está agrupada em **Infra e segurança** por depender de regra de cobrança/medição a especificar no SDD.
 
-## Perguntas não listadas como abertas
+## Decididas em 2026-10-01
 
-O ADR README marca como aceitos ADR-0001, ADR-0003 (com fechamento pelo ADR-0008), ADR-0004, ADR-0006 e ADR-0008. Suas decisões aceitas foram excluídas. ADR-0002 e ADR-0005 aparecem apenas nas subdecisões em aberto; ADR-0007 permanece proposto. O ADR README não registra outros ADRs propostos.
+- ADR-0007 aceito: Rust, Godot 4 e PostgreSQL; GDD aprovado e projeto na Fase 1.
+- Chave do modelo de decisão Jev pertence ao operador; Laya será considerado somente ao final (ADR-0002 e ADR-0005).
+- Magia: 3–5 fenômenos raros e sistêmicos; interferir na Entropia custa rituais, sacrifícios ou pesquisas proibidas.
+- Snapshots versionados no início do mundo, no fim de cada era e a cada 50 turnos; turno começa em 0.
+- Presença usa janela técnica de reconexão de 60 s e registra presentes na abertura do turno.
+- Chunk de 48 KiB até benchmark no Android; leis podem restringir migração automática.

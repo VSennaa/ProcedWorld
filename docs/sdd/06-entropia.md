@@ -33,11 +33,14 @@ Não são responsabilidades da Entropia:
 dificuldade. Ela sugere, respectivamente, clima sazonal, estável ou instável; na criação o jogador
 pode substituir o clima. Mudanças permanentes de relevo e fenômenos mágicos também são templates.
 
+**Magia decidida em 2026-10-01:** o catálogo inicial contém 3–5 fenômenos raros e sistêmicos.
+Interferir na Entropia custa rituais, sacrifícios ou pesquisas proibidas. Formas, parâmetros e
+balanceamento que não foram fixados permanecem definidos pelos templates e pelo harness.
+
 ## Contratos propostos
 
-Os nomes abaixo são contratos lógicos; não pressupõem Rust, Godot ou PostgreSQL. Se o ADR-0007 for
-aceito, podem ser tipos do núcleo Rust, dados versionados e persistência PostgreSQL, mas isso não
-muda seus campos nem suas regras.
+Os nomes abaixo são contratos lógicos. São tipos do núcleo Rust, dados versionados e persistência
+PostgreSQL conforme ADR-0007 aceito; isso não muda seus campos nem suas regras.
 
 ```text
 WorldEntropyState {
@@ -185,7 +188,7 @@ Tecnologia emergente referencia descoberta elegível da árvore/dados. Revolta r
 político/cidade reais e aplica regras sociais. Incidente diplomático exige fato de fronteira, tratado
 ou Ledger; o motor, não Entropia, calcula aceitação, confiança ou dívida.
 
-## Interferir na Entropia — proposta
+## Interferir na Entropia — decisão e parâmetros em aberto
 
 Nação pode emitir `AttemptEntropyInterference` para evento pendente: `predict`, `appease`,
 `redirect` ou `invoke`. O comando declara evento, ambição (`low|medium|high`) e pagamento legal;
@@ -231,7 +234,7 @@ de rede. Podem ficar em observabilidade protegida; não são estado autoritativo
 | Estado em memória | O(eventos ativos + proteções + cadeias) | limites acima; expirar resolvidos |
 
 Tempo e tokens são propostas mensuráveis, a calibrar no harness e em provedores reais antes de
-virarem gate de CI. Se ADR-0007 for aceito, implementação mede também alocação e latência ponta a
+virarem gate de CI. A implementação mede também alocação e latência ponta a
 ponta, sem tornar essas medidas parte do `step`.
 
 ## Estratégia de testes
@@ -256,8 +259,5 @@ ponta, sem tornar essas medidas parte do `step`.
    **Recomendação:** começar com `predict` e `appease`; são auditáveis e preservam agência.
 2. Interferência pode afetar outra civilização sem consentimento, além dos efeitos normais do evento?
    **Recomendação:** não; permitir só alvo do próprio evento e alvos já declarados no template.
-3. Quais fenômenos mágicos entram no catálogo inicial?
-   **Recomendação:** três, um por escopo (`tile`, `group`, `civilization`), cada um com aderir,
-   proibir e regulamentar, antes de magia ofensiva ou criação de relevo.
 4. Números iniciais de orçamento, curva, proteção e cadeia ficam como parâmetros de balanceamento?
    **Recomendação:** sim; aprová-los como defaults de dados, não constantes, e endurecer após harness.

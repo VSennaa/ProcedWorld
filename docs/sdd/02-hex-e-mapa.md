@@ -1,8 +1,8 @@
 # SDD 02 — Hexágonos e mapa
 
-- **Status:** rascunho de proposta; não aprovado.
+- **Status:** proposta para revisão do SDD; GDD aprovado em 2026-10-01 e ADR-0007 aceito.
 - **Data:** 2026-10-01.
-- **Escopo relacionado:** ADR-0004 (aceito), ADR-0006 (aceito), ADR-0007 (proposto), GDD 02 (decisões parciais).
+- **Escopo relacionado:** ADR-0004, ADR-0006 e ADR-0007 (aceitos); GDD 02.
 - **Regra de leitura:** os contratos e invariantes abaixo são propostas para revisão. Decisões do GDD e ADRs aceitos estão explicitamente identificados.
 
 ## 1. Objetivo e fronteiras
@@ -171,7 +171,7 @@ Cada etapa consome somente seu PRNG derivado e dados de entrada imutáveis. Uma 
 
 Sub-seeds não substituem a seed-mestra gravada. O mapa é gerado uma vez e armazenado como estado; replay normal reexecuta comandos gravados, não regenera mundo usando código novo. Para auditoria de geração, guardar parâmetros, seed, versões de algoritmo/PRNG/catálogos, tentativa e hash do resultado.
 
-**Se ADR-0007 for aceito:** implementar geração no crate Rust puro do núcleo; PRNG versionado e aritmética inteira/fixa. Ruído procedural pode usar algoritmo próprio inteiro ou biblioteca somente após spike de determinismo em arquiteturas alvo. Nada de ponto flutuante dependente de plataforma no estado canônico.
+Com ADR-0007 aceito, implementar geração no crate Rust puro do núcleo; PRNG versionado e aritmética inteira/fixa. Ruído procedural pode usar algoritmo próprio inteiro ou biblioteca somente após spike de determinismo em arquiteturas alvo. Nada de ponto flutuante dependente de plataforma no estado canônico.
 
 ## 6. Falhas, fallbacks e determinismo
 
@@ -195,7 +195,7 @@ Proposta de conteúdo: coordenada/TileId estável, elevação/bioma/features vis
 
 Chunk boundary não altera vizinhança: primitivas consultam mapa completo. Requisições perto da costura horizontal normalizam coordenadas e não duplicam TileId na resposta. Para cache, revisão muda somente quando estado representado muda; uma política de revisão global versus por chunk segue em aberto.
 
-**Se ADR-0007 for aceito:** Godot 4 pode converter axial para pixel pointy-top e renderizar chunks em TileMap; essa conversão é apresentação, não regra do motor. PostgreSQL pode armazenar snapshot do vetor ou blocos compactados, mas o formato físico não faz parte deste contrato.
+Godot 4 converte axial para pixel pointy-top e renderiza chunks em TileMap; essa conversão é apresentação, não regra do motor. PostgreSQL armazena snapshot do vetor ou blocos compactados, mas o formato físico não faz parte deste contrato.
 
 ## 8. Orçamento proposto
 
@@ -205,7 +205,7 @@ Não há meta de desempenho aprovada. Proposta inicial para benchmark, em servid
 - Linha, anel e área: O(n) no número de tiles retornados, com teto explícito de raio.
 - Geração inicial: O(N) por etapa, memória transitória O(N); meta p95 < 5 s para o maior mapa inicial configurado.
 - Estado: alvo de 16–32 bytes por tile no formato lógico compacto, excluídos índices e overhead de persistência; medir antes de escolher representação binária.
-- Chunk: limitar resposta por configuração; meta inicial < 256 KiB descompactado por página, paginação para áreas maiores.
+- Chunk: limite único de 48 KiB descompactado até benchmark no Android; valor final definido pelo benchmark (decidido em 2026-10-01), com paginação para áreas maiores.
 
 São metas para spike/benchmark, não garantias de produto. Corrigir/aceitar os limites após tamanhos de mundo, dispositivos e hardware do servidor serem definidos. Nenhuma IA é necessária na geometria ou geração; custo de tokens é zero. Se um agente de IA auxiliar criação de narrativa ou sugerir parâmetros, a geração mecânica não depende disso; qualquer uso pertence aos SDDs de IA e deve ter teto/fallback próprio.
 

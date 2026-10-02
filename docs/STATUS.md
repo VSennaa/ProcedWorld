@@ -18,6 +18,13 @@ Agente ativo: nenhum
   emergentes, IA com LLM em jogos, integrações técnicas) com fontes via busca na web do Codex; protótipo de
   assets em `assets/` (89 SVGs de tiles por bioma com overlays, 26 ícones × 3 variantes, gerados por
   `tools/assets/*.py`, determinísticos, CC0) — ver `assets/preview.html`.
+- **Feito em 2026-10-02 06:15–07:00 (fila sequencial no Codex)**: decisões sincronizadas nos SDDs e
+  `PERGUNTAS-ABERTAS.md` atualizado; catálogos-rascunho em `data/catalogs/` com validador
+  (`tools/catalogs/validate.py`); síntese dos estudos em `docs/research/SINTESE.md` (top 10 propostas);
+  spike `spike/back/protocol-serialization` (chunk 8×8 = 12,5 KiB JSON / 1,5 KiB gzip; `Option<Option>`
+  quebra em JSON → usar patch de três estados); spike `spike/front/godot-hex-render` (Godot 4.7, testes
+  headless passam, screenshot). No PC, o Smart App Control bloqueia executáveis recém-compilados
+  (build scripts do cargo); compilação Rust roda na VPS em Docker.
 - **Pendente para o usuário**: avaliar o visual em `assets/preview.html`; atualizar
   `docs/PERGUNTAS-ABERTAS.md` com as decisões de 2026-10-01; revisão do SDD 2 a 2.
 - **Cotas (00:10)**: Claude 68% (5 h) / 77% (semana); Codex 95% (5 h) / 46% (semana) — Codex esgotado

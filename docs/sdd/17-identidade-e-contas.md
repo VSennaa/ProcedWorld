@@ -298,8 +298,8 @@ obrigatório e determinístico.
    **Recomendação:** passkey mais recuperação controlada, para reduzir senhas e funcionar bem no
    celular, mantendo a porta de autenticação independente de fornecedor.
 
-2. A janela técnica de reconexão de 45 s e até cinco sessões ativas por conta são aceitáveis?
-   **Recomendação:** começar com 45 s e cinco; são limites operacionais, versionados e ajustáveis
+2. Até cinco sessões ativas por conta são aceitáveis?
+   **Recomendação:** manter cinco como limite operacional versionado e ajustável
    por telemetria, sem efeito no relógio do jogo.
 
 3. Observadores sem civilização podem entrar em mundo no MVP, e o que podem ver?

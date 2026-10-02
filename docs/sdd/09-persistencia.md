@@ -1,9 +1,7 @@
 # SDD 09 — Persistência
 
-> **Status: proposta.** Este documento não aprova o GDD nem o ADR-0007. Os
-> contratos e invariantes abaixo independem de tecnologia; referências a Rust,
-> PostgreSQL ou armazenamento de objetos valem somente **se o ADR-0007 for
-> aceito**.
+> **Status: proposta para revisão do SDD.** GDD aprovado em 2026-10-01 e ADR-0007 aceito.
+> Contratos e invariantes permanecem distintos dos detalhes do adaptador.
 
 ## Objetivo e princípios
 
@@ -118,8 +116,7 @@ grava o resultado dessa atribuição, não a recalcula.
 
 ## Modelo de dados relacional proposto
 
-Se ADR-0007 for aceito, estas entidades podem ser tabelas PostgreSQL. Em outra
-stack, são o esquema lógico mínimo, com as mesmas chaves e restrições.
+Estas entidades são tabelas PostgreSQL, com as chaves e restrições descritas.
 
 | Entidade | Chave | Conteúdo e relações |
 |---|---|---|
@@ -175,9 +172,9 @@ replay e evita transformar save antigo de modo implícito.
 
 ## Snapshots, retenção e compactação por era
 
-Snapshot recomendado: no turno inicial, no fechamento de cada era e a cada
-`N` turnos configurável. `N` é parâmetro operacional ainda aberto; o limiar
-deve ser escolhido por medição de custo de recuperação, não por conveniência.
+`SnapshotPolicy` versionada: snapshot no início do mundo, no fechamento de cada era e a cada
+50 turnos (decidido em 2026-10-01). A política pode ser revista após benchmark, sem alterar
+as políticas gravadas nas partidas existentes.
 
 Ao fechar uma era (de 4 a 12 turnos), criar:
 
@@ -224,7 +221,7 @@ Todo backup é point-in-time consistente entre `world_turns`, log, snapshots,
 catálogos e metadados de arquivo. Deve conter manifest, checksums, versão de
 codec e instrução de restauração independente da implantação original.
 
-Se ADR-0007 for aceito, a implementação deve usar os mecanismos de backup
+A implementação deve usar os mecanismos de backup
 consistente do PostgreSQL e copiar blobs referenciados pelo mesmo manifest. A
 política proposta é cópia periódica automatizada, cópia antes de migrações e
 teste de restauração em ambiente isolado. Sucesso significa restaurar um mundo
@@ -281,9 +278,6 @@ nunca são persistidos neste subsistema.
 1. Qual RPO/RTO é aceitável para mundos eternos e qual mídia/local de backup é
    permitida? **Recomendação:** definir RPO de até um turno selado e testar uma
    restauração automática periódica antes de autorizar poda histórica.
-2. Qual cadência máxima de replay é aceitável ao abrir um mundo? **Recomendação:**
-   começar com snapshot no fim de toda era e medir `N` adicional em harness,
-   sem fixar número antes dos dados.
 3. Eras antigas podem ser apagadas após arquivo verificável ou devem permanecer
    recuperáveis indefinidamente? **Recomendação:** para MVP, conservar cadeia
    completa restaurável e usar apenas compactação sem perda.
@@ -293,9 +287,6 @@ nunca são persistidos neste subsistema.
 5. Por quanto tempo guardar evidências sanitizadas de IA e narrativa, que não são
    necessárias ao `step`? **Recomendação:** retenção menor que o log mecânico,
    com prazo e controle de acesso definidos no SDD de segurança.
-6. O ADR-0007 será aceito com PostgreSQL como implementação do esquema relacional?
-   **Recomendação:** aprovar primeiro os contratos acima; ratificar a tecnologia
-   somente após spike de backup, recuperação e custo na infraestrutura-alvo.
 
 ## Referências
 

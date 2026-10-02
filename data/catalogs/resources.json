@@ -1,0 +1,27 @@
+{
+  "catalog_id": "core.resources",
+  "catalog_version": 1,
+  "schema_version": 1,
+  "status": "draft",
+  "resources": [
+    {"id":"food","name":"Comida","category":"yield","tradeable":true},
+    {"id":"production","name":"Produção","category":"yield","tradeable":false},
+    {"id":"wealth","name":"Riqueza","category":"yield","tradeable":true},
+    {"id":"knowledge","name":"Conhecimento","category":"yield","tradeable":false},
+    {"id":"culture","name":"Cultura","category":"yield","tradeable":false},
+    {"id":"crops","name":"Cultivos","category":"renewable","biomes":["plains"],"yield_per_worker":2,"regeneration_per_turn":1,"sustainable_limit":2},
+    {"id":"cattle","name":"Gado","category":"renewable","biomes":["plains","savanna","steppe"],"yield_per_worker":1,"regeneration_per_turn":1,"sustainable_limit":1},
+    {"id":"fish","name":"Peixe","category":"renewable","biomes":["ocean","coast","tundra","swamp"],"yield_per_worker":2,"regeneration_per_turn":1,"sustainable_limit":2},
+    {"id":"timber","name":"Madeira","category":"renewable","biomes":["forest","jungle"],"yield_per_worker":2,"regeneration_per_turn":1,"sustainable_limit":2},
+    {"id":"game","name":"Caça","category":"renewable","biomes":["forest","savanna"],"yield_per_worker":1,"regeneration_per_turn":1,"sustainable_limit":1},
+    {"id":"horses","name":"Cavalos","category":"renewable","biomes":["steppe"],"yield_per_worker":1,"regeneration_per_turn":1,"sustainable_limit":1},
+    {"id":"reeds","name":"Juncos","category":"renewable","biomes":["swamp"],"yield_per_worker":1,"regeneration_per_turn":1,"sustainable_limit":1},
+    {"id":"stone","name":"Pedra","category":"finite","biomes":["mountain"],"stock_min":100,"stock_max":400,"extraction_per_worker":2},
+    {"id":"coal","name":"Carvão","category":"finite","biomes":["mountain","forest"],"stock_min":100,"stock_max":400,"extraction_per_worker":2},
+    {"id":"copper","name":"Cobre","category":"finite","biomes":["desert","mountain"],"stock_min":100,"stock_max":400,"extraction_per_worker":2},
+    {"id":"metal","name":"Metal","category":"strategic","biomes":["mountain","desert"],"stock_min":100,"stock_max":400,"extraction_per_worker":2,"tradeable":true},
+    {"id":"spices","name":"Especiarias","category":"luxury","biomes":["jungle"],"yield_per_worker":1,"regeneration_per_turn":1,"sustainable_limit":1,"cohesion_first_origin":2,"cohesion_second_origin":1},
+    {"id":"fur","name":"Peles","category":"luxury","biomes":["tundra"],"yield_per_worker":1,"regeneration_per_turn":1,"sustainable_limit":1,"cohesion_first_origin":2,"cohesion_second_origin":1},
+    {"id":"salt","name":"Sal","category":"luxury","biomes":["coast","desert"],"yield_per_worker":1,"regeneration_per_turn":1,"sustainable_limit":1,"cohesion_first_origin":2,"cohesion_second_origin":1}
+  ]
+}

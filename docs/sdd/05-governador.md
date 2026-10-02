@@ -54,7 +54,7 @@ elegibilidade. A rotação e o desempate são reprodutíveis, sem prioridade fix
 ## Contratos propostos
 
 Os esquemas abaixo são contratos lógicos. Serialização, transporte e persistência ficam em aberto;
-**se ADR-0007 for aceito**, seus adaptadores não podem mudar semântica, escala ou ordenação.
+Seus adaptadores não podem mudar semântica, escala ou ordenação, conforme a stack aceita no ADR-0007.
 
 ```text
 type Scope = cities_economy | exploration_defense | technology | diplomacy | crisis_response
@@ -213,7 +213,7 @@ Os limites numéricos abaixo devem ser medidos no harness e aprovados antes de p
 - Contexto: somente estado resumido, Mandato e fatos selecionados. Prefixo estável permite cache;
   contexto saturado é reconstruído de documentos canônicos, nunca vira fonte de verdade.
 
-**Se ADR-0007 for aceito**, a instrumentação deve registrar tempo, memória, tokens de entrada/saída,
+A instrumentação deve registrar tempo, memória, tokens de entrada/saída,
 custo estimado, provedor e motivo de fallback fora do `step`, sem registrar segredos.
 
 ## Estratégia de testes

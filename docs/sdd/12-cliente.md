@@ -1,8 +1,7 @@
 # SDD 12 — Cliente
 
-> **Status:** proposta de especificação. O GDD ainda aguarda aprovação e o ADR-0007 (stack) está
-> proposto. Contratos e invariantes não dependem de tecnologia; Godot 4 é adaptação candidata,
-> condicionada à aceitação do ADR-0007.
+> **Status:** proposta para revisão do SDD. GDD aprovado em 2026-10-01 e ADR-0007 aceito;
+> Godot 4 é a adaptação cliente decidida.
 
 ## Objetivo e fronteiras
 
@@ -42,7 +41,7 @@ TransportSession -> ClientStore <- Presentation / Input
 - `Presentation / Input` transforma projeção em telas e gestos em `CommandDraft`.
 - `LocalCache` é otimização apagável; o servidor pode reenviar snapshot e diferenças.
 
-Se ADR-0007 for aceito, Godot 4 pode prover cenas/controles, sessão HTTP/WebSocket, recursos
+Godot 4 provê cenas/controles, sessão HTTP/WebSocket, recursos
 serializáveis e renderer hexagonal. Isso não torna `TileMap` a única implementação possível.
 
 ## Experiência e navegação propostas
@@ -263,6 +262,6 @@ preferir lista/cartão a reduzir alvo abaixo de 9 mm.
 - ADR-0001 — servidor autoritativo.
 - ADR-0004 — grid hexagonal.
 - ADR-0006 — motor determinístico e event sourcing.
-- ADR-0007 — stack tecnológica (proposto).
+- ADR-0007 — stack tecnológica (aceito).
 - GDD 02 — mapa e tiles; GDD 11 — experiência mobile.
 - `docs/gdd/12-variaveis-e-formulas.md` — variáveis compartilhadas.

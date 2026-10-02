@@ -1,6 +1,6 @@
 # SDD 15 — Regras de domínio
 
-> **Status: proposta.** O GDD não foi aprovado formalmente e o ADR-0007 permanece Proposto.
+> **Status: proposta para revisão do SDD.** GDD aprovado em 2026-10-01; ADR-0007 aceito.
 > Este documento fixa contratos e invariantes portáveis; números e políticas marcados como
 > proposta exigem validação no harness e aprovação de produto.
 
@@ -24,7 +24,7 @@ Entropia, memória/Crônica ou chamada de IA. Esses componentes podem propor com
 eventos; não executam regras deste documento. O motor de núcleo é dono de `step`, do PRNG,
 serialização canônica e de `StateHash`.
 
-Se ADR-0007 for aceito, este módulo pode ser uma biblioteca Rust pura; isso não altera os
+Este módulo é uma biblioteca Rust pura; isso não altera os
 contratos a seguir nem pressupõe Godot ou PostgreSQL.
 
 ## 2. Contratos
@@ -148,7 +148,7 @@ precisam de aprovação.
 
 O alocador escolhe postos por prioridade de cidade e desempate estável; exceções fixadas pelo
 jogador só valem se ainda elegíveis. Crescimento requer regra catalogada de excedente e moradia.
-Migração propõe uma pontuação inteira por origem/destino (comida, moradia e `S`), move uma unidade
+Leis podem restringir a migração automática (decidido em 2026-10-01). Migração propõe uma pontuação inteira por origem/destino (comida, moradia e `S`), move uma unidade
 por par canônico até o limite de fluxo e emite `PopulationMigrated`; pesos e limite são proposta.
 
 Tecnologias têm árvore base fixa em dados; eventos podem introduzir descobertas emergentes por
@@ -210,7 +210,7 @@ falha e `StateHash`. `IntentEvidence` pode ser retida para auditoria, mas não d
 Nunca entram no `step`: tempo de parede, I/O, consultas a banco, rede, credenciais, texto livre de
 jogador, prompt/resposta de modelo, custo de API, presença de sessão, ordem incidental de coleção
 ou nova chamada de IA. Um `WorldSnapshot` periódico é armazenado pelo subsistema de persistência;
-se ADR-0007 for aceito, PostgreSQL é apenas uma implementação desse armazenamento.
+PostgreSQL é a implementação desse armazenamento conforme ADR-0007.
 
 ## 7. Orçamento
 
@@ -250,15 +250,13 @@ deve guardar baseline de tempo, alocações e número de eventos para detectar r
    congelar qualquer número de balanceamento.
 3. Quais limiares separam revolução moderada de severa? **Recomendação:** decidir depois de medir
    distribuição de `P`, preservando desde já os dois efeitos de Mandato já decididos.
-4. Leis ou políticas podem restringir a migração automática? **Recomendação:** não na primeira regra;
-   deixar somente condições de cidade influenciarem migração, conforme decisão atual.
-5. Quando uma proposta de combate vira confronto, e quais posturas existem? **Recomendação:** usar
+4. Quando uma proposta de combate vira confronto, e quais posturas existem? **Recomendação:** usar
    catálogo fechado de posturas e declarar todos os custos/reservas antes da fase de combate.
-6. Quais metas de CPU, memória, tamanho de mundo e custo de IA devem bloquear regressões? 
+5. Quais metas de CPU, memória, tamanho de mundo e custo de IA devem bloquear regressões? 
    **Recomendação:** estabelecer baselines após o primeiro harness headless, antes de fixar SLAs.
 
 ## ADRs relacionados
 
 - ADR-0006 — motor determinístico, event sourcing e IA somente como proponente.
 - ADR-0008 — turno sem relógio e fechamento por humanos presentes.
-- ADR-0007 — stack tecnológica (Proposto; não é pré-requisito deste desenho).
+- ADR-0007 — stack tecnológica aceita.

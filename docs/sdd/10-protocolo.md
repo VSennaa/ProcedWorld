@@ -34,7 +34,7 @@ sessão, mas não autoriza ação nem resolve turno.
 
 ## 2. Modelo de transporte proposto
 
-Se o ADR-0007 for aceito, a proposta é HTTP para operações pontuais e WebSocket para a sessão
+Com ADR-0007 aceito, a proposta é HTTP para operações pontuais e WebSocket para a sessão
 bidirecional. A semântica abaixo deve ser preservada se a implementação escolher outro transporte.
 
 | Canal | Uso proposto | Não usar para |
@@ -298,7 +298,7 @@ catálogo estabelecidas pelo núcleo (ADR-0006).
    **Recomendação:** manter a porta de autenticação abstrata neste SDD e decidir o provedor em ADR de
    segurança, antes de implementar onboarding.
 
-4. Os limites iniciais de 16/64/128/48 KiB são adequados para o alvo Android e a cobertura de mapa?
+4. Os limites iniciais de 16/64/128 KiB para payloads que não são chunks são adequados para o alvo Android?
    **Recomendação:** aprová-los apenas como teto experimental e recalibrar com traces reais no harness.
 
 5. O cliente pode guardar um snapshot de visão criptografado para abertura rápida, embora não haja modo

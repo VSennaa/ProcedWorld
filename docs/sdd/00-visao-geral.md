@@ -1,15 +1,16 @@
 # SDD 00 — Visão geral da arquitetura
 
-- **Status:** Proposta — depende da aprovação do GDD e da ratificação do ADR-0007.
+- **Status:** Proposta para revisão do SDD; GDD aprovado em 2026-10-01 e ADR-0007 aceito.
 - **Escopo:** topologia, fronteiras e fluxo de turno. Os detalhes pertencem aos SDDs 01–14.
-- **ADRs relacionados:** ADR-0001, ADR-0002, ADR-0003, ADR-0006, ADR-0007 (proposto) e ADR-0008.
+- **ADRs relacionados:** ADR-0001, ADR-0002, ADR-0003, ADR-0006, ADR-0007 (aceito) e ADR-0008.
 
 ## Objetivo
 
 Definir os contratos estáveis entre cliente, servidor, núcleo de simulação, IA e armazenamento.
 O desenho prioriza estado, comandos, versões e invariantes; por isso pode sobreviver à substituição
-de linguagens, banco ou engine de cliente. Menções a Rust, Godot, PostgreSQL, SQLite e Compose são
-condicionais: aplicam-se somente se o ADR-0007 for aceito.
+de linguagens, banco ou engine de cliente. A implementação segue a stack aceita no ADR-0007:
+Rust, Godot 4 e PostgreSQL; Markdown e SQLite FTS5 atendem à memória, com Docker Compose e
+GitHub Actions na infraestrutura.
 
 ## Responsabilidades e fronteiras
 
@@ -44,9 +45,9 @@ flowchart LR
   P --> H
 ```
 
-Se ADR-0007 for aceito, `N` será uma biblioteca Rust pura; `S` será servidor Rust; `C` será Godot 4;
-`P` usará PostgreSQL para fatos da partida; e `M` manterá Markdown canônico e índice SQLite FTS5.
-Essas são implementações intercambiáveis, não contratos do domínio.
+`N` será biblioteca Rust pura; `S` será servidor Rust; `C` será Godot 4; `P` usará PostgreSQL
+para fatos da partida; e `M` manterá Markdown canônico e índice SQLite FTS5. Essas são as
+implementações decididas no ADR-0007.
 
 ## Conceitos e versões
 
@@ -174,8 +175,8 @@ aceitar vassalagem e escolher sucessor — são rejeitadas enquanto o humano est
 8. O servidor calcula o hash canônico, persiste resultado e snapshot quando devido, deriva novas
    projeções e publica o próximo turno. Prazos internos são contados em turnos, nunca em horas.
 
-Não há relógio de turno. Um humano desconectado é ausente e recebe ação do Governador; a definição
-operacional de presença e a transição durante queda de conexão permanecem abertas nesta proposta.
+Não há relógio de turno. Presença usa janela técnica de reconexão de 60 s, sem efeito no relógio
+de jogo; a lista de humanos presentes é registrada na abertura do turno (decidido em 2026-10-01).
 
 ## Modelo de dados proposto
 
@@ -235,10 +236,10 @@ constantes de domínio. Medir p50/p95 por fase e falhar CI apenas em orçamento 
 | Memória de trabalho por agente | 60%: compactar; 85%: reset canônico | consolidar ou reconstruir contexto |
 | Chamadas T1/T2 | máximo de tokens e custo por chamada/configuração | T0 para aquela decisão |
 | Civilização BYOK | teto diário configurável e exibido | T0/T1 sem usar a chave |
-| Persistência e snapshot | janela por turno a medir | retry idempotente; não publicar turno sem confirmação |
+| Persistência e snapshot | política versionada: início, fim de era e a cada 50 turnos | retry idempotente; não publicar turno sem confirmação |
 
 O limite de tempo de turno é deliberadamente inexistente: não deve ser confundido com orçamento de
-processamento. O custo do modelo de decisão (operador ou jogador) ainda é pergunta aberta.
+processamento. A chave T1 é do operador (decidido em 2026-10-01).
 
 ## Estratégia de testes
 
@@ -260,14 +261,7 @@ sem alterar comando mecânico não muda o hash do estado.
 
 ## Perguntas abertas para o usuário
 
-1. **Presença durante desconexão:** uma sessão cai no meio do turno; ela passa imediatamente a
-   ausente, recebe breve reconexão, ou há confirmação explícita? **Recomendação:** definir presença
-   como conexão autenticada ativa; ao perder a sessão, tornar ausente no próximo ponto seguro e deixar
-   o Governador agir, com relatório ao retorno.
-2. **Chave de T1:** a chave Jev/Runware/Laya pertence ao operador ou ao jogador? **Recomendação:**
-   começar com chave do operador, teto global estrito e telemetria por civilização; oferecer BYOK de
-   T1 somente depois de validar UX e cobrança.
-3. **Contrato de transporte:** JSON, binário ou geração de tipos entre cliente e servidor?
+1. **Contrato de transporte:** JSON, binário ou geração de tipos entre cliente e servidor?
    **Recomendação:** começar com JSON canônico e schemas versionados; adiar binário até o benchmark.
 4. **Retenção de texto e memória:** por quanto tempo guardar mensagens de jogador, crônica e
    documentos supersedidos? **Recomendação:** declarar política de retenção/apagamento antes do alfa,
@@ -280,5 +274,6 @@ sem alterar comando mecânico não muda o hash do estado.
 
 Decidido: servidor autoritativo, núcleo determinístico com event sourcing, turnos simultâneos sem
 relógio, ordem sequencial gravada, combate em fase própria, ordem rotativa por seed, Governador no
-servidor, Mandato aplicado pelo motor e fallback T0. Proposto neste SDD: nomes dos contratos, formato
-dos registros, detalhes de presença, telemetria, retenção, serialização e todos os números de orçamento.
+servidor, Mandato aplicado pelo motor e fallback T0; stack ADR-0007; chave T1 do operador; presença
+com janela técnica de 60 s; snapshots no início, fim de era e a cada 50 turnos. Proposto neste SDD:
+nomes dos contratos, formato dos registros, telemetria, retenção, serialização e números de orçamento.

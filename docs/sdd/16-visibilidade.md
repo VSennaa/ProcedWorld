@@ -1,7 +1,7 @@
 # SDD 16 — Visibilidade e névoa de guerra
 
 > **Status: proposta.** Depende dos pilares GDD 02, 07 e 09, ainda não aprovados
-> formalmente. ADR-0004 e ADR-0006 são aceitos; ADR-0007 é proposto.
+> formalmente. ADR-0004, ADR-0006 e ADR-0007 são aceitos.
 
 ## 1. Responsabilidades e fronteiras
 
@@ -219,11 +219,11 @@ mundos, dispositivos e servidor de referência.
 | Visão por turno | O(fontes + tiles alcançados), medido separado de <code>step</code> | teto catalogado de raio/fontes; rejeitar configuração inválida |
 | Memória canônica | O(tiles conhecidos + entidades visíveis), desconhecido implícito | compactar observações; não descartar fato referenciável sem política aprovada |
 | Projeção | só tiles conhecidos e até limite do protocolo | paginar/reduzir chunk; nunca completar com ocultos |
-| Chunk de mapa | limite único do protocolo: proposta atual 48 KiB descompactado | delta ou páginas ordenadas |
+| Chunk de mapa | 48 KiB descompactado até benchmark no Android; valor final pelo benchmark (decidido em 2026-10-01) | delta ou páginas ordenadas |
 | IA para visão | zero | T0 universal; T1/T2 só propõem intenção fora de <code>step</code> |
 | Tokens/custo de IA | orçamento de IA por ator/dia | contexto só autorizado; timeout/teto usa T0 |
 
-Se ADR-0007 for aceito, Rust pode implementar contratos puros, PostgreSQL persistir
+Rust implementa contratos puros, PostgreSQL persiste
 snapshots/log e Godot 4 renderizar <code>KnownTileView</code>; isto não altera
 semântica de autorização ou replay.
 
@@ -272,4 +272,3 @@ semântica de autorização ou replay.
 6. Qual meta de memória e tempo vale para mundo/dispositivo máximos?
    **Recomendação:** aprovar limite de mundo e benchmark antes de fixar raio, formato
    compacto e chunk; até lá, os números deste SDD são hipótese.
-
