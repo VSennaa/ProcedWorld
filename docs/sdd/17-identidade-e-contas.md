@@ -132,7 +132,7 @@ O campo `ruleset_ref` segue o nome canônico da revisão cruzada (correção apl
 
 ```text
 PresencePolicy {
-  reconnect_grace_ms: 45_000
+  reconnect_grace_ms: 60_000 // correção aplicada em 2026-10-01
   heartbeat_interval_ms: 15_000
   enrollment: "at_turn_open"
   cutoff: "delegate_for_current_turn"
