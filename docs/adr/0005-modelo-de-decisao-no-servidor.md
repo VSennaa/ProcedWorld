@@ -1,6 +1,6 @@
 # ADR-0005 — Modelo de decisão (Jev → Laya) consumido pelo servidor
 
-- **Status**: Aceito (hospedagem do Laya: em aberto)
+- **Status**: Aceito. Laya só substitui o Jev **ao final**, quando o servidor for preparado para distribuição (facilitar o setup de quem hospeda); até lá, Jev. Decidido em 2026-10-01.
 - **Data**: 2026-10-01
 - **Decisores**: usuário
 

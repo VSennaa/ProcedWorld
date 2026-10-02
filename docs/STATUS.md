@@ -6,17 +6,15 @@
 
 Agente ativo: nenhum
 
-- **Fase**: 0 — Concepção. GDD consolidado e pronto para **aprovação formal**; SDD inteiro em rascunho.
-- **Branch ativa**: `docs/gdd/draft-proposals` (ainda não mergeada em `develop`).
-- **Para o usuário de manhã (2026-10-02), em ordem:**
-  1. Ler `docs/PERGUNTAS-ABERTAS.md` — topo com as 10 perguntas que bloqueiam a próxima fase.
-  2. Aprovar (ou pedir ajustes) o **GDD** — `docs/gdd/` incluindo o novo `12-variaveis-e-formulas.md`.
-     Aprovação encerra a Fase 0 e libera o merge em `develop`.
-  3. Decidir o **ADR-0007 (stack)** — agora com resultados de spike (determinismo passou em 4 plataformas).
-  4. Revisar os itens "precisa do usuário: sim" em `docs/sdd/REVISAO-CRUZADA.md` (snapshots, origem do
-     número do turno, política de presença, limite de chunk, sucessão/entrada tardia).
-  5. Opcional: liberar o `cargo` no Smart App Control do Windows (ou usar WSL) para desenvolver Rust no PC;
-     swap de 2 GB na VPS (exige sudo).
+- **Fase**: **1 — Especificação** (GDD aprovado pelo usuário em 2026-10-01; Fase 0 encerrada).
+- **Branch**: `develop` recebeu o GDD aprovado e os rascunhos de SDD. Próximo trabalho em `docs/sdd/*`,
+  `docs/research/*` e `feat/front/asset-prototype`.
+- **Decidido em 2026-10-01 (lote final)**: stack aceita (ADR-0007); chave T1 do operador (ADR-0002);
+  Laya só no final (ADR-0005); magia com 3–5 fenômenos sistêmicos; interferir na Entropia custa rituais,
+  sacrifícios e pesquisas proibidas; direção de arte 2D estilizada (GDD 13); itens técnicos da revisão
+  cruzada decididos (ver `docs/sdd/REVISAO-CRUZADA.md`).
+- **Próximo passo**: revisão do SDD com o usuário (2 a 2, como no GDD) e aprovação → Fase 2.
+- **Em andamento**: estudos em `docs/research/` e protótipo de assets (tiles por bioma e ícones).
 
 ## Turno da noite (2026-10-01 22:30 → 23:10)
 
@@ -58,9 +56,7 @@ Encerrado cedo por falta de trabalho desbloqueado: o restante depende das decis�
 
 ## Perguntas abertas (para o usuário)
 
-1. Chave do modelo de decisão (Jev/Runware/OpenRouter) no jogo: do operador do servidor ou do jogador? (ADR-0002)
-3. Ratificar a stack proposta (ADR-0007).
-4. Hospedagem futura do Laya, dado que a VPS atual não tem GPU (ADR-0005).
+- Itens restantes em `docs/PERGUNTAS-ABERTAS.md` (precisa ser atualizado com as decisões de 2026-10-01).
 
 ## Riscos conhecidos
 
