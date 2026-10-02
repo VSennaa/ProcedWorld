@@ -14,7 +14,14 @@ Agente ativo: nenhum
   sacrifícios e pesquisas proibidas; direção de arte 2D estilizada (GDD 13); itens técnicos da revisão
   cruzada decididos (ver `docs/sdd/REVISAO-CRUZADA.md`).
 - **Próximo passo**: revisão do SDD com o usuário (2 a 2, como no GDD) e aprovação → Fase 2.
-- **Em andamento**: estudos em `docs/research/` e protótipo de assets (tiles por bioma e ícones).
+- **Feito na madrugada de 2026-10-02**: 4 estudos em `docs/research/` (outros jogos, sandbox e mundos
+  emergentes, IA com LLM em jogos, integrações técnicas) com fontes via busca na web do Codex; protótipo de
+  assets em `assets/` (89 SVGs de tiles por bioma com overlays, 26 ícones × 3 variantes, gerados por
+  `tools/assets/*.py`, determinísticos, CC0) — ver `assets/preview.html`.
+- **Pendente para o usuário**: avaliar o visual em `assets/preview.html`; atualizar
+  `docs/PERGUNTAS-ABERTAS.md` com as decisões de 2026-10-01; revisão do SDD 2 a 2.
+- **Cotas (00:10)**: Claude 68% (5 h) / 77% (semana); Codex 95% (5 h) / 46% (semana) — Codex esgotado
+  até o reset da janela de 5 h.
 
 ## Turno da noite (2026-10-01 22:30 → 23:10)
 
