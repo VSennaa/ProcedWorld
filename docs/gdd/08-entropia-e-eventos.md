@@ -14,6 +14,10 @@
   oráculos, magia, ciência proibida), mas o custo tende a ser catastrófico frente à recompensa — como
   o outro lado de *Call of Cthulhu*. Analisar riscos e responder aos eventos deve ser quase sempre a
   escolha preferível. Decidido em 2026-10-01.
+- **Como se interfere**: poucas ações raras (prever, aplacar, desviar), sempre via template, que
+  **custam caro antes do resultado** — preparar rituais, sacrifícios, pesquisas proibidas. O risco
+  catastrófico é sorteado pela seed e cresce com a ambição do pedido; um sucesso nunca anula as regras
+  de justiça. Decidido em 2026-10-01.
 - **Mudanças permanentes de relevo** e **fenômenos mágicos** são templates da Entropia; ela julga se
   seriam exagerados pelo orçamento de tensão e pelas regras de justiça (00, 02, 06). Decidido em 2026-10-01.
 

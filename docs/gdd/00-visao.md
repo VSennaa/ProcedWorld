@@ -169,4 +169,5 @@
 
 ## Perguntas abertas
 
-- Catálogo inicial de fenômenos mágicos (ver 05, 06 e 08).
+- Catálogo inicial de fenômenos mágicos: **poucos (3–5 no MVP), raros e sistêmicos**, decidido em
+  2026-10-01; o conteúdo de cada um é desenhado no catálogo (ver 05, 06 e 08).

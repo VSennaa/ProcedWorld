@@ -1,8 +1,8 @@
 # ADR-0007 — Stack tecnológica
 
-- **Status**: **Proposto** (ratificar na Fase 1 — SDD)
+- **Status**: **Aceito** em 2026-10-01 (após os spikes abaixo)
 - **Data**: 2026-10-01
-- **Decisores**: usuário (pendente)
+- **Decisores**: usuário
 
 ## Contexto
 

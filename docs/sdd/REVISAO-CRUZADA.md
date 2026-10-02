@@ -59,4 +59,14 @@
 | RC2-03 | `sdd/15-regras-de-dominio.md` §2 e §4; `sdd/17-identidade-e-contas.md` §2 | Sucessão/entrada tardia e efeitos de revolta seguem sem regras mecânicas completas; os SDDs delimitam a coordenação, mas não especificam todos os comandos e transições já decididos no GDD. | Não inferir mecânicas ausentes. Manter a lacuna para decisão/especificação do dono; nenhuma alteração mecânica aplicada. | sim |
 | RC2-04 | `sdd/16-visibilidade.md` §5; `sdd/10-protocolo.md` §9; `sdd/02-hex-e-mapa.md` §8 | A proposta de 48 KiB em visibilidade e protocolo diverge do teto proposto de 256 KiB no SDD 02; RC-09 já registra que escolher o valor requer benchmark. | Preservar como decisão aberta; não mudar o limite sem benchmark/aprovação. Nenhuma correção aplicada. | sim |
 
+## Decisões do usuário sobre itens "sim" (2026-10-01)
+
+| Item | Decisão |
+|---|---|
+| RC-05 snapshots | No início do mundo, em cada fim de era e a cada 50 turnos (`SnapshotPolicy` versionada). |
+| RC-06 origem do turno | O turno começa em **0**. |
+| RC-08 presença | Janela técnica de reconexão de **60 s** (não é relógio de jogo); lista de presentes registrada na abertura do turno. |
+| RC-09 / RC2-04 chunk | **48 KiB** até haver benchmark no Android; valor final definido pelo benchmark. |
+| GDD 04/06 migração | Leis **podem restringir** a migração automática. |
+
 <!-- encoding-check: quotes damaged text -->

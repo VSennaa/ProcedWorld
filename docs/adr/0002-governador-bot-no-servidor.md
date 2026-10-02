@@ -27,7 +27,7 @@ Como toda IA roda no servidor, as chamadas de LLM (T2) para a civilização do j
   (criptografia de envelope; chave-mestra fora do banco, em segredo do servidor).
 - A chave só é usada em chamadas da civilização daquele jogador, com teto de custo diário configurável.
 - Sem chave válida ou com teto atingido, o Governador degrada para T0/T1 — o jogo continua.
-- Em aberto: a chave do modelo de decisão (Jev/Runware) é do operador do servidor ou do jogador.
+- **Decidido (2026-10-01)**: a chave do modelo de decisão (Jev/Runware; depois Laya) é **do operador do servidor**; o jogador só traz chave de LLM, se quiser.
 
 ## Consequências
 

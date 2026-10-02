@@ -171,9 +171,10 @@ docs/
   Laya local nele provavelmente é inviável; decidir com spike medido.
 - **Motor determinístico + event sourcing** (ADR-0006).
 
-**Stack — Proposto, não aceito** (ADR-0007): núcleo e servidor em **Rust**, cliente **Godot 4**
+**Stack — Aceita** (ADR-0007, 2026-10-01): núcleo e servidor em **Rust**, cliente **Godot 4**
 (MCP `godot-ai` disponível), **PostgreSQL**, memória em Markdown + SQLite FTS5, Docker Compose,
-GitHub Actions. Não escrever código de produção antes de o usuário aceitar o ADR-0007.
+GitHub Actions. Builds de release no CI; na VPS, build em container. Código de produção ainda depende
+de GDD e SDD aprovados (§4).
 
 Perguntas abertas vivem em `docs/STATUS.md` e na seção "Perguntas abertas" de cada arquivo do GDD.
 
