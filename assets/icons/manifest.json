@@ -1,0 +1,144 @@
+{
+  "version": 1,
+  "seed": 20261001,
+  "size": 48,
+  "viewBox": "0 0 48 48",
+  "stroke_width": 3,
+  "modes": [
+    "standard",
+    "colorblind",
+    "monochrome"
+  ],
+  "icons": [
+    {
+      "id": "comida",
+      "label": "Comida",
+      "palette_role": "food"
+    },
+    {
+      "id": "producao",
+      "label": "Produção",
+      "palette_role": "production"
+    },
+    {
+      "id": "riqueza",
+      "label": "Riqueza",
+      "palette_role": "wealth"
+    },
+    {
+      "id": "conhecimento",
+      "label": "Conhecimento",
+      "palette_role": "knowledge"
+    },
+    {
+      "id": "cultura",
+      "label": "Cultura",
+      "palette_role": "culture"
+    },
+    {
+      "id": "metal",
+      "label": "Metal",
+      "palette_role": "metal"
+    },
+    {
+      "id": "luxo",
+      "label": "Luxo",
+      "palette_role": "luxury"
+    },
+    {
+      "id": "coesao",
+      "label": "Coesão",
+      "palette_role": "cohesion"
+    },
+    {
+      "id": "legitimidade",
+      "label": "Legitimidade",
+      "palette_role": "legitimacy"
+    },
+    {
+      "id": "estabilidade",
+      "label": "Estabilidade",
+      "palette_role": "stability"
+    },
+    {
+      "id": "pressao-crise",
+      "label": "Pressão de crise",
+      "palette_role": "crisis"
+    },
+    {
+      "id": "ameaca-guerra",
+      "label": "Ameaça de guerra",
+      "palette_role": "war"
+    },
+    {
+      "id": "exposicao-ambiental",
+      "label": "Exposição ambiental",
+      "palette_role": "environment"
+    },
+    {
+      "id": "populacao",
+      "label": "População",
+      "palette_role": "population"
+    },
+    {
+      "id": "turno",
+      "label": "Turno",
+      "palette_role": "time"
+    },
+    {
+      "id": "era",
+      "label": "Era",
+      "palette_role": "time"
+    },
+    {
+      "id": "mandato",
+      "label": "Mandato",
+      "palette_role": "legitimacy"
+    },
+    {
+      "id": "governador",
+      "label": "Governador",
+      "palette_role": "legitimacy"
+    },
+    {
+      "id": "entropia",
+      "label": "Entropia",
+      "palette_role": "crisis"
+    },
+    {
+      "id": "ledger-confianca",
+      "label": "Ledger: confiança",
+      "palette_role": "cohesion"
+    },
+    {
+      "id": "ledger-ressentimento",
+      "label": "Ledger: ressentimento",
+      "palette_role": "crisis"
+    },
+    {
+      "id": "ledger-divida",
+      "label": "Ledger: dívida",
+      "palette_role": "wealth"
+    },
+    {
+      "id": "tratado",
+      "label": "Tratado",
+      "palette_role": "cohesion"
+    },
+    {
+      "id": "guerra",
+      "label": "Guerra",
+      "palette_role": "war"
+    },
+    {
+      "id": "pronto",
+      "label": "Pronto",
+      "palette_role": "stability"
+    },
+    {
+      "id": "custo-ia",
+      "label": "Custo de IA",
+      "palette_role": "ai"
+    }
+  ]
+}

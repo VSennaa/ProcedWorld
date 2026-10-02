@@ -1,0 +1,91 @@
+{
+  "version": 1,
+  "status": "Proposta de protótipo; direção de arte definitiva pendente.",
+  "tiles": {
+    "standard": {
+      "oceano": ["#25617D", "#C0E7ED", "#19465E"],
+      "costa": ["#69B7BE", "#163F50", "#EEDBA2"],
+      "planicie": ["#AAC77B", "#354D29", "#D4E4AC"],
+      "floresta": ["#77A77A", "#244D3D", "#BDCF8E"],
+      "selva": ["#528B72", "#143D35", "#ADCE8C"],
+      "savana": ["#D0BD73", "#514C2B", "#EEE0A1"],
+      "deserto": ["#E7C78F", "#866039", "#FFF0C6"],
+      "estepe": ["#B9AF85", "#555239", "#E3DCC0"],
+      "tundra": ["#BDC9BD", "#4C6667", "#E5EEE2"],
+      "pantano": ["#879F8A", "#2D5051", "#C5D5B2"],
+      "montanha": ["#A9ABA5", "#4C5260", "#F4F0DA"],
+      "geleira": ["#CEE9ED", "#46788B", "#FFFFFF"]
+    },
+    "colorblind": {
+      "oceano": ["#245777", "#D7F1FF", "#14344A"],
+      "costa": ["#8CC9DF", "#183E57", "#F7E5B3"],
+      "planicie": ["#D8C995", "#554620", "#FFF0C7"],
+      "floresta": ["#98ACB9", "#273C50", "#E6EEF0"],
+      "selva": ["#708A9F", "#132F45", "#CCDCE7"],
+      "savana": ["#D5A75C", "#533919", "#FFE3A5"],
+      "deserto": ["#F0D29D", "#886033", "#FFF5DB"],
+      "estepe": ["#B5AAA0", "#51473F", "#EDE2D9"],
+      "tundra": ["#C5CBD2", "#515C73", "#F0F1F7"],
+      "pantano": ["#A6A0B8", "#423C5A", "#E4DDEE"],
+      "montanha": ["#A4A4A4", "#444444", "#FAFAFA"],
+      "geleira": ["#D6F0F6", "#456B83", "#FFFFFF"]
+    }
+  },
+  "overlays": {
+    "river": "#126594",
+    "river_highlight": "#D6F4FF",
+    "border_halo": "#182634",
+    "civilizations": ["#E69F00", "#56B4E9", "#CC79A7", "#F0E442"],
+    "fog": "#182634",
+    "fog_mark": "#D8E4EA"
+  },
+  "icons": {
+    "standard": {
+      "ink": "#202E38",
+      "paper": "#F5F1E6",
+      "food": "#668E3B",
+      "production": "#A96838",
+      "wealth": "#B88618",
+      "knowledge": "#356F9E",
+      "culture": "#8B5696",
+      "metal": "#65737C",
+      "luxury": "#B04E79",
+      "cohesion": "#397F72",
+      "legitimacy": "#496CA8",
+      "stability": "#4C8751",
+      "crisis": "#C66A34",
+      "war": "#B84343",
+      "environment": "#36847D",
+      "population": "#596D9A",
+      "time": "#536C7A",
+      "ai": "#6B5A9C"
+    },
+    "colorblind": {
+      "ink": "#202E38",
+      "paper": "#F5F1E6",
+      "food": "#6E7E2B",
+      "production": "#A45B20",
+      "wealth": "#9A6C00",
+      "knowledge": "#28779B",
+      "culture": "#7657A6",
+      "metal": "#5C6872",
+      "luxury": "#B34D80",
+      "cohesion": "#237F88",
+      "legitimacy": "#4A6FB0",
+      "stability": "#4B7B42",
+      "crisis": "#C15C25",
+      "war": "#A63D54",
+      "environment": "#197D83",
+      "population": "#5367A0",
+      "time": "#536C7A",
+      "ai": "#6955A0"
+    },
+    "monochrome": "#202E38"
+  },
+  "preview": {
+    "light": "#F5F1E6",
+    "light_ink": "#202E38",
+    "dark": "#15232C",
+    "dark_ink": "#EEF3F2"
+  }
+}
