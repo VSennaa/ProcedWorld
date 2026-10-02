@@ -1,0 +1,20 @@
+{
+  "catalog_id": "core.improvements",
+  "catalog_version": 1,
+  "schema_version": 1,
+  "status": "draft",
+  "improvements": [
+    {"id":"improvement.farm","name":"Campo cultivado","biomes":["plains","savanna"],"resources":["crops"],"cost":{"production":8},"maintenance":{"wealth":1},"requires_technology":"tech.foraging","effects":[{"op":"AdjustResource","target":"tile","resource_id":"food","amount":1}]},
+    {"id":"improvement.irrigated_field","name":"Campo irrigado","biomes":["plains","desert"],"resources":["crops"],"cost":{"production":16,"stone":6},"maintenance":{"wealth":2},"requires_technology":"tech.irrigation","effects":[{"op":"AdjustResource","target":"tile","resource_id":"food","amount":2},{"op":"AddTag","target":"tile","tag_id":"protection.drought"}]},
+    {"id":"improvement.pasture","name":"Pastagem","biomes":["plains","savanna","steppe"],"resources":["cattle","horses"],"cost":{"production":8},"maintenance":{"wealth":1},"requires_technology":"tech.foraging","effects":[{"op":"AdjustResource","target":"tile","resource_id":"food","amount":1}]},
+    {"id":"improvement.lumber_camp","name":"Acampamento madeireiro","biomes":["forest","jungle"],"resources":["timber"],"cost":{"production":10},"maintenance":{"wealth":1},"requires_technology":"tech.public_works","effects":[{"op":"AdjustResource","target":"tile","resource_id":"production","amount":1}]},
+    {"id":"improvement.fishing_wharf","name":"Cais de pesca","biomes":["coast","ocean","tundra","swamp"],"resources":["fish"],"cost":{"production":12,"timber":6},"maintenance":{"wealth":1},"requires_technology":"tech.navigation","effects":[{"op":"AdjustResource","target":"tile","resource_id":"food","amount":1}]},
+    {"id":"improvement.quarry","name":"Pedreira","biomes":["mountain"],"resources":["stone"],"cost":{"production":14},"maintenance":{"wealth":1},"requires_technology":"tech.public_works","effects":[{"op":"AdjustResource","target":"tile","resource_id":"production","amount":1}]},
+    {"id":"improvement.mine","name":"Mina","biomes":["mountain","desert"],"resources":["coal","copper","metal"],"cost":{"production":18,"timber":8},"maintenance":{"wealth":2},"requires_technology":"tech.public_works","effects":[{"op":"AddTag","target":"tile","tag_id":"extraction.mined"}]},
+    {"id":"improvement.saltworks","name":"Salinas","biomes":["coast","desert"],"resources":["salt"],"cost":{"production":12},"maintenance":{"wealth":1},"requires_technology":"tech.paths","effects":[{"op":"AdjustResource","target":"tile","resource_id":"wealth","amount":1}]},
+    {"id":"improvement.trapper_camp","name":"Acampamento de caçadores","biomes":["forest","savanna","tundra"],"resources":["game","fur"],"cost":{"production":10},"maintenance":{"wealth":1},"requires_technology":"tech.foraging","effects":[{"op":"AdjustResource","target":"tile","resource_id":"food","amount":1}]},
+    {"id":"improvement.spice_garden","name":"Jardim de especiarias","biomes":["jungle"],"resources":["spices"],"cost":{"production":14},"maintenance":{"wealth":1},"requires_technology":"tech.crop_rotation","effects":[{"op":"AddTag","target":"tile","tag_id":"luxury.cultivated"}]},
+    {"id":"improvement.reed_bed","name":"Juncal manejado","biomes":["swamp"],"resources":["reeds"],"cost":{"production":8},"maintenance":{"wealth":1},"requires_technology":"tech.herbal_care","effects":[{"op":"AdjustResource","target":"tile","resource_id":"culture","amount":1}]},
+    {"id":"improvement.dryland_cistern","name":"Cisterna de terra seca","biomes":["desert","steppe"],"resources":[],"cost":{"production":16,"stone":8},"maintenance":{"wealth":1},"requires_technology":"tech.dryland_capture","effects":[{"op":"AddTag","target":"tile","tag_id":"protection.arid"}]}
+  ]
+}

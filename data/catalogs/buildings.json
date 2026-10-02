@@ -1,0 +1,23 @@
+{
+  "catalog_id": "core.buildings",
+  "catalog_version": 1,
+  "schema_version": 1,
+  "status": "draft",
+  "replacement_rule": "Em uma cadeia, o nível posterior substitui o anterior; seus efeitos não se acumulam.",
+  "buildings": [
+    {"id":"building.storehouse","name":"Armazém","function":"food_storage","tier":1,"cost":{"production":16},"maintenance":{"wealth":1},"requires_technology":"tech.storage","effects":[{"op":"AddTag","target":"city","tag_id":"storage.basic"}]},
+    {"id":"building.granary","name":"Celeiro administrado","function":"food_storage","tier":2,"replaces":"building.storehouse","cost":{"production":28,"wealth":2},"maintenance":{"wealth":2},"requires_technology":"tech.granary_administration","effects":[{"op":"AddTag","target":"city","tag_id":"storage.administered"}]},
+    {"id":"building.watchpost","name":"Posto de vigia","function":"city_defense","tier":1,"cost":{"production":18},"maintenance":{"wealth":1},"requires_technology":"tech.council","effects":[{"op":"AddTag","target":"city","tag_id":"defense.watchpost"}]},
+    {"id":"building.walled_gate","name":"Portão fortificado","function":"city_defense","tier":2,"replaces":"building.watchpost","cost":{"production":32,"stone":12},"maintenance":{"wealth":2},"requires_technology":"tech.public_works","effects":[{"op":"AddTag","target":"city","tag_id":"defense.walled_gate"}]},
+    {"id":"building.workshop","name":"Oficina","function":"production","tier":1,"cost":{"production":20,"timber":8},"maintenance":{"wealth":1},"requires_technology":"tech.public_works","effects":[{"op":"AdjustResource","target":"city","resource_id":"production","amount":1}]},
+    {"id":"building.public_works_hall","name":"Casa de obras","function":"production","tier":2,"replaces":"building.workshop","cost":{"production":34,"stone":12},"maintenance":{"wealth":2},"requires_technology":"tech.water_clock","effects":[{"op":"AdjustResource","target":"city","resource_id":"production","amount":2}]},
+    {"id":"building.council_house","name":"Casa do conselho","function":"governance","tier":1,"cost":{"production":18},"maintenance":{"wealth":1},"requires_technology":"tech.council","effects":[{"op":"AddTag","target":"city","tag_id":"governance.council"}]},
+    {"id":"building.records_hall","name":"Arquivo cívico","function":"governance","tier":2,"replaces":"building.council_house","cost":{"production":26,"knowledge":2},"maintenance":{"wealth":2},"requires_technology":"tech.recordkeeping","effects":[{"op":"AddTag","target":"city","tag_id":"governance.records"}]},
+    {"id":"building.infirmary","name":"Enfermaria","function":"health","tier":1,"cost":{"production":20,"reeds":6},"maintenance":{"wealth":1},"requires_technology":"tech.herbal_care","effects":[{"op":"AddTag","target":"city","tag_id":"health.infirmary"}]},
+    {"id":"building.market_square","name":"Praça de mercado","function":"trade","tier":1,"cost":{"production":22,"wealth":2},"maintenance":{"wealth":1},"requires_technology":"tech.caravanserai","effects":[{"op":"AdjustResource","target":"city","resource_id":"wealth","amount":1}]},
+    {"id":"building.chartered_market","name":"Mercado regulamentado","function":"trade","tier":2,"replaces":"building.market_square","cost":{"production":34,"wealth":4},"maintenance":{"wealth":2},"requires_technology":"tech.market_charter","effects":[{"op":"AdjustResource","target":"city","resource_id":"wealth","amount":2}]},
+    {"id":"building.learning_house","name":"Casa de aprendizado","function":"knowledge","tier":1,"cost":{"production":22,"knowledge":2},"maintenance":{"wealth":1},"requires_technology":"tech.recordkeeping","effects":[{"op":"AdjustResource","target":"city","resource_id":"knowledge","amount":1}]},
+    {"id":"building.waterworks","name":"Obras de água","function":"water_management","tier":1,"cost":{"production":30,"stone":16},"maintenance":{"wealth":2},"requires_technology":"tech.irrigation","effects":[{"op":"AddTag","target":"city","tag_id":"water.managed"}]},
+    {"id":"building.bridge_depot","name":"Depósito de travessia","function":"transport","tier":1,"cost":{"production":24,"timber":10},"maintenance":{"wealth":1},"requires_technology":"tech.bridgework","effects":[{"op":"AddTag","target":"city","tag_id":"transport.crossing"}]}
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "catalog_id": "core.units",
+  "catalog_version": 1,
+  "schema_version": 1,
+  "status": "draft",
+  "balance_note": "Custos, manutenção e atributos são propostas iniciais para o harness; não há multiplicadores por era.",
+  "units": [
+    {"id":"unit.scout","name":"Batedor","role":"exploration","cost":{"production":12},"maintenance":{"wealth":1},"movement":3,"strength":1,"requires_technology":"tech.foraging"},
+    {"id":"unit.pathfinder","name":"Guia de trilhas","role":"exploration","cost":{"production":18,"knowledge":2},"maintenance":{"wealth":1},"movement":3,"strength":1,"requires_technology":"tech.paths"},
+    {"id":"unit.militia","name":"Milícia","role":"defense","cost":{"production":16},"maintenance":{"wealth":1},"movement":2,"strength":3,"requires_technology":"tech.council"},
+    {"id":"unit.guard","name":"Guarda de muralha","role":"defense","cost":{"production":24,"wealth":2},"maintenance":{"wealth":2},"movement":1,"strength":5,"requires_technology":"tech.public_works"},
+    {"id":"unit.raider","name":"Incursor","role":"attack","cost":{"production":20,"food":2},"maintenance":{"wealth":1},"movement":3,"strength":4,"requires_technology":"tech.paths"},
+    {"id":"unit.siege_crew","name":"Equipe de cerco","role":"attack","cost":{"production":30,"wealth":3},"maintenance":{"wealth":2},"movement":1,"strength":6,"requires_technology":"tech.public_works"},
+    {"id":"unit.settler","name":"Colono","role":"settler","cost":{"food":10,"production":22},"maintenance":{"food":1,"wealth":1},"movement":2,"strength":1,"requires_technology":"tech.storage"},
+    {"id":"unit.worker","name":"Trabalhador","role":"worker","cost":{"food":4,"production":10},"maintenance":{"food":1},"movement":2,"strength":1,"requires_technology":"tech.foraging"},
+    {"id":"unit.caravan","name":"Caravana","role":"trade","cost":{"production":18,"wealth":2},"maintenance":{"wealth":1},"movement":3,"strength":1,"requires_technology":"tech.caravanserai"},
+    {"id":"unit.coastal_trader","name":"Mercador costeiro","role":"trade","cost":{"production":22,"wealth":3},"maintenance":{"wealth":2},"movement":3,"strength":1,"requires_technology":"tech.navigation"}
+  ]
+}
