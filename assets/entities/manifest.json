@@ -1,0 +1,52 @@
+{
+  "generator": "entities-v1",
+  "seed": 20261002,
+  "dimensions": [
+    48,
+    48
+  ],
+  "variants": [
+    "standard",
+    "colorblind",
+    "monochrome"
+  ],
+  "civilization_color": "#56B4E9",
+  "unit_catalog": "core.units",
+  "building_catalog": "core.buildings",
+  "improvements": [
+    "fazenda",
+    "mina",
+    "pastagem",
+    "serraria",
+    "porto",
+    "estrada"
+  ],
+  "city_population_sizes": [
+    {
+      "id": "pequena",
+      "label": "Pequena",
+      "radius": 12
+    },
+    {
+      "id": "media",
+      "label": "Média",
+      "radius": 16
+    },
+    {
+      "id": "grande",
+      "label": "Grande",
+      "radius": 21
+    },
+    {
+      "id": "metropole",
+      "label": "Metrópole",
+      "radius": 26
+    }
+  ],
+  "city_states": [
+    "normal",
+    "protesto",
+    "revolta",
+    "cerco"
+  ]
+}

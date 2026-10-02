@@ -27,5 +27,8 @@
 | [16-visibilidade.md](16-visibilidade.md) | Névoa de guerra, memória de tile, grounding por ator |
 | [17-identidade-e-contas.md](17-identidade-e-contas.md) | Contas, sessões, presença, entrada tardia |
 | [18-dsl-catalogos.md](18-dsl-catalogos.md) | Linguagem fechada de predicados, seletores e efeitos |
+| [19-retencao-de-dados.md](19-retencao-de-dados.md) | Classificação, prazos, expurgo e exportação de dados |
+| [20-matriz-de-conflitos.md](20-matriz-de-conflitos.md) | Conflitos entre comandos, desempate e fases |
+| [21-notificacoes.md](21-notificacoes.md) | Outbox, push no Android, deduplicação, preferências |
 
-Revisão cruzada e correções mecânicas: [REVISAO-CRUZADA.md](REVISAO-CRUZADA.md). Perguntas em aberto: [../PERGUNTAS-ABERTAS.md](../PERGUNTAS-ABERTAS.md).
+Guia para a revisão 2 a 2: [GUIA-DE-REVISAO.md](GUIA-DE-REVISAO.md). Revisão cruzada e correções mecânicas: [REVISAO-CRUZADA.md](REVISAO-CRUZADA.md). Perguntas em aberto: [../PERGUNTAS-ABERTAS.md](../PERGUNTAS-ABERTAS.md).
