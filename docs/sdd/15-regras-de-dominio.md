@@ -166,12 +166,18 @@ As fórmulas compartilhadas usam a fonte canônica `12-variaveis-e-formulas.md`:
 ```text
 D_c = min(20, 5 * units_without_food_c + essential_maintenance_unpaid_c * 5)
 G_c = clamp(0, 20, ceil(20 * population_with_Ag_below_40_c / population_c))
-P_c = clamp(0, 100, 2*D_c + 2*G_c + W_c + E_c + (100-S_c)/10 - C/5)
-C' = clamp(0, 100, C + terms_limited_per_turn + Delta_luxury)
+P_c = clamp(0, 100, 2*D_c + 2*G_c + W_c + E_c + ceil((100-S_c)/10) - floor(C/5))
+C' = clamp(0, 100, C + 4*fulfilled_commitments - 5*broken_commitments
+  - weighted_mean(T_g)/10 - 2*active_conflicts + Delta_luxury)
 ```
 
+`P_c` segue a fórmula canônica de `docs/gdd/12-variaveis-e-formulas.md`: arredondamento
+para cima do termo de estabilidade e divisão inteira de `C/5`, equivalente ao piso para
+`C` não negativo. Cada termo da atualização de `C` fica limitado por turno conforme o GDD 06.
 `D_civ`, `G_civ` e `P_civ` são médias ponderadas por população; população zero produz zero onde
 aplicável. `W` e `E` são provisórios e não devem ser tratados como balanceamento decidido.
+
+Correção de alinhamento com a fórmula compartilhada do GDD 12, aplicada em 2026-10-01.
 
 ## 5. Invariantes verificáveis
 

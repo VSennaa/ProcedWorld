@@ -117,13 +117,14 @@ ActionIntent {
 AcceptedCommand {
   command_id, world_id, turn, accepted_sequence, actor_id,
   origin: player | governor | bot | entropy | fallback | system,
-  kind, payload_canonical, schema_version, ruleset: RulesetRef,
+  kind, payload_canonical, schema_version, ruleset_ref: RulesetRef,
   grounding: GroundingRef[], intent_evidence_ref?
 }
 ```
 
 `ActionIntent` não entra no replay por si só. Depois de validada, ela vira `AcceptedCommand`; replay
 aplica somente esse último. `IntentEvidence` é auditável e não altera o comando histórico.
+O campo `ruleset_ref` segue o nome canônico da revisão cruzada (correção aplicada em 2026-10-01).
 
 ## 4. Política de presença proposta
 
