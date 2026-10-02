@@ -4,6 +4,8 @@
 
 ## Agora
 
+Agente ativo: nenhum
+
 - **Fase**: 0 — Concepção (GDD)
 - **Branch ativa**: `docs/gdd/draft-proposals` (ainda não mergeada em `develop`).
 - **Revisão 2 a 2 concluída (rodada 1)**: os 12 pilares foram revisados com o usuário em 2026-10-01;
@@ -15,6 +17,7 @@
   2. Fórmula de proporção em contratos mistos (03) — SDD.
   3. Perguntas abertas restantes listadas em cada pilar (magia, interferir na Entropia, entrada
      tardia assumindo bot, presença/queda de conexão).
+- Incorporadas as lições do DynMagic (`docs/process/agentes-e-cotas.md` §4).
 - **Última auditoria** (2026-10-02): Claude 7% (5 h) / 69% (semana); Codex 32% semanal; OpenRouter ~US$ 3,02.
 
 ## Feito
@@ -22,8 +25,8 @@
 - 2026-10-01 — Bootstrap: CLAUDE.md, ADRs 0001–0007, esqueleto de GDD/SDD, ROADMAP, GLOSSARY,
   `infra/README.md`, higiene do repositório. `develop` e `docs/sdd/project-bootstrap` publicadas.
 - 2026-10-01 — VPS: clone em `~deploy/ProcedWorld` (branch `develop`), identidade git configurada,
-  push via SSH com a chave `~deploy/.ssh/id_ed25519_github` (**pendente: cadastrar como Deploy Key
-  com escrita no GitHub**).
+  push via SSH com a chave `~deploy/.ssh/id_ed25519_github`, cadastrada como Deploy Key "VPS"
+  (leitura/escrita) e testada em 2026-10-02.
 - 2026-10-01 — Subagentes Codex com modelo escolhido pelo Jev Router (`tools/agents/jev-codex.sh`,
   skill `jev-subagents`) e auto-auditoria de cotas (`tools/agents/quota-check.sh`, skill
   `quota-audit`, `docs/process/agentes-e-cotas.md`).

@@ -8,7 +8,7 @@ Instructions for non-Claude agents (Codex, opencode, etc.) working in this repos
    On Windows PowerShell 5.1 always pass the encoding explicitly:
    `Get-Content -Encoding utf8 <file>` and `Set-Content -Encoding utf8` / `Out-File -Encoding utf8`.
    Never let a tool rewrite a file in ANSI/cp1252. Line endings: LF.
-3. **Only touch the files your task names.** Do not reorganize, rename or "clean up" anything else.
+3. **Read your brief in `docs/briefs/` if one is named. Only touch the files your task names.** Do not reorganize, rename or "clean up" anything else.
 4. **Do not run `git commit`, `git push`, or change branches.** The supervising agent (Claude) reviews
    and commits.
 5. Never write secrets, API keys, IPs or hostnames into files.

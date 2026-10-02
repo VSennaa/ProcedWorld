@@ -100,3 +100,53 @@ retomada agendada é bug de processo.
 
 Cada auditoria relevante (troca de executor, pausa, retomada agendada) é anotada em
 `docs/STATUS.md` → seção "Agora", com os números lidos e o horário de retomada.
+
+## 4. Regras herdadas do DynMagic (lições de 2026-09)
+
+Fonte: `docs/licoes-aprendidas.md` do projeto DynMagic (orquestração parecida). Adotadas aqui:
+
+**Concorrência e commits**
+- **Trava de agente ativo**: `docs/STATUS.md` tem a linha `Agente ativo:`. Quem começa escreve nome,
+  área e hora; quem termina volta para `nenhum`. Tarefas agendadas e sessões novas (PC ou VPS) leem a
+  trava antes de começar.
+- **Uma área de arquivos por agente.** Arquivos compartilhados (`docs/STATUS.md`, `CLAUDE.md`, índices)
+  só o líder edita.
+- **Nunca `git add -A` com executor ativo**: commitar só os arquivos da área (`git add <arquivos>`).
+  Commitar trabalho alheio pela metade quebra a rastreabilidade.
+
+**Briefs**
+- Toda tarefa delegada tem um brief versionado em `docs/briefs/AAAA-MM-DD-<tarefa>.md`: problema,
+  arquivos que pode e não pode editar, critério de pronto e, ao final, "status + o que mudou". Serve de
+  prompt e de registro (o repositório é público: nada de segredo no brief).
+- Brief de subagente Claude diz explicitamente o **teto de cota autorizado** e que é para começar
+  mesmo perto dele; um subagente cauteloso demais pode parar sem fazer nada.
+- Tarefas curtas podem ter prazo explícito ("pare e reporte até HH:MM").
+
+**Modelo certo para o tipo de tarefa**
+- O mapeamento do Jev considera capacidade geral; tarefas que exigem **ver imagens** (crítica visual
+  do cliente, capturas de tela) só podem ir para modelos multimodais, e áudio exige escuta humana ou
+  referência real. O brief declara a modalidade necessária.
+
+**Processos em segundo plano**
+- `codex exec` em background precisa de stdin definido (`< arquivo` ou `< /dev/null`); o
+  `jev-codex.sh` já lê o prompt do arquivo.
+- Parar a tarefa do shell não mata os filhos: ao fim de cada lote, conferir
+  `Get-CimInstance Win32_Process` e encerrar órfãos com `taskkill /T /PID <pid>` (sem tocar no app
+  do Codex do usuário).
+- Retomada agendada: conferir com `list_task_runs` se a tarefa realmente começou; não confiar só em
+  despertares automáticos para trabalho noturno.
+
+**Verificação (vale a partir da Fase 2)**
+- Partidas headless de bots de ponta a ponta pegam travamentos que testes unitários não pegam.
+- Validar no fluxo real do jogador (cliente, câmera e fluxo de turno reais), não em cenas de captura.
+- Entregar cedo ao usuário: ele acha o que os testes não acham. Hipóteses do usuário vão para os briefs.
+- Teste que falha por meta ainda não atingida vira **aviso** com a meta no ROADMAP, não teste vermelho.
+
+**Operação**
+- Medir antes de propor infraestrutura (carga real contra a VPS).
+- Não presumir ferramentas no servidor; ter plano B.
+- Deploy e release só com o ok do usuário, sempre com backup antes; release pelo CI a partir de tag.
+
+**Loop de crítico cego contra referência** (skill `gauntlet-loop`): não é padrão do projeto. Usar
+seletivamente onde há referência concreta e julgamento subjetivo — cliente/UX e arte na Fase 3+ —, e
+não no motor, que tem testes determinísticos objetivos.

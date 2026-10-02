@@ -250,19 +250,25 @@ RAM: evite builds pesados em paralelo com outros serviços.
 - **Orçamentos explícitos**: tempo de processamento por turno, tokens por chamada, custo por turno.
   Regressões de orçamento falham o CI quando mensuráveis.
 - Prefira bibliotecas maduras a reinventar; justifique dependências novas no PR.
+- **Validar no fluxo real**: partidas headless de bots de ponta a ponta e o cliente no fluxo real do
+  jogador; teste que falha por meta ainda não atingida vira aviso, não teste vermelho
+  (ver docs/process/agentes-e-cotas.md §4).
 
 ---
 
 ## 9. Como trabalhar neste repositório (protocolo do agente)
 
 **Início de sessão**
-1. Ler `CLAUDE.md` e `docs/STATUS.md` (se não existir, criá-lo na primeira sessão).
+1. Ler `CLAUDE.md` e `docs/STATUS.md` (se não existir, criá-lo na primeira sessão), incluindo a trava
+   `Agente ativo:` — se outro agente estiver ativo, não mexer na área dele.
 2. `git fetch` e conferir branch atual; continuar a branch indicada em `STATUS.md`.
 3. Confirmar em que fase o projeto está e respeitar o que ela permite.
 4. Rodar a auditoria de cotas (skill `quota-audit`) e decidir quem trabalha.
 
 **Durante**
-- Trabalhar em passos pequenos e verificáveis; commitar a cada passo coerente.
+- Trabalhar em passos pequenos e verificáveis; commitar a cada passo coerente, adicionando só os
+  arquivos da sua área (`git add <arquivos>`, nunca `-A` com executor ativo).
+- Tarefa delegada sempre com brief em `docs/briefs/`.
 - Ao encontrar uma decisão de design ou arquitetura não coberta por GDD/SDD/ADR: **parar e perguntar**
   ao usuário, ou registrar como pergunta aberta em `STATUS.md` e seguir com outra tarefa desbloqueada.
 - Não inventar fatos sobre ferramentas externas (APIs, modelos, preços): verificar na documentação.
