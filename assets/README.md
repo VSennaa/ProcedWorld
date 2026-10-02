@@ -1,4 +1,4 @@
-# Assets — protótipo de biomas e UI
+# Assets — protótipo de biomas, UI e entidades
 
 Arte vetorial original feita por código, conforme GDD 13 e os 12 biomas do GDD 02 §2.
 **Decidido:** orientação pointy-top e direção 2D estilizada. **Proposta:** esta paleta,
@@ -12,6 +12,7 @@ Na raiz do repositório, com Python 3 e somente biblioteca padrão:
 python tools/assets/gen_tiles.py --seed 20261001
 python tools/assets/gen_tiles.py --seed 20261001 --civilization-color "#56B4E9"
 python tools/assets/gen_icons.py --seed 20261001
+python tools/assets/gen_entities.py --seed 20261002 --civilization-color "#56B4E9"
 python tools/agents/check-encoding.py assets/README.md
 ```
 
@@ -20,6 +21,7 @@ externas ou JavaScript. A página mostra todas as variações, paletas, overlays
 sobre terreno e dois mapas ilustrativos 10×8, repetidos em fundos claro e escuro.
 Os mapas são uma composição de demonstração; não implementam a geração de mundo do motor. A seção
 de UI reúne os ícones em fundos claro e escuro, com as três variantes de cor.
+O estudo de entidades exibe unidades, edifícios, melhorias e marcadores de cidade.
 
 ## Arquivos
 
@@ -35,6 +37,18 @@ de UI reúne os ícones em fundos claro e escuro, com as três variantes de cor.
 - `icons/manifest.json`: seed registrada, dimensões, espessura de traço e relação entre cada
   arquivo, rótulo e papel de cor. `tools/assets/gen_icons.py` gera estes arquivos e substitui
   somente a seção `icons-preview` de `preview.html`.
+- `entities/standard|colorblind|monochrome/`: ícones vetoriais 48 × 48 de todas as unidades e
+  edifícios dos catálogos `core.units` e `core.buildings`, além de fazenda, mina, pastagem,
+  serraria, porto e estrada. Silhuetas reforçam a categoria; cor não é o único sinal.
+- `entities/*/cidades/`: quatro tamanhos propostos por população (pequena, média, grande e
+  metrópole), combinados com os estados normal, protesto, revolta e cerco. A cor de civilização
+  é parâmetro `--civilization-color` (`#RRGGBB`); formas também identificam estados.
+- `entities/manifest.json`: seed, catálogos, tamanhos, estados e variante. O gerador
+  `tools/assets/gen_entities.py` usa somente biblioteca padrão, é determinístico e atualiza
+  somente a seção `entities-preview` de `preview.html`.
+
+Os quatro portes de cidade são uma escala visual proposta; não definem faixas nem fórmulas de
+população. A aprovação da iconografia e dos tamanhos permanece aberta conforme o GDD 13.
 - `tiles/standard/<bioma>-<1|2|3>.svg`: 36 tiles na paleta padrão.
 - `tiles/colorblind/<bioma>-<1|2|3>.svg`: 36 tiles na paleta alternativa para daltonismo.
   As mesmas formas identificam biomas nas duas paletas; cor não é o único indicador.
