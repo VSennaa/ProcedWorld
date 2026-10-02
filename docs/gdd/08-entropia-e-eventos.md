@@ -5,6 +5,17 @@
 - A Entropia governa eventos procedurais: catástrofes climáticas, tecnologias surgindo, incidentes
   diplomáticos, revoltas etc.
 - Efeitos mecânicos sempre vêm de templates validados; a Entropia escolhe e parametriza dentro de limites.
+- **Personalidade, sem nível de dificuldade**: cada mundo tem uma personalidade da Entropia (cíclica,
+  contenciosa, transformadora); não existe configuração de dificuldade separada. Decidido em 2026-10-01.
+- **Personalidade sugere o clima**: cíclica → sazonal; contenciosa → estável (o drama vem da política);
+  transformadora → instável. O jogador pode trocar o clima na criação (02-mapa-e-tiles.md). Decidido em 2026-10-01.
+- **A Entropia é oculta**: o jogador vê a causa e o risco de cada evento, nunca o orçamento nem a
+  lógica de seleção. As nações **podem tentar convencer, manipular ou prever a Entropia** (rituais,
+  oráculos, magia, ciência proibida), mas o custo tende a ser catastrófico frente à recompensa — como
+  o outro lado de *Call of Cthulhu*. Analisar riscos e responder aos eventos deve ser quase sempre a
+  escolha preferível. Decidido em 2026-10-01.
+- **Mudanças permanentes de relevo** e **fenômenos mágicos** são templates da Entropia; ela julga se
+  seriam exagerados pelo orçamento de tensão e pelas regras de justiça (00, 02, 06). Decidido em 2026-10-01.
 
 ## Proposta
 
@@ -16,7 +27,7 @@
 - A pergunta recorrente é: **o que proteger agora e que risco aceitar depois?** Uma seca pode pedir
   alimento, uma descoberta investimento e um incidente honra ou paz. A escolha desloca pressão entre
   pilares, em vez de apenas somar bônus.
-- Cada cartão mostra causa, alcance, prazo e até três respostas; um toque abre fatos que o habilitaram
+- Cada cartão mostra causa, alcance, em quantos turnos vence e até três respostas; um toque abre fatos que o habilitaram
   e dois toques bastam para decidir. Eventos sem prazo entram na Crônica, não na fila de alertas.
 
 ### Orçamento de tensão e curva por era
@@ -191,11 +202,8 @@ texto: chaves narrativas e fatos obrigatórios a citar
 
 ## Perguntas abertas
 
-- O jogador vê a “intenção” da Entropia ou só os eventos?
-  - **Recomendação:** mostrar causa e risco mecânico, mas não a intenção interna nem a pontuação de
-    seleção. Isso preserva surpresa sem ocultar informação necessária à escolha e evita transformar
-    o diretor em tabela para otimização.
-- Cada mundo escolhe a dificuldade/personalidade da Entropia?
-  - **Recomendação:** permitir personalidade ao criar o mundo, mas separar dificuldade em configuração
-    explícita. Personalidade muda o tipo de história; dificuldade altera apenas orçamentos e limites
-    publicados, para que o compromisso seja compreensível.
+- Mecânica de "interferir na Entropia": quais ações existem, como o custo catastrófico é calculado
+  (sorteio com seed, escala com a ambição do pedido) e o que um sucesso raro concede, sem quebrar as
+  regras de justiça?
+- Catálogo inicial de fenômenos mágicos: quantos, quais gatilhos, como uma nação adere, proíbe ou
+  regulamenta (com 05 e 06).

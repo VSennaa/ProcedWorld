@@ -3,6 +3,14 @@
 ## Decidido
 - O Governador é um bot do jogo, roda no servidor, e o jogador o configura pelo Mandato (ADR-0002).
 - O motor bloqueia ações que violem o Mandato.
+- **Ausência delega tudo, exceto o irreversível** (ADR-0008): com o jogador ausente, o Governador joga
+  todas as áreas dentro do Mandato, mesmo as não delegadas; ações irreversíveis (iniciar guerra,
+  romper tratado, ceder cidade, aceitar vassalagem, escolher sucessor) ficam suspensas até o jogador
+  voltar. A civilização nunca para. Decidido em 2026-10-01.
+- **Três presets visíveis** (Equilibrado, Recuperar, Crescer com cautela), mostrando linhas vermelhas
+  e escopos antes do primeiro turno. Decidido em 2026-10-01.
+- **O Governador sugere mudanças no Mandato só como recomendação** explicada, citando o fato que a
+  motivou; apenas o jogador confirma. Decidido em 2026-10-01.
 
 ## Proposta
 
@@ -11,8 +19,8 @@
 - O Mandato é a constituição operacional de uma civilização: define o que o Governador pode fazer
   entre as intervenções do jogador, não um plano que garante um resultado. Ele transforma uma
   intenção em uma escolha limitada por valores, recursos e compromissos já existentes.
-- O Governador atua quando o jogador marca uma área como delegada ou não envia ações antes do fim do
-  turno. Ele não substitui uma decisão pendente que o Mandato marcou como “exigir confirmação”.
+- O Governador atua nas áreas delegadas e, quando o jogador está ausente, em todas as áreas exceto
+  ações irreversíveis (ADR-0008). Ele não substitui uma decisão pendente que o Mandato marcou como “exigir confirmação”.
   Assim, voltar ao jogo significa retomar escolhas de rumo, não corrigir microgestão acumulada.
 - A decisão recorrente do jogador é qual autonomia conceder agora: delegar crescimento libera uma
   sessão curta, mas pode consumir a reserva que seria útil para uma crise; reter diplomacia preserva
@@ -37,9 +45,10 @@
   zero não proíbe a área; apenas impede que ela consuma recursos discricionários sem responder a uma
   obrigação ou crise já validada.
 - Para cada ação candidata permitida, o motor calcula uma utilidade inteira:
-  `U = 3S + 3A + 2D + 2R - 2C - X`, em que `S`, `A`, `D` e `R` são o benefício normalizado de
-  segurança, sustento, desenvolvimento e relações, ponderados pelos pontos do rumo; `C` é custo de
-  oportunidade e `X` é risco exposto pela ação. Cada termo fica entre 0 e 100 e vem de regras e
+  `U = 3·Bseg + 3·Bsus + 2·Bdes + 2·Brel − 2·Cop − X`, em que `Bseg`, `Bsus`, `Bdes` e `Brel` são o
+  benefício normalizado de segurança, sustento, desenvolvimento e relações, ponderados pelos pontos
+  do rumo; `Cop` é custo de oportunidade e `X` é risco exposto pela ação (nomes distintos de coesão
+  `C`, privação `D` e estabilidade `S` de outros pilares). Cada termo fica entre 0 e 100 e vem de regras e
   catálogos; pesos e faixa são **valores iniciais, sujeitos a balanceamento**.
 - O Governador escolhe a maior `U` apenas entre ações válidas e com benefício acima de 10; em empate,
   usa uma ordem estável de identificadores. A escolha é interessante porque o jogador define qual
@@ -92,7 +101,8 @@
   diplomacia e resposta a crises. Todos começam desligados no primeiro Mandato proposto; o preset
   escolhido pode ligá-los de forma explícita. Cinco escopos são um **valor inicial, sujeito a
   balanceamento** e agrupam decisões sem exigir menus por subsistema.
-- Uma ação só é candidata se pertencer a um escopo ligado. Ações irreversíveis ou que mudam
+- Com o jogador presente, uma ação só é candidata se pertencer a um escopo ligado; ausente, vale a
+  regra de ausência do "Decidido". Ações irreversíveis ou que mudam
   soberania — iniciar guerra, romper tratado, ceder cidade, aceitar vassalagem e escolher sucessor
   após colapso — exigem confirmação do jogador por padrão, mesmo com o escopo ligado. Essa lista é
   uma **proposta**, sujeita à definição dos estados diplomáticos e do ciclo (ver
@@ -166,11 +176,4 @@
 
 ## Perguntas abertas
 
-- Presets de Mandato para quem não quer configurar nada?
-  - **Recomendação:** oferecer os três presets propostos — Equilibrado, Recuperar e Crescer com
-    cautela — e sempre mostrar suas linhas vermelhas e escopos antes do primeiro turno. Eles dão uma
-    entrada imediata no celular sem ocultar uma escolha de valores que poderá surpreender o jogador.
-- O Governador pode sugerir mudanças no Mandato?
-  - **Recomendação:** sim, somente como recomendação explicada e sem efeito automático. A sugestão
-    deve citar a pressão, reserva ou fato do Ledger que a motivou; preservar confirmação humana evita
-    que um bot contorne a restrição que o jogador configurou.
+- Valores exatos dos presets e dos limiares de aviso (balanceamento no harness).
