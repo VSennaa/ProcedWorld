@@ -70,10 +70,10 @@
 - **Coesão social (regra proposta):** escala inteira de 0 a 100, representando capacidade de manter
   compromissos comuns, não felicidade individual nem pontuação de vitória. Ganhos e perdas vêm de
   regras explícitas de estabilidade, abastecimento, reformas, conflitos e ajuda externa.
-- **Pressão de crise (regra proposta):** para cada civilização, calcular ao fim do turno
-  `P = limitar(0, 100, 2D + 2G + W + E - C)`, onde `D` é privação de recursos (0–20), `G` é tensão
-  de grupos (0–20), `W` é ameaça de guerra (0–20), `E` é exposição ambiental (0–20) e `C` é coesão
-  dividida por 5 (0–20). Variáveis-base são produzidas pelas regras dos respectivos pilares.
+- **Pressão de crise:** calculada ao fim do turno por cidade (`P_c`) e por civilização (`P_civ`, média
+  ponderada por população), a partir de privação `D`, tensão de grupos `G`, ameaça de guerra `W`,
+  exposição ambiental `E`, estabilidade local `S` (peso reduzido) e coesão `C`. Fórmula canônica em
+  [12-variaveis-e-formulas.md](12-variaveis-e-formulas.md).
 - **Limiar de resposta (proposta):** P de 0–39 indica tensão administrável; 40–69 habilita um aviso
   e uma decisão de mitigação; 70–100 habilita crise se persistir por dois turnos. São valores
   iniciais, sujeitos a balanceamento. Um evento pode antecipar perigo, mas não pode ignorar as regras

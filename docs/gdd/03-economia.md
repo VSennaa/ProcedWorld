@@ -58,9 +58,9 @@
 - Falta de comida é registrada por cidade; crescimento é bloqueado e a coesão sofre conforme
   [04-cidades-e-populacao.md](04-cidades-e-populacao.md) e
   [06-sociedade-e-governo.md](06-sociedade-e-governo.md). Para a pressão de crise de
-  [00-visao.md](00-visao.md), propor `D = min(20, teto(15 × falta_total / demanda_total) + M)`,
-  com `M = 5` se alguma manutenção essencial não foi paga, senão `0`; demanda zero produz D zero.
-  **Valores iniciais, sujeitos a balanceamento.** A fome tem causa numérica rastreável.
+  [00-visao.md](00-visao.md), a privação `D` é calculada por cidade (falta de comida mais
+  manutenção essencial não paga) e agregada na civilização, conforme [12-variaveis-e-formulas.md](12-variaveis-e-formulas.md). A fome tem causa
+  numérica rastreável.
 
 ### Recursos estratégicos e de luxo
 

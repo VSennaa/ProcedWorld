@@ -30,3 +30,4 @@
 | [09-governador-e-mandato.md](09-governador-e-mandato.md) | Delegação e configuração | revisado (rodada 1) |
 | [10-ciclo-infinito-e-eras.md](10-ciclo-infinito-e-eras.md) | Eras, colapso, renascimento | revisado (rodada 1) |
 | [11-experiencia-mobile.md](11-experiencia-mobile.md) | UX, sessões, notificações, onboarding BYOK | revisado (rodada 1) |
+| [12-variaveis-e-formulas.md](12-variaveis-e-formulas.md) | Fonte única de variáveis e fórmulas compartilhadas | consolidação (2026-10-01) |

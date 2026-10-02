@@ -65,12 +65,11 @@
   sujeitos a balanceamento**. O custo crescente desacelera crescimento absoluto.
   O jogador decide construir moradia, ampliar comida ou manter estabilidade; nenhum deles
   isoladamente gera população.
-- Falta de comida gera `D_c = min(20, 5 × unidades sem comida)`. Uma falta interrompe o
+- Falta de comida gera privação `D_c` (fórmula canônica em [12-variaveis-e-formulas.md](12-variaveis-e-formulas.md)). Uma falta interrompe o
   progresso; duas faltas consecutivas retiram um ponto de população por turno até a oferta
   voltar. São **valores iniciais, sujeitos a balanceamento**. Perder pessoas reduz trabalho
-  e demanda, permitindo recuperação. A privação urbana compõe `D` da pressão de crise
-  definida em [00-visao.md](00-visao.md): `D = limitar(0, 20, teto(Σ(pop_c × D_c)
-  / Σpop_c))`. Cidade vazia pesa zero. Assim não surge outra fórmula de crise.
+  e demanda, permitindo recuperação. A privação urbana compõe `D` da pressão de crise; a
+  agregação na civilização está em [12-variaveis-e-formulas.md](12-variaveis-e-formulas.md).
 - Migração interna é automática e transfere pessoas, nunca as multiplica. Se uma cidade tem
   privação ou estabilidade abaixo de 40 e outra tem vaga, comida e ligação, o motor transfere
   até um ponto de população por turno, em ordem estável. O grupo acompanha o migrante.
@@ -99,13 +98,14 @@
   grupo. Serviços dão até +10; penalidades têm teto por fonte em catálogo. Números são
   **valores iniciais, sujeitos a balanceamento**. O jogador mantém serviços, reduz
   tributos ou troca postos, com custos diferentes; estabilidade não é bônus permanente.
-- `S` é local; coesão de [00-visao.md](00-visao.md) pertence à civilização. Proposta:
-  a média urbana ponderada por população altera coesão em −2 abaixo de 40, +1 acima de 70,
-  ou 0 entre os limiares, por turno. Promessas quebradas e secessão têm causas próprias.
+- `S` é local; a coesão `C` pertence à civilização e segue a regra única de
+  [06-sociedade-e-governo.md](06-sociedade-e-governo.md) (consolidada em
+  [12-variaveis-e-formulas.md](12-variaveis-e-formulas.md)); a estabilidade urbana não altera `C`
+  diretamente, para não contar duas vezes a satisfação dos grupos.
   O componente `G` da pressão de crise usa a fração de pessoas em grupos com satisfação
   abaixo de 40: `G = teto(20 × pessoas desses grupos / população total)`, limitado
   a 0–20; `D` usa a falta de comida. População total zero produz `G = 0`. Tudo é
-  **valor inicial, sujeito a balanceamento**. A estabilidade não é somada outra vez a `P`.
+  **valor inicial, sujeito a balanceamento**. `S` entra em `P_c` só com peso reduzido (12).
 
 ### Protesto, revolta e secessão
 
