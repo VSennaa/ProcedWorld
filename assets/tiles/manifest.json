@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "seed": 20261001,
+  "radius": 64,
+  "width": 110.85125168440814,
+  "height": 128,
+  "grid": "odd-r",
+  "edges_clockwise": [
+    "ne",
+    "e",
+    "se",
+    "sw",
+    "w",
+    "nw"
+  ],
+  "civilization_color": "#E69F00",
+  "biomes": {
+    "oceano": "Oceano",
+    "costa": "Costa",
+    "planicie": "Planície",
+    "floresta": "Floresta",
+    "selva": "Selva",
+    "savana": "Savana",
+    "deserto": "Deserto",
+    "estepe": "Estepe",
+    "tundra": "Tundra",
+    "pantano": "Pântano",
+    "montanha": "Montanha",
+    "geleira": "Geleira"
+  },
+  "variants": [
+    1,
+    2,
+    3
+  ],
+  "modes": [
+    "standard",
+    "colorblind"
+  ]
+}
