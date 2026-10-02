@@ -2,13 +2,13 @@
 
 Mudança de fase só com aprovação explícita do usuário. Critérios detalhados podem ser refinados no SDD.
 
-## Fase 0 — Concepção · *atual*
-- [ ] GDD completo (todos os arquivos de `docs/gdd/` sem perguntas abertas bloqueantes)
-- [ ] GDD aprovado pelo usuário
+## Fase 0 — Concepção · **concluída em 2026-10-01**
+- [x] GDD completo
+- [x] GDD aprovado pelo usuário
 
-## Fase 1 — Especificação
+## Fase 1 — Especificação · *atual*
 - [ ] SDD de cada subsistema (`docs/sdd/`)
-- [ ] ADR-0007 (stack) aceito, com spikes de validação
+- [x] ADR-0007 (stack) aceito, com spikes de validação
 - [ ] Protocolo cliente-servidor versionado
 - [ ] Estratégia de testes e orçamentos (tempo por turno, tokens, custo) definidos
 - [ ] SDD aprovado pelo usuário

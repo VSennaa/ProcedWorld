@@ -1,6 +1,6 @@
 # ADR-0003 — Turnos simultâneos com resolução sequencial
 
-- **Status**: Aceito (detalhes de regras: GDD)
+- **Status**: Aceito; condição de fechamento do turno **substituída pelo ADR-0008** (sem relógio)
 - **Data**: 2026-10-01
 - **Decisores**: usuário
 

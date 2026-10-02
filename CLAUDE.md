@@ -52,6 +52,9 @@ Qualquer código ou documento que viole um destes itens está errado, mesmo que 
 5. **Grounding obrigatório.** Toda saída de IA que gera ação deve referenciar fatos do estado
    (ids de entidades, entradas do ledger de relações, eventos da crônica). Ação sem justificativa
    rastreável é descartada.
+   - **Texto de jogador é dado não confiável.** Mensagens e negociações em linguagem natural entram
+     nos prompts isoladas como dados, com defesa contra prompt injection; nunca viram instrução nem
+     concedem efeito mecânico. A saída do LLM passa pela mesma validação de qualquer intenção.
 6. **Provedores são plugáveis.** Toda IA entra por portas (`LLMPort`, `DecisionPort`, `MemoryPort`).
    Trocar DeepSeek por outro LLM, ou **Jev por Laya**, é mudança de configuração, não de código.
 7. **Custo é requisito.** Cada chamada de IA tem orçamento de tokens; cada jogador tem teto de custo
@@ -160,16 +163,18 @@ docs/
   Consequência proposta: a chave do jogador fica criptografada no servidor; sem chave ou com teto
   atingido, degrada para T0/T1.
 - **Turnos simultâneos** como no multiplayer do *Civilization* (ADR-0003): todos jogam o mesmo turno;
-  ações aplicadas sequencialmente na ordem aceita pelo servidor (gravada no log); o turno fecha quando
-  todos estão prontos ou o tempo acaba.
+  ações aplicadas sequencialmente na ordem aceita pelo servidor (gravada no log).
+- **Turno sem relógio** (ADR-0008): o jogo não é em tempo real. O turno avança quando todos os humanos
+  presentes jogaram; para o ausente, o Governador joga na hora. Prazos do jogo contam turnos, nunca horas.
 - **Grid hexagonal** (ADR-0004), coordenadas axiais/cúbicas.
 - **Jev → Laya no servidor** (ADR-0005), atrás de `DecisionPort`. O host de referência não tem GPU:
   Laya local nele provavelmente é inviável; decidir com spike medido.
 - **Motor determinístico + event sourcing** (ADR-0006).
 
-**Stack — Proposto, não aceito** (ADR-0007): núcleo e servidor em **Rust**, cliente **Godot 4**
+**Stack — Aceita** (ADR-0007, 2026-10-01): núcleo e servidor em **Rust**, cliente **Godot 4**
 (MCP `godot-ai` disponível), **PostgreSQL**, memória em Markdown + SQLite FTS5, Docker Compose,
-GitHub Actions. Não escrever código de produção antes de o usuário aceitar o ADR-0007.
+GitHub Actions. Builds de release no CI; na VPS, build em container. Código de produção ainda depende
+de GDD e SDD aprovados (§4).
 
 Perguntas abertas vivem em `docs/STATUS.md` e na seção "Perguntas abertas" de cada arquivo do GDD.
 
@@ -246,18 +251,25 @@ RAM: evite builds pesados em paralelo com outros serviços.
 - **Orçamentos explícitos**: tempo de processamento por turno, tokens por chamada, custo por turno.
   Regressões de orçamento falham o CI quando mensuráveis.
 - Prefira bibliotecas maduras a reinventar; justifique dependências novas no PR.
+- **Validar no fluxo real**: partidas headless de bots de ponta a ponta e o cliente no fluxo real do
+  jogador; teste que falha por meta ainda não atingida vira aviso, não teste vermelho
+  (ver docs/process/agentes-e-cotas.md §4).
 
 ---
 
 ## 9. Como trabalhar neste repositório (protocolo do agente)
 
 **Início de sessão**
-1. Ler `CLAUDE.md` e `docs/STATUS.md` (se não existir, criá-lo na primeira sessão).
+1. Ler `CLAUDE.md` e `docs/STATUS.md` (se não existir, criá-lo na primeira sessão), incluindo a trava
+   `Agente ativo:` — se outro agente estiver ativo, não mexer na área dele.
 2. `git fetch` e conferir branch atual; continuar a branch indicada em `STATUS.md`.
 3. Confirmar em que fase o projeto está e respeitar o que ela permite.
+4. Rodar a auditoria de cotas (skill `quota-audit`) e decidir quem trabalha.
 
 **Durante**
-- Trabalhar em passos pequenos e verificáveis; commitar a cada passo coerente.
+- Trabalhar em passos pequenos e verificáveis; commitar a cada passo coerente, adicionando só os
+  arquivos da sua área (`git add <arquivos>`, nunca `-A` com executor ativo).
+- Tarefa delegada sempre com brief em `docs/briefs/`.
 - Ao encontrar uma decisão de design ou arquitetura não coberta por GDD/SDD/ADR: **parar e perguntar**
   ao usuário, ou registrar como pergunta aberta em `STATUS.md` e seguir com outra tarefa desbloqueada.
 - Não inventar fatos sobre ferramentas externas (APIs, modelos, preços): verificar na documentação.
@@ -272,6 +284,15 @@ RAM: evite builds pesados em paralelo com outros serviços.
 - Merge em `main`, criação de tags/releases.
 - Mudanças na VPS (deploy, portas, serviços, custos), criação de recursos pagos.
 - Qualquer uso de chave de API real.
+
+**Agentes, subagentes e cotas** — ver [docs/process/agentes-e-cotas.md](docs/process/agentes-e-cotas.md).
+- Claude é o supervisor; tarefas independentes vão para subagentes Codex (conta ChatGPT) cujo modelo é
+  escolhido pelo **Jev Router** (skill `jev-subagents`, script `tools/agents/jev-codex.sh`). O OpenRouter
+  é usado **só** para a decisão do Jev, nunca para executar tarefas.
+- **Auto-auditoria obrigatória** (skill `quota-audit`): checar a cota do Claude (`get_usage`), do Codex
+  e do OpenRouter (`tools/agents/quota-check.sh`) no início da sessão, antes de cada lote de
+  subagentes e no fim das tarefas grandes. Claude ≥ 75% ⇒ delegar; tudo esgotado ⇒ commit, push,
+  handoff e retomada agendada. O projeto nunca pode ficar parado sem próximo passo agendado.
 
 **Sugestão para o fluxo de desenvolvimento**: instalar o próprio *ai-memory* na VPS para dar memória
 persistente e handoff entre sessões de agentes de código — complementar a `docs/STATUS.md`, não

@@ -18,15 +18,16 @@
 
 | Arquivo | Pilar | Estado |
 |---|---|---|
-| [00-visao.md](00-visao.md) | Visão, público, fantasia do jogador | esqueleto |
-| [01-loop-e-turnos.md](01-loop-e-turnos.md) | Loop principal, turnos simultâneos, ritmo | esqueleto |
-| [02-mapa-e-tiles.md](02-mapa-e-tiles.md) | Mapa hexagonal, terreno, geração procedural | esqueleto |
-| [03-economia.md](03-economia.md) | Recursos, rendimentos, comércio | esqueleto |
-| [04-cidades-e-populacao.md](04-cidades-e-populacao.md) | Cidades, população, estabilidade | esqueleto |
-| [05-tecnologia.md](05-tecnologia.md) | Progressão tecnológica, descobertas emergentes | esqueleto |
-| [06-sociedade-e-governo.md](06-sociedade-e-governo.md) | Governo, cultura, crenças, revoltas | esqueleto |
-| [07-diplomacia.md](07-diplomacia.md) | Relações, tratados, guerra, ledger | esqueleto |
-| [08-entropia-e-eventos.md](08-entropia-e-eventos.md) | Diretor de eventos, catálogo | esqueleto |
-| [09-governador-e-mandato.md](09-governador-e-mandato.md) | Delegação e configuração | esqueleto |
-| [10-ciclo-infinito-e-eras.md](10-ciclo-infinito-e-eras.md) | Eras, colapso, renascimento | esqueleto |
-| [11-experiencia-mobile.md](11-experiencia-mobile.md) | UX, sessões, notificações, onboarding BYOK | esqueleto |
+| [00-visao.md](00-visao.md) | Visão, público, fantasia do jogador | revisado (rodada 1) |
+| [01-loop-e-turnos.md](01-loop-e-turnos.md) | Loop principal, turnos simultâneos, ritmo | revisado (rodada 1) |
+| [02-mapa-e-tiles.md](02-mapa-e-tiles.md) | Mapa hexagonal, terreno, geração procedural | revisado (rodada 1) |
+| [03-economia.md](03-economia.md) | Recursos, rendimentos, comércio | revisado (rodada 1) |
+| [04-cidades-e-populacao.md](04-cidades-e-populacao.md) | Cidades, população, estabilidade | revisado (rodada 1) |
+| [05-tecnologia.md](05-tecnologia.md) | Progressão tecnológica, descobertas emergentes | revisado (rodada 1) |
+| [06-sociedade-e-governo.md](06-sociedade-e-governo.md) | Governo, cultura, crenças, revoltas | revisado (rodada 1) |
+| [07-diplomacia.md](07-diplomacia.md) | Relações, tratados, guerra, ledger | revisado (rodada 1) |
+| [08-entropia-e-eventos.md](08-entropia-e-eventos.md) | Diretor de eventos, catálogo | revisado (rodada 1) |
+| [09-governador-e-mandato.md](09-governador-e-mandato.md) | Delegação e configuração | revisado (rodada 1) |
+| [10-ciclo-infinito-e-eras.md](10-ciclo-infinito-e-eras.md) | Eras, colapso, renascimento | revisado (rodada 1) |
+| [11-experiencia-mobile.md](11-experiencia-mobile.md) | UX, sessões, notificações, onboarding BYOK | revisado (rodada 1) |
+| [12-variaveis-e-formulas.md](12-variaveis-e-formulas.md) | Fonte única de variáveis e fórmulas compartilhadas | consolidação (2026-10-01) |
