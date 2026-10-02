@@ -1,0 +1,21 @@
+{
+  "catalog_id":"core.governments","catalog_version":1,"schema_version":1,"status":"draft",
+  "axes":[
+    {"id":"centralization","name":"Centralização","positions":[
+      {"id":"local","name":"Local","policies":[{"id":"policy.local_councils","name":"Conselhos locais","favours":["autonomy","participation"],"harms":["security"],"maintenance":1,"stability_delta":2,"demand_satisfaction_delta":5,"effects":[{"op":"AddTag","target":"selected","tag_id":"policy.local_councils"}]}]},
+      {"id":"coordinated","name":"Coordenada","policies":[{"id":"policy.regional_delegates","name":"Delegados regionais","favours":["security"],"harms":["autonomy"],"maintenance":2,"stability_delta":3,"demand_satisfaction_delta":4,"effects":[{"op":"AddTag","target":"selected","tag_id":"policy.regional_delegates"}]}]},
+      {"id":"centralized","name":"Centralizada","policies":[{"id":"policy.central_bureau","name":"Burocracia central","favours":["security"],"harms":["autonomy","participation"],"maintenance":3,"stability_delta":-2,"demand_satisfaction_delta":-5,"effects":[{"op":"AddTag","target":"selected","tag_id":"policy.central_bureau"}]}]}
+    ]},
+    {"id":"participation","name":"Participação","positions":[
+      {"id":"delegated","name":"Delegada","policies":[{"id":"policy.appointed_offices","name":"Ofícios nomeados","favours":["security"],"harms":["participation"],"maintenance":1,"stability_delta":1,"demand_satisfaction_delta":-4,"effects":[{"op":"AddTag","target":"selected","tag_id":"policy.appointed_offices"}]}]},
+      {"id":"consultative","name":"Consultiva","policies":[{"id":"policy.open_petitions","name":"Petições abertas","favours":["participation"],"harms":["security"],"maintenance":2,"stability_delta":2,"demand_satisfaction_delta":6,"effects":[{"op":"AddTag","target":"selected","tag_id":"policy.open_petitions"}]}]},
+      {"id":"assembly","name":"Assembleária","policies":[{"id":"policy.city_assemblies","name":"Assembleias cívicas","favours":["participation","reform"],"harms":["tradition"],"maintenance":3,"stability_delta":-1,"demand_satisfaction_delta":8,"effects":[{"op":"AddTag","target":"selected","tag_id":"policy.city_assemblies"}]}]}
+    ]},
+    {"id":"economic_obligation","name":"Obrigação econômica","positions":[
+      {"id":"communal","name":"Comunal","policies":[{"id":"policy.common_granary","name":"Celeiro comum","favours":["supply"],"harms":["autonomy"],"maintenance":2,"stability_delta":4,"demand_satisfaction_delta":5,"effects":[{"op":"AddTag","target":"selected","tag_id":"policy.common_granary"}]}]},
+      {"id":"tributary","name":"Tributária","policies":[{"id":"policy.fixed_tribute","name":"Tributo fixo","favours":["security"],"harms":["supply","autonomy"],"maintenance":1,"stability_delta":-2,"demand_satisfaction_delta":-6,"effects":[{"op":"AddTag","target":"selected","tag_id":"policy.fixed_tribute"}]}]},
+      {"id":"contractual","name":"Contratual","policies":[{"id":"policy.market_dues","name":"Taxas de mercado","favours":["reform","participation"],"harms":["tradition"],"maintenance":2,"stability_delta":1,"demand_satisfaction_delta":4,"effects":[{"op":"AddTag","target":"selected","tag_id":"policy.market_dues"}]}]}
+    ]}
+  ],
+  "reform":{"turns":2,"legitimacy_cost":8,"cohesion_cost":4,"one_axis_at_a_time":true}
+}

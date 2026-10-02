@@ -1,0 +1,20 @@
+{
+  "catalog_id": "core.biomes",
+  "catalog_version": 1,
+  "schema_version": 1,
+  "status": "draft",
+  "biomes": [
+    {"id":"ocean","name":"Oceano","yields":{"food":1,"production":0,"wealth":1,"knowledge":0,"culture":0},"movement_cost":2,"resource_tags":["fish"]},
+    {"id":"coast","name":"Costa","yields":{"food":2,"production":0,"wealth":2,"knowledge":0,"culture":0},"movement_cost":1,"resource_tags":["fish","salt"]},
+    {"id":"plains","name":"Planície","yields":{"food":3,"production":1,"wealth":1,"knowledge":0,"culture":0},"movement_cost":1,"resource_tags":["crops","cattle"]},
+    {"id":"forest","name":"Floresta","yields":{"food":2,"production":2,"wealth":0,"knowledge":0,"culture":1},"movement_cost":2,"resource_tags":["timber","game"]},
+    {"id":"jungle","name":"Selva","yields":{"food":3,"production":1,"wealth":0,"knowledge":1,"culture":1},"movement_cost":3,"resource_tags":["spices","timber"]},
+    {"id":"savanna","name":"Savana","yields":{"food":2,"production":1,"wealth":1,"knowledge":0,"culture":0},"movement_cost":1,"resource_tags":["cattle","game"]},
+    {"id":"desert","name":"Deserto","yields":{"food":0,"production":1,"wealth":1,"knowledge":1,"culture":0},"movement_cost":2,"resource_tags":["salt","copper"]},
+    {"id":"steppe","name":"Estepe","yields":{"food":1,"production":1,"wealth":1,"knowledge":0,"culture":0},"movement_cost":1,"resource_tags":["cattle","horses"]},
+    {"id":"tundra","name":"Tundra","yields":{"food":1,"production":1,"wealth":0,"knowledge":1,"culture":0},"movement_cost":2,"resource_tags":["fur","fish"]},
+    {"id":"swamp","name":"Pântano","yields":{"food":2,"production":0,"wealth":0,"knowledge":1,"culture":1},"movement_cost":3,"resource_tags":["reeds","fish"]},
+    {"id":"mountain","name":"Montanha","yields":{"food":0,"production":3,"wealth":1,"knowledge":1,"culture":0},"movement_cost":4,"resource_tags":["metal","stone"]},
+    {"id":"glacier","name":"Geleira","yields":{"food":0,"production":0,"wealth":0,"knowledge":1,"culture":0},"movement_cost":4,"resource_tags":["fish"]}
+  ]
+}
