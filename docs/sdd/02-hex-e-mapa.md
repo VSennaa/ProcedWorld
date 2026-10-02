@@ -1,84 +1,84 @@
-# SDD 02 ? Hex?gonos e mapa
+# SDD 02 — Hexágonos e mapa
 
-- **Status:** rascunho de proposta; n?o aprovado.
+- **Status:** rascunho de proposta; não aprovado.
 - **Data:** 2026-10-01.
-- **Escopo relacionado:** ADR-0004 (aceito), ADR-0006 (aceito), ADR-0007 (proposto), GDD 02 (decis?es parciais).
-- **Regra de leitura:** os contratos e invariantes abaixo s?o propostas para revis?o. Decis?es do GDD e ADRs aceitos est?o explicitamente identificados.
+- **Escopo relacionado:** ADR-0004 (aceito), ADR-0006 (aceito), ADR-0007 (proposto), GDD 02 (decisões parciais).
+- **Regra de leitura:** os contratos e invariantes abaixo são propostas para revisão. Decisões do GDD e ADRs aceitos estão explicitamente identificados.
 
 ## 1. Objetivo e fronteiras
 
-Este subsistema define identidade, topologia, armazenamento l?gico e consulta de tiles; gera um mapa inicial reproduz?vel; calcula primitivas geom?tricas; e publica fatias do mapa para clientes.
+Este subsistema define identidade, topologia, armazenamento lógico e consulta de tiles; gera um mapa inicial reproduzível; calcula primitivas geométricas; e publica fatias do mapa para clientes.
 
 Responsabilidades:
 
 - Normalizar coordenadas axiais em um mapa finito de cilindro com largura horizontal e polos fechados.
-- Fornecer vizinhan?a, dist?ncia, linha, anel, ?rea e itera??o can?nica.
-- Construir e validar o mapa por etapas determin?sticas a partir de par?metros e seed.
-- Manter dados geogr?ficos e seus ?ndices est?veis para comandos, snapshots, hashes e replay.
-- Converter estado autoritativo em chunks de leitura adequados ao cliente, respeitando fog of war fornecido pelo dom?nio de visibilidade.
+- Fornecer vizinhança, distância, linha, anel, área e iteração canônica.
+- Construir e validar o mapa por etapas determinísticas a partir de parâmetros e seed.
+- Manter dados geográficos e seus índices estáveis para comandos, snapshots, hashes e replay.
+- Converter estado autoritativo em chunks de leitura adequados ao cliente, respeitando fog of war fornecido pelo domínio de visibilidade.
 
 Fora de escopo:
 
-- Regras econ?micas, popula??o, propriedade, cidades, movimento e custo de travessia; consomem consultas do mapa.
-- Descoberta e controle de visibilidade por civiliza??o; o mapa apenas recebe uma proje??o de visibilidade para serializa??o.
-- Decis?o da Entropia, sele??o de eventos e narrativa. Um evento validado pode emitir comando que altera dados do mapa.
-- Renderiza??o, zoom, sele??o por toque e armazenamento local do cliente; pertencem ao SDD do cliente.
-- Persist?ncia f?sica, autentica??o, protocolo de transporte e gest?o de chaves; pertencem a outros subsistemas.
+- Regras econômicas, população, propriedade, cidades, movimento e custo de travessia; consomem consultas do mapa.
+- Descoberta e controle de visibilidade por civilização; o mapa apenas recebe uma projeção de visibilidade para serialização.
+- Decisão da Entropia, seleção de eventos e narrativa. Um evento validado pode emitir comando que altera dados do mapa.
+- Renderização, zoom, seleção por toque e armazenamento local do cliente; pertencem ao SDD do cliente.
+- Persistência física, autenticação, protocolo de transporte e gestão de chaves; pertencem a outros subsistemas.
 
-O servidor ? autoridade sobre o mapa (ADR-0001, via CLAUDE.md). Cliente nunca envia altera??o direta de tile.
+O servidor é autoridade sobre o mapa (ADR-0001, via CLAUDE.md). Cliente nunca envia alteração direta de tile.
 
-## 2. Conven??es geom?tricas
+## 2. Convenções geométricas
 
 ### 2.1 Coordenadas e topologia
 
-**Decidido:** hex?gonos, representa??o axial/c?bica (ADR-0004); pointy-top e mundo cil?ndrico, wrap horizontal e polos fechados (GDD 02 ? Decidido).
+**Decidido:** hexágonos, representação axial/cúbica (ADR-0004); pointy-top e mundo cilíndrico, wrap horizontal e polos fechados (GDD 02 — Decidido).
 
-A proposta usa coordenadas axiais inteiras `(q, r)`; a terceira coordenada c?bica ? `s = -q-r`, derivada e n?o armazenada. `q` percorre `[0, width)` e `r` percorre `[0, height)`. A orienta??o pointy-top afeta somente proje??o visual, nunca a sem?ntica axial.
+A proposta usa coordenadas axiais inteiras `(q, r)`; a terceira coordenada cúbica é `s = -q-r`, derivada e não armazenada. `q` percorre `[0, width)` e `r` percorre `[0, height)`. A orientação pointy-top afeta somente projeção visual, nunca a semântica axial.
 
-`r` fora do intervalo ? inv?lido: n?o h? wrap vertical. `q` ? normalizado por m?dulo euclidiano para o intervalo do mapa. A geometria ? definida por uma largura axial retangular e linhas de `r` fixas; essa conven??o, incluindo eventuais efeitos de borda em mapas de altura par/?mpar, precisa de fixtures antes de ser ratificada.
+`r` fora do intervalo é inválido: não há wrap vertical. `q` é normalizado por módulo euclidiano para o intervalo do mapa. A geometria é definida por uma largura axial retangular e linhas de `r` fixas; essa convenção, incluindo eventuais efeitos de borda em mapas de altura par/ímpar, precisa de fixtures antes de ser ratificada.
 
-Uma coordenada recebida de fora ? validada/normalizada uma vez na fronteira. Coordenadas internas de tile s?o can?nicas. Fun??es que exigem tile v?lido retornam erro para `r` inv?lido; n?o devem silenciosamente projetar polos para uma linha v?lida.
+Uma coordenada recebida de fora é validada/normalizada uma vez na fronteira. Coordenadas internas de tile são canônicas. Funções que exigem tile válido retornam erro para `r` inválido; não devem silenciosamente projetar polos para uma linha válida.
 
 ```text
 type Axial = { q: Int, r: Int }
 type MapShape = { width: PositiveInt, height: PositiveInt }
-type TileId = UInt32  // proposta: ?ndice denso est?vel
+type TileId = UInt32  // proposta: índice denso estável
 
 normalize_q(q, width) = ((q % width) + width) % width
 is_valid({q,r}, shape) = 0 <= r < height
-canonical({q,r}, shape) = { normalize_q(q,width), r } se is_valid; erro caso contr?rio
+canonical({q,r}, shape) = { normalize_q(q,width), r } se is_valid; erro caso contrário
 ```
 
-### 2.2 Dire??es e vizinhos
+### 2.2 Direções e vizinhos
 
-Proposta de ordem can?nica fixa das seis dire??es axiais; essa ordem ? parte do contrato e deve ser versionada se mudar:
+Proposta de ordem canônica fixa das seis direções axiais; essa ordem é parte do contrato e deve ser versionada se mudar:
 
 ```text
 DIRECTIONS = [(+1,0), (+1,-1), (0,-1), (-1,0), (-1,+1), (0,+1)]
-neighbors(c) = para d em DIRECTIONS: canonical(c+d) se r v?lido
+neighbors(c) = para d em DIRECTIONS: canonical(c+d) se r válido
 ```
 
-Vizinhos que cruzam o polo s?o omitidos, n?o duplicados nem refletidos. Cada resultado ? ?nico; ordena??o acompanha `DIRECTIONS`. Isso deixa o grau de tiles de borda menor que seis.
+Vizinhos que cruzam o polo são omitidos, não duplicados nem refletidos. Cada resultado é único; ordenação acompanha `DIRECTIONS`. Isso deixa o grau de tiles de borda menor que seis.
 
-### 2.3 Dist?ncia e primitivas
+### 2.3 Distância e primitivas
 
-Dist?ncia plana entre axiais ? `(abs(dq)+abs(dr)+abs(ds))/2`. No cilindro, escolher entre imagens horizontais equivalentes:
+Distância plana entre axiais é `(abs(dq)+abs(dr)+abs(ds))/2`. No cilindro, escolher entre imagens horizontais equivalentes:
 
 ```text
 cylinder_distance(a,b) = min_k hex_distance(a, {b.q + k*width, b.r})
 ```
 
-A proposta limita `k` a candidatos pr?ximos de `round((a.q-b.q)/width)` e testa ambos os vizinhos inteiros; polos continuam fechados. Para qualquer uso que precise de caminho, desempate deve ser can?nico. A defini??o deve ser validada para larguras pequenas, costuras e bordas.
+A proposta limita `k` a candidatos próximos de `round((a.q-b.q)/width)` e testa ambos os vizinhos inteiros; polos continuam fechados. Para qualquer uso que precise de caminho, desempate deve ser canônico. A definição deve ser validada para larguras pequenas, costuras e bordas.
 
-`line(a,b)` retorna sequ?ncia inclusiva de tiles que aproxima a reta hexagonal, com tie-break por dire??o can?nica; wrap escolhe a imagem de `b` com menor dist?ncia e empate pela menor transla??o assinada. Se houver empate geom?trico, selecionar resultado lexicograficamente pela sequ?ncia de `TileId`.
+`line(a,b)` retorna sequência inclusiva de tiles que aproxima a reta hexagonal, com tie-break por direção canônica; wrap escolhe a imagem de `b` com menor distância e empate pela menor translação assinada. Se houver empate geométrico, selecionar resultado lexicograficamente pela sequência de `TileId`.
 
-`ring(center, radius)` retorna tiles a dist?ncia exata `radius`; `area(center, radius)` inclui dist?ncias de zero at? o raio, sem duplicatas ap?s wrap e sem tiles fora dos polos. Para raio zero, linha/anel/?rea cont?m somente o centro v?lido. Ordena??o de `ring` e `area`: crescente por dist?ncia e depois `TileId` crescente. Limitar raio ao di?metro m?ximo do mapa ou retornar resultados ?nicos; nunca fazer loop proporcional a um raio arbitr?rio sem limite.
+`ring(center, radius)` retorna tiles a distância exata `radius`; `area(center, radius)` inclui distâncias de zero até o raio, sem duplicatas após wrap e sem tiles fora dos polos. Para raio zero, linha/anel/área contém somente o centro válido. Ordenação de `ring` e `area`: crescente por distância e depois `TileId` crescente. Limitar raio ao diâmetro máximo do mapa ou retornar resultados únicos; nunca fazer loop proporcional a um raio arbitrário sem limite.
 
-Essas consultas s?o puras, n?o acessam rede, rel?gio, PRNG ou armazenamento externo. Dist?ncias, ?ndices e desempates usam inteiros.
+Essas consultas são puras, não acessam rede, relógio, PRNG ou armazenamento externo. Distâncias, índices e desempates usam inteiros.
 
 ## 3. Contratos do subsistema
 
-Os nomes s?o ilustrativos; contratos s?o proposta independente de linguagem.
+Os nomes são ilustrativos; contratos são proposta independente de linguagem.
 
 ```text
 MapGeometry
@@ -102,17 +102,17 @@ MapQuery
     -> Result<MapChunk, MapError>
 ```
 
-`WorldParams` cont?m shape, abund?ncia de terra e personalidade clim?tica; valores e cat?logo pertencem ? cria??o de mundo. Par?metros inv?lidos falham antes da gera??o. Generator recebe vers?o expl?cita para preservar mapas antigos quando algoritmo/cat?logos mudarem.
+`WorldParams` contém shape, abundância de terra e personalidade climática; valores e catálogo pertencem à criação de mundo. Parâmetros inválidos falham antes da geração. Generator recebe versão explícita para preservar mapas antigos quando algoritmo/catálogos mudarem.
 
-`GeneratedMap` inclui shape, tiles, metadados de gera??o (vers?o, tentativa, identificador do algoritmo de PRNG) e pontos de partida validados. `GenerationFailure` ? tipado: par?metro inv?lido, limite de tentativas excedido, conectividade insuficiente, equil?brio m?nimo n?o atingido, overflow ou cat?logo incompat?vel.
+`GeneratedMap` inclui shape, tiles, metadados de geração (versão, tentativa, identificador do algoritmo de PRNG) e pontos de partida validados. `GenerationFailure` é tipado: parâmetro inválido, limite de tentativas excedido, conectividade insuficiente, equilíbrio mínimo não atingido, overflow ou catálogo incompatível.
 
-Mudan?as permanentes/tempor?rias do mapa ocorrem por comandos tipados aceitos pelo motor: por exemplo `ApplyMapEvent`, `ChangeImprovement`, `DepleteDeposit`. Validadores aplicam pr?-condi??es. `step` aplica comandos em ordem can?nica; API nenhuma altera tile fora dele.
+Mudanças permanentes/temporárias do mapa ocorrem por comandos tipados aceitos pelo motor: por exemplo `ApplyMapEvent`, `ChangeImprovement`, `DepleteDeposit`. Validadores aplicam pré-condições. `step` aplica comandos em ordem canônica; API nenhuma altera tile fora dele.
 
 ## 4. Modelo de dados
 
-### 4.1 Estado can?nico
+### 4.1 Estado canônico
 
-Proposta de armazenamento l?gico: vetor denso row-major, `index = r * width + q`. O vetor e sua ordem fazem parte do estado hasheado; `TileId` ? o ?ndice. O wrap ocorre na geometria, n?o por duplica??o de tiles nas bordas.
+Proposta de armazenamento lógico: vetor denso row-major, `index = r * width + q`. O vetor e sua ordem fazem parte do estado hasheado; `TileId` é o índice. O wrap ocorre na geometria, não por duplicação de tiles nas bordas.
 
 ```text
 MapState {
@@ -136,95 +136,95 @@ Tile {
 }
 ```
 
-Campos e faixas s?o propostas do GDD 02, n?o requisitos fechados. Visibilidade por civiliza??o ? estado separado, pois tem m?ltiplos observadores e n?o define geografia. Bioma efetivo ? derivado de tabela catalogada sobre eleva??o/temperatura/umidade, conforme GDD; pode ser materializado para consulta, mas deve ser regener?vel e coerente com a vers?o do cat?logo.
+Campos e faixas são propostas do GDD 02, não requisitos fechados. Visibilidade por civilização é estado separado, pois tem múltiplos observadores e não define geografia. Bioma efetivo é derivado de tabela catalogada sobre elevação/temperatura/umidade, conforme GDD; pode ser materializado para consulta, mas deve ser regenerável e coerente com a versão do catálogo.
 
-Rios correm em arestas, ent?o sua representa??o proposta ? um conjunto de `EdgeFeature` associado a cada par n?o ordenado de tiles adjacentes, normalizado pelo menor par de `TileId`. N?o usar flag de rio por tile como fonte autoritativa. A decis?o detalhada deve alinhar-se ao GDD antes da implementa??o.
+Rios correm em arestas, então sua representação proposta é um conjunto de `EdgeFeature` associado a cada par não ordenado de tiles adjacentes, normalizado pelo menor par de `TileId`. Não usar flag de rio por tile como fonte autoritativa. A decisão detalhada deve alinhar-se ao GDD antes da implementação.
 
-?ndices auxiliares (por bioma, dono, recurso ou chunks) s?o derivados e reconstru?veis. N?o entram no hash can?nico, a menos que sejam explicitamente definidos como estado; resultados de consulta n?o podem depender da ordem de um ?ndice hash.
+Índices auxiliares (por bioma, dono, recurso ou chunks) são derivados e reconstruíveis. Não entram no hash canônico, a menos que sejam explicitamente definidos como estado; resultados de consulta não podem depender da ordem de um índice hash.
 
-### 4.2 Invariantes verific?veis
+### 4.2 Invariantes verificáveis
 
 - `width > 0`, `height > 0`, produto cabe no limite configurado e no tipo de `TileId`.
-- Exatamente `width * height` tiles; `tile_id(coord(r,q)) == r*width+q` para toda coordenada v?lida.
-- Cada valor enumerado/ID referencia cat?logo dispon?vel na vers?o gravada.
-- Temperatura, umidade e fertilidade respeitam faixas definidas pela vers?o do schema.
-- Dep?sito ausente equivale a nenhum dep?sito; dep?sito presente tem estoque n?o negativo e extra??o m?xima n?o negativa.
+- Exatamente `width * height` tiles; `tile_id(coord(r,q)) == r*width+q` para toda coordenada válida.
+- Cada valor enumerado/ID referencia catálogo disponível na versão gravada.
+- Temperatura, umidade e fertilidade respeitam faixas definidas pela versão do schema.
+- Depósito ausente equivale a nenhum depósito; depósito presente tem estoque não negativo e extração máxima não negativa.
 - Aresta de rio conecta tiles adjacentes, existe uma vez e ordena endpoints canonicamente.
-- Dono aponta para entidade existente ou aus?ncia; mudan?as de entidade n?o deixam refer?ncia inv?lida.
+- Dono aponta para entidade existente ou ausência; mudanças de entidade não deixam referência inválida.
 - Nenhuma consulta retorna coordenada fora dos polos; wrap preserva cardinalidade sem duplicatas.
-- Gera??o com mesmas entradas, vers?es e cat?logos produz bytes/hash can?nicos iguais.
-- Aplicar o mesmo comando validado ao mesmo estado produz mesmo estado; comando inv?lido n?o causa muta??o parcial.
+- Geração com mesmas entradas, versões e catálogos produz bytes/hash canônicos iguais.
+- Aplicar o mesmo comando validado ao mesmo estado produz mesmo estado; comando inválido não causa mutação parcial.
 
-## 5. Gera??o procedural
+## 5. Geração procedural
 
-**Decidido:** mapa procedural a partir de seed; personalidade clim?tica escolhida na cria??o; mudan?as permanentes de relevo permitidas via evento validado; dep?sitos finitos com renova??o lenta por era (GDD 02 ? Decidido). A descri??o de pipeline e par?metros abaixo ? proposta do GDD, ainda sujeita a revis?o.
+**Decidido:** mapa procedural a partir de seed; personalidade climática escolhida na criação; mudanças permanentes de relevo permitidas via evento validado; depósitos finitos com renovação lenta por era (GDD 02 — Decidido). A descrição de pipeline e parâmetros abaixo é proposta do GDD, ainda sujeita a revisão.
 
-Pipeline determin?stico proposto:
+Pipeline determinístico proposto:
 
-1. Validar par?metros, dimens?es, vers?o de algoritmo e cat?logo.
-2. Derivar sub-seeds independentes por dom?nio est?vel: `derive(world_seed, generator_version, stage_id, attempt)`. N?o derivar por ordem de execu??o ou endere?o de mem?ria.
-3. Criar massas/placas; calcular eleva??o; calcular temperatura e umidade; gerar rios; classificar biomas e dep?sitos; escolher pontos iniciais; validar conectividade e justi?a.
-4. Em falha recuper?vel, incrementar tentativa explicitamente e repetir todas as etapas dependentes daquela tentativa. Ao exceder limite, retornar erro tipado, sem mapa parcial.
-5. Gravar seed inicial, vers?es, identificadores de etapas e tentativa escolhida como metadados do evento de cria??o de mundo. Segredo n?o ? usado como seed.
+1. Validar parâmetros, dimensões, versão de algoritmo e catálogo.
+2. Derivar sub-seeds independentes por domínio estável: `derive(world_seed, generator_version, stage_id, attempt)`. Não derivar por ordem de execução ou endereço de memória.
+3. Criar massas/placas; calcular elevação; calcular temperatura e umidade; gerar rios; classificar biomas e depósitos; escolher pontos iniciais; validar conectividade e justiça.
+4. Em falha recuperável, incrementar tentativa explicitamente e repetir todas as etapas dependentes daquela tentativa. Ao exceder limite, retornar erro tipado, sem mapa parcial.
+5. Gravar seed inicial, versões, identificadores de etapas e tentativa escolhida como metadados do evento de criação de mundo. Segredo não é usado como seed.
 
-Cada etapa consome somente seu PRNG derivado e dados de entrada imut?veis. Uma mudan?a em distribui??o de uma etapa n?o desloca sequ?ncias aleat?rias das demais. Loops usam ordem de `TileId`; redu??o paralela, se adotada, precisa produzir o mesmo resultado e tie-break em todas as m?quinas.
+Cada etapa consome somente seu PRNG derivado e dados de entrada imutáveis. Uma mudança em distribuição de uma etapa não desloca sequências aleatórias das demais. Loops usam ordem de `TileId`; redução paralela, se adotada, precisa produzir o mesmo resultado e tie-break em todas as máquinas.
 
-Sub-seeds n?o substituem a seed-mestra gravada. O mapa ? gerado uma vez e armazenado como estado; replay normal reexecuta comandos gravados, n?o regenera mundo usando c?digo novo. Para auditoria de gera??o, guardar par?metros, seed, vers?es de algoritmo/PRNG/cat?logos, tentativa e hash do resultado.
+Sub-seeds não substituem a seed-mestra gravada. O mapa é gerado uma vez e armazenado como estado; replay normal reexecuta comandos gravados, não regenera mundo usando código novo. Para auditoria de geração, guardar parâmetros, seed, versões de algoritmo/PRNG/catálogos, tentativa e hash do resultado.
 
-**Se ADR-0007 for aceito:** implementar gera??o no crate Rust puro do n?cleo; PRNG versionado e aritm?tica inteira/fixa. Ru?do procedural pode usar algoritmo pr?prio inteiro ou biblioteca somente ap?s spike de determinismo em arquiteturas alvo. Nada de ponto flutuante dependente de plataforma no estado can?nico.
+**Se ADR-0007 for aceito:** implementar geração no crate Rust puro do núcleo; PRNG versionado e aritmética inteira/fixa. Ruído procedural pode usar algoritmo próprio inteiro ou biblioteca somente após spike de determinismo em arquiteturas alvo. Nada de ponto flutuante dependente de plataforma no estado canônico.
 
 ## 6. Falhas, fallbacks e determinismo
 
-Falhas de par?metro, cat?logo ausente, coordenada inv?lida, corrup??o de shape, tentativa esgotada e overflow s?o resultados expl?citos. Cliente pode pedir novamente uma leitura; isso n?o altera mundo. Erro de gera??o impede cria??o do mundo at? o chamador apresentar par?metros v?lidos ou escolher novo seed, a??o externa registrada.
+Falhas de parâmetro, catálogo ausente, coordenada inválida, corrupção de shape, tentativa esgotada e overflow são resultados explícitos. Cliente pode pedir novamente uma leitura; isso não altera mundo. Erro de geração impede criação do mundo até o chamador apresentar parâmetros válidos ou escolher novo seed, ação externa registrada.
 
-N?o criar mapa ?de emerg?ncia? silenciosamente: um fallback mudaria justi?a e identidade do mundo. Um fallback determin?stico de algoritmo s? ? permitido se for vers?o/catalogado, registrado como entrada e exposto ao chamador.
+Não criar mapa “de emergência” silenciosamente: um fallback mudaria justiça e identidade do mundo. Um fallback determinístico de algoritmo só é permitido se for versão/catalogado, registrado como entrada e exposto ao chamador.
 
-Log de comandos/eventos deve registrar: par?metros de cria??o, seed do mundo (n?o secreta), vers?es de gera??o/PRNG/cat?logos, n?mero da tentativa, comandos que mudam mapa e IDs/valores de seus alvos. Hash por turno inclui estado geogr?fico can?nico. Falhas de valida??o externas podem entrar em log operacional/auditoria, mas n?o como comando de simula??o se n?o alterarem estado.
+Log de comandos/eventos deve registrar: parâmetros de criação, seed do mundo (não secreta), versões de geração/PRNG/catálogos, número da tentativa, comandos que mudam mapa e IDs/valores de seus alvos. Hash por turno inclui estado geográfico canônico. Falhas de validação externas podem entrar em log operacional/auditoria, mas não como comando de simulação se não alterarem estado.
 
-Nunca entram no `step`: I/O de disco/rede, rel?gio, gera??o sob demanda, chamada de IA, ordem de itera??o de mapa hash, float n?o determin?stico, RNG global, consulta ? UI. `step` recebe comandos j? ordenados e seed/stream expl?citos conforme SDD 01; mapa puro n?o define a sequ?ncia global de resolu??o de turnos.
+Nunca entram no `step`: I/O de disco/rede, relógio, geração sob demanda, chamada de IA, ordem de iteração de mapa hash, float não determinístico, RNG global, consulta à UI. `step` recebe comandos já ordenados e seed/stream explícitos conforme SDD 01; mapa puro não define a sequência global de resolução de turnos.
 
-IA pode sugerir inten??o de evento; inten??o validada pelo motor gera comando grav?vel. A sa?da bruta do provedor n?o ? lida pelo gerador nem pelo `step`.
+IA pode sugerir intenção de evento; intenção validada pelo motor gera comando gravável. A saída bruta do provedor não é lida pelo gerador nem pelo `step`.
 
 ## 7. Chunks para cliente
 
-Chunk ? proje??o de leitura, n?o unidade de simula??o. Proposta: janela retangular de coordenadas can?nicas, com `chunk_id`, `map_revision`, vers?o de schema e lista ordenada de tiles. Cliente pode solicitar um chunk e sua revis?o; servidor pode responder completo ou delta se protocolo suportar.
+Chunk é projeção de leitura, não unidade de simulação. Proposta: janela retangular de coordenadas canônicas, com `chunk_id`, `map_revision`, versão de schema e lista ordenada de tiles. Cliente pode solicitar um chunk e sua revisão; servidor pode responder completo ou delta se protocolo suportar.
 
-Chunks devem incluir apenas campos que o viewer pode conhecer. Tile desconhecido n?o revela bioma, recursos, relevo nem dono; tile lembrado usa ?ltima observa??o autorizada; vis?vel usa proje??o atual. Pol?tica exata de fog of war pertence ao dom?nio de vis?o.
+Chunks devem incluir apenas campos que o viewer pode conhecer. Tile desconhecido não revela bioma, recursos, relevo nem dono; tile lembrado usa última observação autorizada; visível usa projeção atual. Política exata de fog of war pertence ao domínio de visão.
 
-Proposta de conte?do: coordenada/TileId est?vel, eleva??o/bioma/features vis?veis, propriet?rio vis?vel e indica??o de estado de visibilidade; IDs de cat?logo em vez de texto localizado. Nunca enviar seed-mestra como parte de resposta de jogo. A geometria e os dados privados do mapa permanecem autoritativos no servidor.
+Proposta de conteúdo: coordenada/TileId estável, elevação/bioma/features visíveis, proprietário visível e indicação de estado de visibilidade; IDs de catálogo em vez de texto localizado. Nunca enviar seed-mestra como parte de resposta de jogo. A geometria e os dados privados do mapa permanecem autoritativos no servidor.
 
-Chunk boundary n?o altera vizinhan?a: primitivas consultam mapa completo. Requisi??es perto da costura horizontal normalizam coordenadas e n?o duplicam TileId na resposta. Para cache, revis?o muda somente quando estado representado muda; uma pol?tica de revis?o global versus por chunk segue em aberto.
+Chunk boundary não altera vizinhança: primitivas consultam mapa completo. Requisições perto da costura horizontal normalizam coordenadas e não duplicam TileId na resposta. Para cache, revisão muda somente quando estado representado muda; uma política de revisão global versus por chunk segue em aberto.
 
-**Se ADR-0007 for aceito:** Godot 4 pode converter axial para pixel pointy-top e renderizar chunks em TileMap; essa convers?o ? apresenta??o, n?o regra do motor. PostgreSQL pode armazenar snapshot do vetor ou blocos compactados, mas o formato f?sico n?o faz parte deste contrato.
+**Se ADR-0007 for aceito:** Godot 4 pode converter axial para pixel pointy-top e renderizar chunks em TileMap; essa conversão é apresentação, não regra do motor. PostgreSQL pode armazenar snapshot do vetor ou blocos compactados, mas o formato físico não faz parte deste contrato.
 
-## 8. Or?amento proposto
+## 8. Orçamento proposto
 
-N?o h? meta de desempenho aprovada. Proposta inicial para benchmark, em servidor de refer?ncia a definir:
+Não há meta de desempenho aprovada. Proposta inicial para benchmark, em servidor de referência a definir:
 
-- Consultas de vizinhos/dist?ncia: O(1), meta p95 < 1 ms por lote de 10 mil consultas.
-- Linha, anel e ?rea: O(n) no n?mero de tiles retornados, com teto expl?cito de raio.
-- Gera??o inicial: O(N) por etapa, mem?ria transit?ria O(N); meta p95 < 5 s para o maior mapa inicial configurado.
-- Estado: alvo de 16?32 bytes por tile no formato l?gico compacto, exclu?dos ?ndices e overhead de persist?ncia; medir antes de escolher representa??o bin?ria.
-- Chunk: limitar resposta por configura??o; meta inicial < 256 KiB descompactado por p?gina, pagina??o para ?reas maiores.
+- Consultas de vizinhos/distância: O(1), meta p95 < 1 ms por lote de 10 mil consultas.
+- Linha, anel e área: O(n) no número de tiles retornados, com teto explícito de raio.
+- Geração inicial: O(N) por etapa, memória transitória O(N); meta p95 < 5 s para o maior mapa inicial configurado.
+- Estado: alvo de 16–32 bytes por tile no formato lógico compacto, excluídos índices e overhead de persistência; medir antes de escolher representação binária.
+- Chunk: limitar resposta por configuração; meta inicial < 256 KiB descompactado por página, paginação para áreas maiores.
 
-S?o metas para spike/benchmark, n?o garantias de produto. Corrigir/aceitar os limites ap?s tamanhos de mundo, dispositivos e hardware do servidor serem definidos. Nenhuma IA ? necess?ria na geometria ou gera??o; custo de tokens ? zero. Se um agente de IA auxiliar cria??o de narrativa ou sugerir par?metros, a gera??o mec?nica n?o depende disso; qualquer uso pertence aos SDDs de IA e deve ter teto/fallback pr?prio.
+São metas para spike/benchmark, não garantias de produto. Corrigir/aceitar os limites após tamanhos de mundo, dispositivos e hardware do servidor serem definidos. Nenhuma IA é necessária na geometria ou geração; custo de tokens é zero. Se um agente de IA auxiliar criação de narrativa ou sugerir parâmetros, a geração mecânica não depende disso; qualquer uso pertence aos SDDs de IA e deve ter teto/fallback próprio.
 
-## 9. Estrat?gia de testes
+## 9. Estratégia de testes
 
-- Fixtures gravadas de mapas pequenos: cilindro m?nimo v?lido, larguras par/?mpar, costura horizontal, linhas junto aos dois polos, mapa de teste com rio/ilha; guardar entradas, vers?o e hash esperado.
-- Propriedades: normaliza??o horizontal idempotente; simetria de dist?ncia; `distance(a,a)=0`; vizinho v?lido ? adjacente; aus?ncia de wrap vertical; `area` cont?m centro e n?o duplica; todos os itens do anel t?m dist?ncia exata; `line` termina nas extremidades e cada par consecutivo ? adjacente na imagem escolhida.
-- Propriedades do armazenamento: bije??o coord/TileId; tamanho constante; serializa??o can?nica round-trip; ?ndices derivados reconstru?dos equivalem aos originais.
-- Determinismo: mesma seed/params/vers?es em execu??es repetidas d? mesmo hash; fixtures de gera??o devem ser verificadas em arquiteturas suportadas. Mudan?a intencional de algoritmo exige nova vers?o e fixture nova, sem reescrever replays antigos.
-- Testes de gera??o: conectividade de regi?es caminh?veis conforme regra configurada, fairness por m?trica versionada, rios adjacentes e descendentes conforme algoritmo, tentativa m?xima determin?stica e erro sem estado parcial.
-- Testes de comandos: comando v?lido altera apenas campos previstos; comando inv?lido deixa hash intacto; replay do log reconstr?i hash por turno.
-- Harness deve fixar seed, PRNG, cat?logos, vers?o de algoritmo e par?metros; imprimir caso m?nimo reproduz?vel em falha. Testes de propriedade podem gerar seeds aleat?rias apenas no harness e registrar a seed que falhou; produ??o nunca depende de seed impl?cita.
+- Fixtures gravadas de mapas pequenos: cilindro mínimo válido, larguras par/ímpar, costura horizontal, linhas junto aos dois polos, mapa de teste com rio/ilha; guardar entradas, versão e hash esperado.
+- Propriedades: normalização horizontal idempotente; simetria de distância; `distance(a,a)=0`; vizinho válido é adjacente; ausência de wrap vertical; `area` contém centro e não duplica; todos os itens do anel têm distância exata; `line` termina nas extremidades e cada par consecutivo é adjacente na imagem escolhida.
+- Propriedades do armazenamento: bijeção coord/TileId; tamanho constante; serialização canônica round-trip; índices derivados reconstruídos equivalem aos originais.
+- Determinismo: mesma seed/params/versões em execuções repetidas dá mesmo hash; fixtures de geração devem ser verificadas em arquiteturas suportadas. Mudança intencional de algoritmo exige nova versão e fixture nova, sem reescrever replays antigos.
+- Testes de geração: conectividade de regiões caminháveis conforme regra configurada, fairness por métrica versionada, rios adjacentes e descendentes conforme algoritmo, tentativa máxima determinística e erro sem estado parcial.
+- Testes de comandos: comando válido altera apenas campos previstos; comando inválido deixa hash intacto; replay do log reconstrói hash por turno.
+- Harness deve fixar seed, PRNG, catálogos, versão de algoritmo e parâmetros; imprimir caso mínimo reproduzível em falha. Testes de propriedade podem gerar seeds aleatórias apenas no harness e registrar a seed que falhou; produção nunca depende de seed implícita.
 
 ## 10. Perguntas abertas
 
-1. A conven??o `q` horizontal com `r` limitado produz exatamente a topologia visual pretendida nas linhas polares, para alturas pares e ?mpares? **Recomenda??o:** aprovar uma fixture visual/geom?trica de cada caso antes de fechar os contratos.
-2. Qual o tamanho m?nimo/m?ximo de mundo e limite de tiles? **Recomenda??o:** definir antes do benchmark e escolher `TileId`/limites de raio com prova de overflow.
-3. Quais dados de tile s?o can?nicos e quais s?o derivados, especialmente bioma, fertilidade e clima? **Recomenda??o:** manter dados-base can?nicos e derivar bioma por cat?logo versionado, salvo necessidade comprovada de estado hist?rico.
-4. Qual codec/forma de chunk e granularidade de revis?o? **Recomenda??o:** come?ar com chunks completos versionados e medir; adicionar delta apenas quando custo de rede justificar.
-5. Qual formato de rio em arestas e quais regras de conectividade/fairness definem mapa v?lido? **Recomenda??o:** fechar no GDD de mapa antes da implementa??o, com fixtures que cubram desembocadura, lago e wrap.
-6. Quais metas reais de tempo e mem?ria valem para servidor e cliente? **Recomenda??o:** manter as metas deste documento como hip?teses de spike at? o tamanho m?ximo de mundo e hardware serem decididos.
-7. Como preservar saves se cat?logo ou algoritmo mudar? **Recomenda??o:** persistir vers?es de schema, gerador e cat?logo no snapshot; migra??es devem ser expl?citas e cobertas por ADR quando alterarem sem?ntica.
+1. A convenção `q` horizontal com `r` limitado produz exatamente a topologia visual pretendida nas linhas polares, para alturas pares e ímpares? **Recomendação:** aprovar uma fixture visual/geométrica de cada caso antes de fechar os contratos.
+2. Qual o tamanho mínimo/máximo de mundo e limite de tiles? **Recomendação:** definir antes do benchmark e escolher `TileId`/limites de raio com prova de overflow.
+3. Quais dados de tile são canônicos e quais são derivados, especialmente bioma, fertilidade e clima? **Recomendação:** manter dados-base canônicos e derivar bioma por catálogo versionado, salvo necessidade comprovada de estado histórico.
+4. Qual codec/forma de chunk e granularidade de revisão? **Recomendação:** começar com chunks completos versionados e medir; adicionar delta apenas quando custo de rede justificar.
+5. Qual formato de rio em arestas e quais regras de conectividade/fairness definem mapa válido? **Recomendação:** fechar no GDD de mapa antes da implementação, com fixtures que cubram desembocadura, lago e wrap.
+6. Quais metas reais de tempo e memória valem para servidor e cliente? **Recomendação:** manter as metas deste documento como hipóteses de spike até o tamanho máximo de mundo e hardware serem decididos.
+7. Como preservar saves se catálogo ou algoritmo mudar? **Recomendação:** persistir versões de schema, gerador e catálogo no snapshot; migrações devem ser explícitas e cobertas por ADR quando alterarem semântica.
