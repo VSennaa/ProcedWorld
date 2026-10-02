@@ -105,8 +105,9 @@
 - A **pressão de crise** usa a fórmula única de [00-visao.md](00-visao.md) em duas escalas: `P_cidade`
   com os termos locais e `P_civ` como média ponderada por população. Termos: `D` privação (0–20), `G`
   tensão dos grupos (0–20), `W` ameaça de guerra (0–20), `E` exposição ambiental (0–20) e coesão.
-  O rascunho deste pilar propunha somar `(100−S)/2` (estabilidade local) em `P_cidade`; incluir ou
-  não esse termo fica para a consolidação, para não contar a estabilidade duas vezes.
+  `P_cidade` inclui a estabilidade local `S` **com peso reduzido** (decidido em 2026-10-01): cidades
+  instáveis entram em crise mais rápido. O peso exato é definido na consolidação de modo a não contar
+  duas vezes a satisfação dos grupos, que já entra por `G`.
   São escalas iniciais, sujeitas a balanceamento. Privação e exposição vêm de regras de economia, mapa
   e cidade, não de narrativa (ver [02-mapa-e-tiles.md](02-mapa-e-tiles.md),
   [03-economia.md](03-economia.md) e [04-cidades-e-populacao.md](04-cidades-e-populacao.md)).
@@ -188,4 +189,3 @@
 
 - Leis podem restringir a migração automática (ver 04-cidades-e-populacao.md)?
 - Quais limiares separam revolução moderada de severa?
-- Incluir a estabilidade local `S` em `P_cidade` ou mantê-la só como efeito sobre rendimentos?

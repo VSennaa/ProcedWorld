@@ -11,6 +11,8 @@
 - **Entrada tardia com duas opções**: fundar uma comunidade nova (assentamento protegido, sem vínculos
   ou com patrocínio de uma civilização existente) **ou** assumir uma civilização controlada por bot,
   com sua história, Ledger e Crônica. Decidido em 2026-10-01.
+- **Ao assumir um bot**: herda estado, Ledger e Crônica; o Mandato do bot vira preset inicial editável
+  e a Doutrina do bot vira sugestões. Só civilizações sem humano podem ser assumidas. Decidido em 2026-10-01.
 
 ## Proposta
 
@@ -191,5 +193,4 @@
 
 ## Perguntas abertas
 
-- Ao assumir uma civilização de bot, o novo jogador herda o Mandato e a Doutrina do bot ou começa
-  com um preset? Quais civilizações de bot ficam disponíveis (todas, só as sem jogador há N eras)?
+- Alguma restrição extra para assumir um bot (ex.: só após N eras sem humano)?

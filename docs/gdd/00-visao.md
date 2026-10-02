@@ -12,6 +12,8 @@
   explícitas) ou *soft magic* (misteriosa) no plano narrativo; o sistema pode se basear em algum
   sistema de magia livre. O impacto no mundo vem da **reação das nações** — aderir, proibir,
   regulamentar —, e tudo tem consequência mecânica no jogo (decidido em 2026-10-01).
+- **Sistema de magia próprio**, desenhado para o motor, com inspirações livres que não exijam
+  atribuição (nenhuma regra, texto ou nome copiado de obra protegida). Decidido em 2026-10-01.
 
 ## Proposta
 
@@ -167,5 +169,4 @@
 
 ## Perguntas abertas
 
-- Qual sistema de magia livre usar como base? (Como entra no motor já foi decidido: fenômeno
-  surgido por template da Entropia + reação política das nações; ver 05 e 06.)
+- Catálogo inicial de fenômenos mágicos (ver 05, 06 e 08).

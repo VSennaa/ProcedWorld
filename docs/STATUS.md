@@ -4,7 +4,7 @@
 
 ## Agora
 
-Agente ativo: nenhum
+Agente ativo: Claude (turno da noite 2026-10-01 22:30 → 2026-10-02 07:30; áreas: GDD, SDD, spikes)
 
 - **Fase**: 0 — Concepção (GDD)
 - **Branch ativa**: `docs/gdd/draft-proposals` (ainda não mergeada em `develop`).
@@ -12,11 +12,12 @@ Agente ativo: nenhum
   decisões registradas no "Decidido" de cada pilar e no ADR-0008 (turno sem relógio).
 - **Próximo passo**: passada de consolidação (Claude) para alinhar fórmulas e termos entre pilares,
   depois pedir ao usuário a **aprovação do GDD** (critério de saída da Fase 0) e o merge em `develop`.
-- **Pendências de consolidação conhecidas**:
-  1. Termo de estabilidade `(100−S)/2` em `P_cidade` (06) — incluir ou não.
-  2. Fórmula de proporção em contratos mistos (03) — SDD.
-  3. Perguntas abertas restantes listadas em cada pilar (magia, interferir na Entropia, entrada
-     tardia assumindo bot, presença/queda de conexão).
+- **Turno da noite (autorizado pelo usuário em 2026-10-01 22:20)**: até 07:30, parando antes se a
+  cota semanal do Claude chegar a 85%. Escopo autorizado: consolidação do GDD; rascunho do SDD
+  (como proposta, sem aprovar nada); spikes técnicos em `spike/*` (Rust no PC via winget se não
+  precisar do usuário; Rust no usuário `deploy` da VPS; GitHub Actions). Sem merge em main/develop.
+- **Pendências de consolidação conhecidas**: peso de `S` em `P_cidade`; proporção em contratos
+  mistos (03, SDD); perguntas abertas restantes em cada pilar.
 - Incorporadas as lições do DynMagic (`docs/process/agentes-e-cotas.md` §4).
 - **Última auditoria** (2026-10-02): Claude 7% (5 h) / 69% (semana); Codex 32% semanal; OpenRouter ~US$ 3,02.
 
