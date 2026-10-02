@@ -3,11 +3,18 @@
 ## Decidido
 - Grid hexagonal, coordenadas axiais/cúbicas (ADR-0004).
 - Mapa gerado proceduralmente a partir de uma seed.
+- **Hexágonos pointy-top**; mundo em **cilindro** (volta na horizontal, polos fechados). Decidido em 2026-10-01.
+- **Clima do mundo**: a personalidade da Entropia sugere o padrão (estável, sazonal, instável) e o
+  jogador pode trocar na criação do mundo. Decidido em 2026-10-01.
+- **Depósitos finitos com renovação lenta por era**: cada depósito esgota, mas a cada era surgem poucos
+  depósitos novos ocultos (seção 5). Decidido em 2026-10-01.
+- **Mudanças permanentes de relevo** (vulcão, subida do mar) são permitidas, sem limite fixo: a
+  Entropia decide se seriam exageradas, pelo orçamento de tensão e pelas regras de justiça
+  (ver 08-entropia-e-eventos.md). Sempre via template validado. Decidido em 2026-10-01.
 
 ## Proposta
 
-> Tudo abaixo é proposta. Números são **valor inicial, sujeito a balanceamento**. Orientação e borda
-> aparecem em "Perguntas abertas"; as regras abaixo funcionam com qualquer uma das opções.
+> Tudo abaixo é proposta. Números são **valor inicial, sujeito a balanceamento**.
 
 ### 1. Princípio: o mapa é um sistema vivo, não um pano de fundo
 O mapa tem duas partes com ritmos diferentes, e essa separação sustenta o jogo infinito:
@@ -95,7 +102,7 @@ voltam lentamente a ser "regiões prospectáveis". O mapa nunca fica seco por co
 
 ### 6. Tamanho do mapa, bordas e pontos de partida
 - **Tamanho por civilizações** (valor inicial): `tiles_de_terra ≈ civs × 70`, e `tiles_totais ≈ tiles_de_terra / 0,35`.
-  Exemplos: 4 civs ≈ 800 tiles totais (~30×27); 8 civs ≈ 1.600 (~40×40); 16 civs ≈ 3.200 (~57×57).
+  Exemplos: 4 civs ≈ 800 tiles totais (~30×27); 8 civs (teto, ver 00-visao.md) ≈ 1.600 (~40×40).
   Piso de 600 tiles totais (mundo muito pequeno ainda tem espaço para 3 cidades por civilização).
 - **Mundo com folga**: reservar 25% da terra como "terra de ninguém" no início, para expansão e para
   receber novas civilizações (renascimento, novos jogadores; ver 10-ciclo-infinito-e-eras.md).
@@ -174,11 +181,6 @@ por exemplo, explorar o tile desconhecido mais próximo.
   longo no tile mostra a explicação ("por que rende pouco?").
 
 ## Perguntas abertas
-- Orientação (pointy-top ou flat-top) e borda (wrap horizontal, cilindro, ilha fechada).
-  Recomendação: flat-top ou pointy-top é questão de UI; sugiro **pointy-top** (linhas horizontais
-  de hexágonos combinam com rolagem vertical e com polegar em retrato) e **cilindro** (wrap
-  horizontal, polos fechados). O cilindro elimina bordas laterais, mantém clima por latitude coerente e
-  evita o "canto seguro". Mundo pequeno com ilha fechada é opção por configuração do mundo.
 - Tamanho do mapa por número de civilizações.
   Recomendação: usar a fórmula da seção 6 (~70 tiles de terra por civilização, piso de 600 tiles) para
   o MVP, medir tempo de turno e tamanho de payload no celular e só então ajustar. Começar menor é
@@ -187,10 +189,5 @@ por exemplo, explorar o tile desconhecido mais próximo.
   Recomendação: o Governador usa exatamente a visibilidade da civilização (sem informação extra), com
   prioridade "explorar" no Mandato. Isso mantém o jogo justo, a explicação do relatório honesta e
   reduz contexto de IA (só tiles conhecidos entram no prompt).
-- Novo: o clima deve ser **escolhido pelo jogador na criação do mundo** (estável/sazonal/instável),
-  ou é sempre decidido pela personalidade da Entropia (ver 08-entropia-e-eventos.md)?
-  Recomendação: ligar os dois. A personalidade da Entropia define o padrão e o jogador pode
-  sobrescrever na criação, porque clima instável muda muito o estilo de jogo e deve ser consentido.
-- Novo: o mapa pode ter **mudanças permanentes de relevo** (vulcão cria montanha, mar sobe)?
-  Recomendação: sim, mas raras (no máximo 1 por era no mundo, via template aprovado), pois dão
-  memória e drama ao mapa sem arriscar invalidar cidades de forma injusta.
+- Novo: magia emergente (00-visao.md) tem expressão no mapa (locais, recursos ou anomalias)?
+  Tratar junto com 05, 06 e 08.

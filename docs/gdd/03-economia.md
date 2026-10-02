@@ -1,7 +1,11 @@
 # 03 — Economia
 
 ## Decidido
-- (nada ainda)
+- **Moeda e escambo**: riqueza é a moeda, e contratos podem ser **pacotes mistos livres** — bens e
+  riqueza dos dois lados (ex.: 2 metal + 3 riqueza por 5 comida). O motor valida cada item; o Ledger
+  registra o valor de referência em riqueza para comparação. Decidido em 2026-10-01.
+- **Depósitos estratégicos finitos com renovação lenta por era** (ver 02-mapa-e-tiles.md §5).
+  Decidido em 2026-10-01.
 
 ## Proposta
 
@@ -65,7 +69,8 @@
   por turno, limitado ao estoque. Construções avançadas gastam metal ao iniciar ou reparar; uma
   unidade militar equipada pode requerer 1 de metal por turno de reposição, conforme seu template.
   **Valores iniciais, sujeitos a balanceamento.** A população não precisa de metal para comer.
-- Um depósito esgotado permanece como lugar histórico. Técnicas futuras podem ampliar a extração
+- Um depósito esgotado permanece como lugar histórico; novos depósitos ocultos surgem lentamente a
+  cada era (02-mapa-e-tiles.md §5). Técnicas futuras podem ampliar a extração
   útil do estoque remanescente ou permitir substitutos definidos em catálogo, mas não recriam
   unidades gratuitamente (ver [05-tecnologia.md](05-tecnologia.md)).
 - Propor **luxo** como categoria de bens com origem identificável, por exemplo especiarias de um
@@ -82,16 +87,19 @@
 
 ### Contratos de comércio e Ledger de Relações
 
-- Comércio entre civilizações usa contratos bilaterais de duração curta: origem, destino, bem
-  (comida, metal ou luxo), quantidade por turno, preço em riqueza, duração e rota válida. Oferta
+- Comércio entre civilizações usa contratos bilaterais de duração curta: origem, destino, **itens de
+  cada lado** (comida, metal, luxo e/ou riqueza, por turno), duração e rota válida. Um contrato pode
+  ser venda (bem por riqueza), escambo (bem por bem) ou pacote misto. Para comparar ofertas, o motor
+  calcula um **valor de referência em riqueza** pela faixa de preço do catálogo. Oferta
   só vira contrato após aceitação; capacidade de transporte por rota = 3 unidades por turno.
   Duração proposta: 3 turnos, renovável explicitamente. **Valores iniciais, sujeitos a
   balanceamento.** Bens e riqueza mudam de dono, sem criar rendimento líquido por negociação.
 - Na liquidação, o motor reserva comida suficiente para a demanda local do exportador; metal
-  comprometido com reparos obrigatórios também fica reservado. Entrega = `min(quantidade
-  contratada, capacidade livre da rota, estoque exportável, piso(riqueza disponível do comprador /
-  preço unitário))`. Preço unitário é inteiro positivo; pagamento = `entrega × preço unitário`.
-  Faltas não geram bens ou moeda negativos.
+  comprometido com reparos obrigatórios também fica reservado. Para cada item, entrega =
+  `min(quantidade contratada, capacidade livre da rota, estoque disponível de quem entrega)`; a
+  capacidade da rota conta só bens, não riqueza. Em pacote misto, se um lado entregar menos, o outro
+  entrega na mesma proporção (arredondamento para baixo, inteiro). Faltas não geram bens ou moeda
+  negativos. Fórmula exata de proporção fica para o SDD.
 - Se comprador não puder pagar, a parte não entregue conta como inadimplência dele; se vendedor
   não tiver estoque exportável ou rota funcional, conta como inadimplência dele. Interrupção
   externa validada é registrada separadamente. Duas inadimplências da mesma parte encerram o
@@ -166,15 +174,7 @@
   sem nova chamada à IA; mesmo estado, comandos e seed produzem o mesmo saldo e hash.
 
 ## Perguntas abertas
-- Moeda única ou trocas por recursos?
-  - **Recomendação:** usar riqueza como moeda única de liquidação, com preço inteiro e transferência
-    bilateral; manter ajuda de preço zero como contrato separado. Isso torna custos e Ledger
-    compreensíveis no celular. Troca direta pode esperar até haver necessidade jogável clara.
 - Como evitar que a economia "exploda" num jogo infinito (inflação de rendimentos, teto, manutenção crescente)?
   - **Recomendação:** testar em simulações longas limites por hexágono e estoque, manutenção por
     cidade/melhoria/rota e ausência de multiplicadores de era. Ajustar faixas pelos saldos por
     população e tempo de recuperação, sem escalonar custos só porque o turno avançou.
-- Recursos estratégicos devem ser depósitos finitos em todo o mundo ou admitir reposição lenta?
-  - **Recomendação:** começar com metal finito e substitutos tecnológicos limitados; preserva
-    decisões de reserva e comércio. Confirmar após simulações de muitas eras se a escassez
-    terminal bloqueia renascimentos de modo repetitivo.
