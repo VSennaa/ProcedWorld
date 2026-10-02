@@ -5,6 +5,13 @@
 - Mundo persistente num servidor autoritativo (ADR-0001); alvo principal é o celular.
 - Civilizações de jogadores e bots convivem; Governadores agem pelos jogadores (ADR-0002).
 - A Entropia gera eventos procedurais; a diplomacia entre bots precisa ser coerente.
+- **Tamanho do mundo**: 4–8 civilizações no MVP; teto de 8 na 1.0. **Uma civilização por jogador** em
+  cada mundo (decidido em 2026-10-01).
+- **Tom**: história alternativa de baixa fantasia. **Magia pode surgir naturalmente** no mundo, quando
+  a Entropia decidir: pode ser oculta ou intrínseca a uma sociedade, e pode ser *hard magic* (regras
+  explícitas) ou *soft magic* (misteriosa) no plano narrativo; o sistema pode se basear em algum
+  sistema de magia livre. O impacto no mundo vem da **reação das nações** — aderir, proibir,
+  regulamentar —, e tudo tem consequência mecânica no jogo (decidido em 2026-10-01).
 
 ## Proposta
 
@@ -160,15 +167,5 @@
 
 ## Perguntas abertas
 
-- Quantas civilizações por mundo (alvo para MVP e para 1.0)?
-  - **Recomendação:** testar um mundo pequeno de 4–8 civilizações no MVP e manter 8 como teto inicial
-    de 1.0; isso cria relações suficientes para diplomacia emergente sem sobrecarregar turnos,
-    interface móvel e custo de simulação. Valor inicial sujeito a teste de desempenho e leitura.
-- O jogador controla uma única civilização por mundo, ou pode ter várias?
-  - **Recomendação:** uma civilização jogável por jogador em cada mundo; sucessão por colapso continua
-    dentro da mesma identidade de jogador. Várias civilizações aumentariam microgestão e confundiriam
-    o vínculo emocional com a crônica antes de validar o loop central.
-- Tom e estética: histórico-realista, fantasia ou alternativo?
-  - **Recomendação:** começar com história alternativa de baixa fantasia, sem magia explícita: sustenta
-    eventos procedurais e variedade cultural sem exigir cânone histórico ou catálogo de feitiços. É uma
-    direção de protótipo para validar, não uma decisão estética final.
+- Qual sistema de magia livre usar como base, e como a magia entra no motor (template da Entropia,
+  recurso, tecnologia, instituição)? Tratar nos pilares 05, 06 e 08.

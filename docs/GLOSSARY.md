@@ -3,7 +3,9 @@
 | Termo | Definição |
 |---|---|
 | **Civilização** | Sociedade controlada por um jogador ou bot; unidade principal de estado do jogo. |
-| **Turno** | Unidade atômica da simulação. Todos jogam o mesmo turno simultaneamente (ADR-0003). |
+| **Turno** | A jogada: unidade atômica da simulação. Todos jogam o mesmo turno; avança quando todos os humanos presentes jogaram, sem relógio (ADR-0003, ADR-0008). |
+| **Presente / ausente** | Humano conectado ao mundo naquele turno / não conectado. Pelo ausente, o Governador joga na hora (ADR-0008). |
+| **Magia** | Fenômeno que pode surgir naturalmente no mundo, decidido pela Entropia, oculto ou intrínseco a sociedades; as nações reagem (aderir, proibir, regulamentar), com consequências (pilar 00). |
 | **Fase de resolução** | Parte do turno após as ações: produção, crescimento, Entropia, consolidação. |
 | **Era** | Agrupamento de turnos com consolidação de memória e mudança da curva da Entropia. |
 | **Ciclo infinito** | Não há vitória obrigatória; civilizações ascendem, colapsam e renascem. |

@@ -98,7 +98,8 @@
   uma **proposta**, sujeita à definição dos estados diplomáticos e do ciclo (ver
   [07-diplomacia.md](07-diplomacia.md) e [10-ciclo-infinito-e-eras.md](10-ciclo-infinito-e-eras.md)).
 - Para cada escopo, há apenas dois modos: “agir dentro dos limites” ou “propor e aguardar”. O segundo
-  mantém a intenção no painel até o prazo do turno; se expirar, o fallback é não agir, exceto por
+  mantém a intenção no painel até o jogador responder; se o turno avançar com ele ausente (ADR-0008),
+  o fallback é não agir, exceto por
   defesa automática que uma regra de sobrevivência já permita. O jogador decide entre continuidade
   e controle sem precisar configurar exceções em cascata.
 

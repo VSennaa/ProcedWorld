@@ -1,6 +1,6 @@
 # ADR-0002 — Governador é um bot do jogo, executado no servidor
 
-- **Status**: Aceito (sub-decisão sobre chaves: Proposto)
+- **Status**: Aceito (sub-decisão sobre chaves: Proposto); quando o Governador joga: ver ADR-0008
 - **Data**: 2026-10-01
 - **Decisores**: usuário
 

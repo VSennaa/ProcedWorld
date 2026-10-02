@@ -2,14 +2,20 @@
 
 ## Decidido
 - Turnos simultâneos; ações aplicadas sequencialmente na ordem aceita pelo servidor (ADR-0003).
-- O turno fecha quando todos estão prontos ou o tempo expira; quem não agiu é jogado pelo Governador.
+- **Sem relógio** (ADR-0008): o jogo não é em tempo real; o turno é a jogada. O turno avança quando
+  todos os humanos **presentes** jogaram. Para o humano **ausente**, o Governador joga na hora.
+- **Combate em fase própria** (aprovado em 2026-10-01): declarar ataque reserva a unidade e o custo; o
+  dano é calculado depois, com perdas simultâneas por confronto.
+- **Ordem de bots e Governadores** (decidido em 2026-10-01): definida pela **seed do mundo**, fixada no
+  início da partida, que determina a ordem e o momento de envio de cada civilização automatizada, com
+  rotação entre turnos. Reprodutível e sem prioridade fixa para ninguém.
 - Fase de resolução depois das ações: produção, crescimento, Entropia, consolidação de memória.
 
 ## Proposta
 
 ### Três ritmos, uma escolha recorrente
 
-- **Turno, loop curto:** ler mudança, causa e prazo no relatório; escolher uma resposta à maior
+- **Turno, loop curto:** ler mudança, causa e o que vence em quantos turnos; escolher uma resposta à maior
   pressão; ajustar uma prioridade de cidade ou ordem de unidade; responder a uma oferta; tocar em
   **Pronto**. Proteger abastecimento pode adiar uma obra ou deixar a fronteira exposta. O jogador
   decide qual compromisso aceita, não precisa distribuir cada unidade todo turno.
@@ -20,41 +26,38 @@
 - **Ciclo, loop longo:** atravessar ascensão, auge, crise, possível colapso e renascimento.
   Preservar uma instituição, comunidade ou tratado importa mais que acumular pontos. No colapso,
   o jogador escolhe uma comunidade sucessora; a Crônica guarda causas e legado.
-- A primeira tela da sessão mostra **mudança → causa → prazo → até três respostas**. Cada resposta
+- A primeira tela da sessão mostra **mudança → causa → em quantos turnos vence → até três respostas**. Cada resposta
   mostra custo imediato, risco e efeito esperado em coesão ou pressão. Mapa e Ledger ficam a um
   toque. Meta de sessão de 2–8 minutos e até oito toques por decisão crítica: valores iniciais,
   sujeitos a balanceamento com [11-experiencia-mobile.md](11-experiencia-mobile.md).
 
-### Relógio do mundo e prontidão
+### Presença e prontidão
 
-- Cada mundo recebe duração de turno na criação. Padrão proposto de **12 horas corridas**, com
-  opções de 6 e 24 horas: valores iniciais, sujeitos a balanceamento. O prazo é visível no cliente
-  e não muda silenciosamente durante uma era.
-- O servidor abre o turno com estado publicado e prazo. Relógio e rede ficam fora do `step`:
-  `AbrirTurno`, comandos aceitos e `FecharTurno` entram no log. O `step` recebe a sequência, seed e
-  versões de catálogo; não consulta a hora nem chama IA, conforme ADR-0006.
+- Não existe prazo em tempo real. O servidor abre o turno com o estado publicado e espera apenas os
+  humanos **presentes** (com sessão ativa no mundo). `AbrirTurno`, comandos aceitos e `FecharTurno`
+  entram no log; o `step` recebe a sequência, a seed e as versões de catálogo, sem consultar hora nem
+  chamar IA (ADR-0006).
 - O jogador pode confirmar um lote de ordens em poucos toques. O servidor valida cada comando e
-  grava sua sequência de aceitação; o lote não recebe prioridade especial. Ordens rejeitadas mostram
+  grava a sequência de aceitação; o lote não recebe prioridade especial. Ordens rejeitadas mostram o
   motivo antes de Pronto e não cobram custo.
-- **Pronto** encerra a edição do jogador naquele turno. Ele pode desfazer Pronto antes do fechamento,
-  mas comandos já aceitos permanecem; novas ordens entram no fim do log. Quando todos os humanos
-  estão Prontos e os bots terminaram o envio, o turno fecha. Quem deseja não intervir envia
-  **Manter plano** como comando explícito; sem comando válido, o Governador joga no fechamento.
-- No prazo, o servidor encerra entrada humana, completa civilizações ausentes e fecha o turno.
-  Janela técnica inicial de até 30 segundos para finalizar intenções automatizadas: valor inicial,
-  sujeito a balanceamento. Timeout de IA usa T0 sem prolongar o turno. O relatório seguinte distingue
-  ordens humanas, delegadas e automáticas.
-- Pausa é operação do mundo registrada no log. Proposta: pausa administrativa anunciada para
-  manutenção e pausa consensual em mundos privados; prazo e simulação ficam suspensos. A regra de
-  consenso permanece como decisão do dono do projeto em Perguntas abertas.
+- **Pronto** encerra a edição do jogador naquele turno. Pode ser desfeito enquanto o turno não fechou;
+  comandos já aceitos permanecem e novas ordens entram no fim do log. Quem não quer intervir envia
+  **Manter plano** como comando explícito.
+- Quando todos os humanos presentes estão Prontos e as civilizações automatizadas enviaram suas
+  intenções, o turno fecha. Humano ausente não é esperado: o Governador joga por ele, dentro do
+  Mandato. Timeout de IA usa T0 sem segurar o turno. O relatório seguinte distingue ordens humanas,
+  delegadas e automáticas.
+- Proposta para o SDD: se a conexão cair no meio do turno, comandos já aceitos valem e o jogador passa
+  a ausente; o Governador completa apenas o que faltar.
+- Prazos dentro do jogo (tratados, propostas, crises, obras) são contados **em turnos**, nunca em horas.
 
 ### Fases e ordem de resolução
 
 | Fase | Regra proposta | Decisão do jogador |
 |---|---|---|
-| 1. Abertura | Publicar estado, relatório causal, ofertas e prazo; renovar pontos de ação pelas regras. | Qual risco atender ou delegar. |
+| 1. Abertura | Publicar estado, relatório causal e ofertas; renovar pontos de ação pelas regras. | Qual risco atender ou delegar. |
 | 2. Entrada | Validar comandos humanos e intenções de bots/Governadores; aplicar ações sequenciais na ordem aceita. | Gastar capacidade em movimento, obra, política ou negociação. |
-| 3. Fechamento | Completar civs sem comando via Governador, usar T0 se preciso, gravar `FecharTurno`. | Confirmar ordens ou Manter plano antes do prazo. |
+| 3. Fechamento | Todos os humanos presentes Prontos; Governador joga pelos ausentes, T0 se preciso; gravar `FecharTurno`. | Confirmar ordens ou Manter plano e marcar Pronto. |
 | 4. Conflitos | Resolver ataques declarados e efeitos pendentes de tratados em ordem canônica. | Atacar, defender ou negociar com custo conhecido. |
 | 5. Sustento | Calcular manutenção, produção, consumo, crescimento e coesão após conflitos. | Ver se a proteção escolhida bastou. |
 | 6. Entropia | Validar evento elegível contra estado pós-sustento e orçamento de tensão; aplicar template. | Responder no turno seguinte, se houver escolha. |
@@ -106,10 +109,10 @@
 - No início do turno, bot e Governador delegado recebem o mesmo estado publicado e opções válidas.
   Suas intenções citam IDs do estado, Mandato quando houver e entradas do Ledger em diplomacia.
   O motor revalida a intenção no instante da aceitação, pois o mundo pode ter mudado.
-- Civilizações automatizadas têm janelas de envio distribuídas pela duração do turno. Ordem entre
-  elas roda por `índice = (turno + posição da civ na lista canônica) mod total de civs automatizadas`;
-  horários iniciais de 25%, 50% e 75% da janela, valores iniciais, sujeitos a balanceamento. Se a
-  prontidão geral encerrar cedo, intenções pendentes entram na ordem rotativa antes de `FecharTurno`.
+- A ordem e o momento de envio de cada civilização automatizada (bots e Governadores) são derivados
+  da **seed do mundo**, fixada no início da partida, com rotação entre turnos. Exemplo de regra para o
+  SDD: uma permutação sorteada pela seed define a ordem inicial e cada turno a desloca em uma posição.
+  O motor revalida cada intenção no instante da aceitação.
 - A rotação distribui a vantagem de primeira aceitação entre bots, sem esconder a precedência de
   um humano que envia cedo. Confrontos seguem a fase própria. Métricas devem medir primeira
   aceitação, ganhos de território e rejeições por civilização para avaliar justiça do ritmo.
@@ -118,7 +121,7 @@
   acima do Mandato são bloqueados. Se o jogador deu ordens, o Governador só completa áreas
   previamente delegadas; ver [09-governador-e-mandato.md](09-governador-e-mandato.md).
 - Ausência longa não acumula ordens ou recursos sem limite. O Governador paga manutenção normal;
-  notificações agrupam crises e ofertas com prazo. No retorno, o jogador vê resumo causal desde a
+  notificações agrupam crises e ofertas que vencem em poucos turnos. No retorno, o jogador vê resumo causal desde a
   última visita e pode rever o Mandato antes do próximo fechamento. Oferta vencida segue a regra
   de validade, e aceitação delegada ainda exige permissão do Mandato e cálculo do motor.
 - Bots diplomáticos escolhem proposta e texto com fatos do Ledger. Máquina de estados, aceitação
@@ -158,15 +161,9 @@
   ou Manter plano. Só comandos convertidos pelo motor têm efeito mecânico.
 
 ## Perguntas abertas
-- Tempo padrão de turno num mundo compartilhado (minutos? horas?) e se o mundo pode pausar.
-  - **Recomendação:** testar 12 horas como padrão, com 6 ou 24 horas na criação e pausa
-    administrativa anunciada; mundos privados podem pausar por unanimidade. Há espaço para duas
-    sessões curtas por dia sem exigir presença contínua; validar com jogadores reais.
-- Quando bots e Governadores agem dentro do turno (início, fim, ordem rotativa com seed)?
-  - **Recomendação:** janelas distribuídas e ordem rotativa por turno, com revalidação no envio;
-    Governador de ausente atua no fechamento. Isso evita primeiro lugar permanente e preserva o
-    ADR-0003 sem prioridade oculta para IA.
-- Combate: resolvido na ordem de chegada ou numa fase própria de resolução?
-  - **Recomendação:** fase própria após fechamento, com custo reservado na declaração e perdas
-    calculadas simultaneamente por confronto. Há antecipação e risco sem tornar o primeiro ataque
-    aceito automaticamente vencedor.
+
+- Definição exata de "presente" e de queda de conexão no meio do turno (SDD, protocolo).
+- Como a seed posiciona os envios automatizados em relação aos humanos (antes, intercalado, depois)?
+  - **Recomendação:** a seed define, por civilização automatizada, uma posição numa sequência que
+    inclui a abertura e o fechamento do turno; validar no harness de simulação se algum bot ganha
+    disputas de forma desproporcional.

@@ -160,8 +160,9 @@ docs/
   Consequência proposta: a chave do jogador fica criptografada no servidor; sem chave ou com teto
   atingido, degrada para T0/T1.
 - **Turnos simultâneos** como no multiplayer do *Civilization* (ADR-0003): todos jogam o mesmo turno;
-  ações aplicadas sequencialmente na ordem aceita pelo servidor (gravada no log); o turno fecha quando
-  todos estão prontos ou o tempo acaba.
+  ações aplicadas sequencialmente na ordem aceita pelo servidor (gravada no log).
+- **Turno sem relógio** (ADR-0008): o jogo não é em tempo real. O turno avança quando todos os humanos
+  presentes jogaram; para o ausente, o Governador joga na hora. Prazos do jogo contam turnos, nunca horas.
 - **Grid hexagonal** (ADR-0004), coordenadas axiais/cúbicas.
 - **Jev → Laya no servidor** (ADR-0005), atrás de `DecisionPort`. O host de referência não tem GPU:
   Laya local nele provavelmente é inviável; decidir com spike medido.

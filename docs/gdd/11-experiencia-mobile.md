@@ -49,8 +49,9 @@
   guiará as ausências. A escolha é interessante porque delegar reduz atrito agora, mas uma prioridade
   mal configurada pode preservar uma área às custas de outra em uma crise futura (ver
   [09-governador-e-mandato.md](09-governador-e-mandato.md)).
-- Turnos simultâneos não exigem permanecer conectado: a pauta explica o prazo e permite marcar
-  “pronto”. Ao expirar o turno, o Governador trata apenas as áreas delegadas; a ordem de resolução
+- Turnos simultâneos não exigem permanecer conectado: não há relógio (ADR-0008); a pauta mostra o que
+  vence em quantos turnos e permite marcar “pronto”. Se o jogador sair, o Governador joga por ele nos
+  turnos seguintes dentro do Mandato; a ordem de resolução
   permanece responsabilidade do servidor (ver [01-loop-e-turnos.md](01-loop-e-turnos.md)).
 
 ### Telas e navegação
@@ -192,7 +193,7 @@
 
 ### Notificações, acessibilidade e métricas
 
-- Notificações só convocam o jogador para prazo de turno com escolha crítica, proposta diplomática
+- Notificações só convocam o jogador para escolha crítica que vence em poucos turnos, proposta diplomática
   que expira, gatilho de Mandato que pede intervenção ou crise iminente. Produção rotineira, relatos
   narrativos e ações delegadas bem-sucedidas ficam no relatório ao abrir o jogo.
 - Cada notificação começa pela consequência (“fronteira pode se separar em um turno”), seguida da
