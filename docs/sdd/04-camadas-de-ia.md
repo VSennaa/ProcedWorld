@@ -1,7 +1,7 @@
 # SDD 04 — Camadas de IA e portas
 
-> **Status:** Proposta — depende da aprovação do GDD e deste SDD. O ADR-0007 (stack) também está
-> proposto; por isso, contratos e invariantes abaixo não dependem de linguagem, banco ou provedor.
+> **Status:** Proposta para revisão do SDD. GDD aprovado em 2026-10-01; ADR-0007 aceito.
+> Contratos e invariantes abaixo não dependem de provedor.
 >
 > **Relacionados:** ADR-0002, ADR-0005 e ADR-0006; GDD 07 (Diplomacia), 08 (Entropia e eventos) e
 > 09 (Governador e Mandato).
@@ -136,7 +136,7 @@ continua sujeita a todos os validadores.
 
 `MemoryPort` armazena contexto derivado, não autoridade. Suas camadas propostas são `working`,
 `episodic`, `semantic` e `procedural`; documentos canônicos regeneráveis continuam sendo a referência
-para Mandato, Resumo do Estado, Ledger, Crônica e Doutrina. Se ADR-0007 for aceito, Markdown poderá
+para Mandato, Resumo do Estado, Ledger, Crônica e Doutrina. Com ADR-0007 aceito, Markdown poderá
 ser a fonte canônica desses documentos e SQLite/FTS5 um índice derivado; isto não é requisito do
 contrato.
 
@@ -222,7 +222,7 @@ Invariantes:
 - o modelo/configuração pode mudar entre invocações, mas nunca muda a interpretação de uma resposta
   já registrada.
 
-Se ADR-0007 for aceito, esses registros podem ser persistidos em PostgreSQL e corpos de fixtures em
+Esses registros podem ser persistidos em PostgreSQL e corpos de fixtures em
 artefatos/armazenamento apropriado. A escolha de tabelas, índices e retenção ainda é proposta.
 
 ## Falhas, fallback e determinismo
@@ -259,8 +259,8 @@ narrativa T2. Ao faltar qualquer orçamento, a chamada não é iniciada e T0 é 
 prefixo estável e documentos por hash para favorecer cache do provedor, sem depender dele para
 correção. Métricas devem separar tokens estimados de tokens/custo confirmados pelo provedor.
 
-O teto do modelo de decisão ainda depende da pergunta aberta do ADR-0002: chave do operador ou do
-jogador. A atribuição de custo deve permanecer explícita em `provider_config_id` sem conter segredo.
+ A chave do modelo de decisão é do operador (decidido em 2026-10-01, ADR-0002). A atribuição de
+custo deve permanecer explícita em `provider_config_id` sem conter segredo.
 
 ## Configuração e troca Jev → Laya
 
@@ -274,9 +274,9 @@ decision.question_set_version = "v1"
 
 O adaptador traduz somente o contrato comum. Perguntas, escalas, opções e calibração são dados
 versionados; uma migração exige fixtures e nova calibração antes de probabilidades influenciarem ações
-relevantes. A hospedagem de Laya não é decidida: o host de referência não tem GPU e ADR-0005 exige
-spike medido antes da migração. Se ADR-0007 for aceito, variáveis de ambiente/configuração podem
-fornecer essa seleção; o contrato não exige Rust, Godot ou Runware.
+relevantes. Laya só será adotado ao final do projeto (decidido em 2026-10-01, ADR-0005); sua
+hospedagem permanece sujeita ao spike medido previsto no ADR-0005. Variáveis de ambiente/configuração
+fornecem a seleção do adaptador.
 
 ## Estratégia de testes
 
@@ -297,9 +297,6 @@ fornecer essa seleção; o contrato não exige Rust, Godot ou Runware.
 
 ## Perguntas abertas para o usuário
 
-1. Quem paga e fornece a chave T1 durante Jev e depois Laya: operador, jogador, ou modelo híbrido?
-   **Recomendação:** definir operador para T1 no alfa, com teto global e por civilização; manter T2
-   BYOK para que a experiência não transfira custo narrativo ao operador sem controle.
 2. Qual é a política de retenção e visibilidade do texto livre de jogador nas respostas gravadas?
    **Recomendação:** gravar no replay apenas a intenção normalizada e hashes; guardar texto bruto em
    armazenamento separado, protegido e com retenção curta somente se for indispensável a suporte.

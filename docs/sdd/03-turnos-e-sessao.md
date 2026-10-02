@@ -1,8 +1,6 @@
 # SDD 03 — Turnos e sessão
 
-> **Status: proposta.** Este desenho depende do GDD ainda não aprovado formalmente.
-> Contratos e invariantes são independentes de stack; detalhes de implementação só valem se
-> o ADR-0007 for aceito.
+> **Status: proposta para revisão do SDD.** GDD aprovado em 2026-10-01 e ADR-0007 aceito.
 
 ## Escopo e fronteiras
 
@@ -28,6 +26,8 @@ agenda, valida o envelope e grava o resultado aceito ou seu fallback.
   turnos (GDD 01).
 - Ataques reservam unidade e custo na entrada; dano e perdas simultâneas são resolvidos depois,
   em fase própria (GDD 01).
+- Janela técnica de reconexão de 60 s; a lista de humanos presentes é registrada na abertura do
+  turno. A janela não é relógio de jogo (decidido em 2026-10-01).
 
 ## Conceitos e ciclo de vida da sessão
 
@@ -49,8 +49,8 @@ tem `session_id` aleatório, `player_id`, `world_id`, `civilization_id`, `opened
 - **Sem sessão ao abrir**: o humano é ausente desde a abertura e o Governador é escalonado de
   imediato. Não se espera reconexão para fechar o turno.
 
-A duração concreta da janela de reconexão, formato do batimento e política para múltiplos
-dispositivos continuam abertos. Eles são metadados operacionais, nunca entradas de `step`.
+O formato do batimento e a política para múltiplos dispositivos continuam abertos. São metadados
+operacionais, nunca entradas de `step`.
 
 ### Estados do turno
 
@@ -154,8 +154,8 @@ mudanças de `Pronto`, intenção/fallback automatizado, `CloseTurn`, resultado 
 versão da política/fallback, referência a fixture quando houver, justificativas estruturadas e o
 comando final; texto narrativo é referência separada e não comando.
 
-Se ADR-0007 for aceito, `TurnRecord` e o log podem ser persistidos no PostgreSQL, e conexões em
-um serviço Rust. A transação que atribui `sequence` deve serializar concorrência por `world_id`.
+`TurnRecord` e o log serão persistidos no PostgreSQL, e conexões atendidas por serviço Rust. A
+transação que atribui `sequence` deve serializar concorrência por `world_id`.
 Isso não altera o contrato: outro armazenamento precisa preservar a mesma ordem observável.
 
 ## Invariantes verificáveis
@@ -239,23 +239,20 @@ de prompt permanece estável para cache quando houver chamada, conforme a consti
 - **Concorrência:** testar múltiplos pedidos concorrentes e reenvios com o mesmo `command_id`;
   provar uma única `sequence` e um único efeito.
 
-Se ADR-0007 for aceito, incluir teste de integração contra a transação de persistência escolhida,
+Incluir teste de integração contra a transação PostgreSQL escolhida,
 mas manter os testes de domínio independentes de PostgreSQL, Rust e Godot.
 
 ## Perguntas abertas para o usuário
 
-1. Qual duração e qual sinal encerram a janela de reconexão antes de declarar ausência?
-   **Recomendação:** 30 segundos após perda de batimento, com reconexão explícita; é curto sem
-   transformar o turno em prazo de jogo.
-2. Um jogador com dois dispositivos pode manter ambos ativos no mesmo mundo?
+1. Um jogador com dois dispositivos pode manter ambos ativos no mesmo mundo?
    **Recomendação:** um dispositivo controlador por civilização; o segundo é leitura até assumir
    explicitamente, evitando dois votos e comandos concorrentes acidentais.
-3. Uma sessão aberta mas ociosa deve contar como presente indefinidamente?
+2. Uma sessão aberta mas ociosa deve contar como presente indefinidamente?
    **Recomendação:** não; exigir batimento válido e usar a mesma janela de reconexão para que uma
    aba abandonada não congele os demais presentes.
-4. O limite proposto de 2 s de CPU por resolução é adequado ao tamanho inicial do mundo?
+3. O limite proposto de 2 s de CPU por resolução é adequado ao tamanho inicial do mundo?
    **Recomendação:** adotá-lo apenas como gate de benchmark e calibrar com o harness antes da Fase 2.
-5. O Governador ausente deve poder aceitar ações reversíveis de diplomacia já autorizadas pelo
+4. O Governador ausente deve poder aceitar ações reversíveis de diplomacia já autorizadas pelo
    Mandato, além de `MaintainPlan`?
    **Recomendação:** sim, se o motor as classificar explicitamente como reversíveis e dentro do
    Mandato; manter qualquer efeito irreversível suspenso como já decidido.

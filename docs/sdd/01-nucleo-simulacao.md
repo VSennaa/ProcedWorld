@@ -1,7 +1,7 @@
 # SDD 01 — Núcleo de simulação
 
-> **Status: proposta.** O GDD ainda não foi aprovado formalmente e o ADR-0007 (stack) está
-> Proposto. Este desenho prioriza contratos e invariantes independentes de tecnologia. Valores
+> **Status: proposta.** GDD aprovado em 2026-10-01; ADR-0007 aceito. Este desenho prioriza
+> contratos e invariantes. Valores
 > numéricos e escolhas aqui marcados como proposta dependem de revisão.
 
 ## 1. Objetivo e fronteiras
@@ -39,7 +39,7 @@ consulta sessões. Bots e Governadores são ordenados pela seed do mundo com rot
 
 ```text
 WorldId, EntityId, PlayerId      // IDs estáveis, sem semântica de ordenação implícita
-TurnNumber: UInt64
+TurnNumber: UInt64 // começa em 0 (decidido em 2026-10-01)
 Fixed: Int64 + escala declarada   // ponto fixo; overflow é erro determinístico
 CatalogRef: (catalog_id, version, content_hash)
 PrngRef: (algorithm_id, algorithm_version, seed, stream_id)
@@ -201,7 +201,7 @@ entity/purpose`) para que consumo adicional numa fase não altere sorteios alhei
 serialização do estado interno fazem parte do contrato e dos golden tests. Não depender de RNG da
 linguagem, sistema operacional, relógio ou ordenação de coleções.
 
-Se ADR-0007 for aceito e Rust permanecer na stack, a implementação poderá escolher crate/algoritmo
+Com ADR-0007 aceito, a implementação Rust poderá escolher crate/algoritmo
 concreto; algoritmo, versão e vetores de compatibilidade devem continuar explícitos no formato salvo.
 Trocar algoritmo exige nova versão e compatibilidade de replay ou migração deliberada. Um comando de
 Entropia gravado contém template e parâmetros finais: replay aplica essa escolha, sem pedir nova
@@ -235,11 +235,10 @@ incompatível, catálogo ausente ou versão desconhecida abortam o turno sem est
 reparo operacional. Falha de provedor usa T0 e grava decisão; falha de persistência não publica estado
 novo. Reexecução idempotente usa IDs de comando e hash do turno para não duplicar efeitos.
 
-Snapshots periódicos armazenam estado canônico, refs/versões, PRNG e hash. Recuperação carrega snapshot,
-verifica hash e reaplica comandos posteriores. Proposta: snapshot completo a cada 20 turnos e também
-em marcos administrativos; intervalo sujeito a medir e versionar. Snapshot é acelerador, não fonte
-alternativa da verdade ao log. PostgreSQL só se aplica se ADR-0007 for aceito; contrato lógico é
-independente do backend.
+Snapshots armazenam estado canônico, refs/versões, PRNG e hash. Recuperação carrega snapshot,
+verifica hash e reaplica comandos posteriores. Política versionada: no início do mundo, no fim de
+cada era e a cada 50 turnos (decidido em 2026-10-01). Snapshot é acelerador, não fonte alternativa
+da verdade ao log. PostgreSQL é a persistência relacional aceita no ADR-0007.
 
 ## 6. Catálogos e compatibilidade
 
@@ -284,20 +283,13 @@ Prompts devem manter prefixo estável. Sem chave ou serviço, T0 mantém avanço
 
 ## 9. Questões abertas
 
-1. Qual convenção de índice de turno deve ser persistida, 0-based ou 1-based? **Recomendação:**
-   iniciar em 1 para alinhar relatórios ao número visível pelo jogador.
 2. Qual algoritmo e versão de PRNG, hash canônico e derivação de streams adotar? **Recomendação:**
    escolher um algoritmo pequeno e estável com vetores públicos no spike da stack; congelar a
    versão por partida e cobrir com golden tests antes de produção.
 3. A ordem de fases proposta — especialmente diplomacia e Entropia — corresponde às dependências
    pretendidas? **Recomendação:** aprovar a ordem após cruzar os SDDs de economia, combate, diplomacia
    e Entropia; efeitos de evento só entram no turno corrente se sua fase anteceder o sistema afetado.
-4. Como definir “humano presente” quando a conexão cai no meio do turno? **Recomendação:** sessão
-   ativa no mundo no instante em que o turno abre; registrar a lista de participantes esperados no
-   evento de abertura e encaminhar ausentes ao Governador.
-5. Qual intervalo de snapshot e limite de memória são adequados à escala de cidades sem teto rígido?
-   **Recomendação:** começar com snapshot a cada 20 turnos e medir estado real no harness.
-6. Como reter ou redigir texto humano e payloads externos no log sem perder replay/auditoria?
+4. Como reter ou redigir texto humano e payloads externos no log sem perder replay/auditoria?
    **Recomendação:** persistir representação mecânica, hash e metadados necessários; definir retenção
    do texto no SDD de segurança antes de multiplayer público.
 
@@ -306,4 +298,4 @@ Prompts devem manter prefixo estável. Sem chave ou serviço, T0 mantém avanço
 - ADR-0003: turnos simultâneos e ordem sequencial de ações aceita.
 - ADR-0006: motor puro determinístico, event sourcing, snapshots, hash e IA como proponente.
 - ADR-0008: sem relógio de turno; avanço por prontidão dos humanos presentes e Governador para ausentes.
-- ADR-0007: stack Proposta; detalhes de implementação condicionados à aceitação.
+- ADR-0007: stack aceita; Rust, Godot 4 e PostgreSQL.

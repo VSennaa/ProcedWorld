@@ -1,6 +1,6 @@
 # SDD 07 — Diplomacia
 
-> **Status:** Proposta para revisão após a aprovação do GDD. Contratos e invariantes prevalecem sobre detalhes de implementação. ADR-0007 continua **Proposto**; Rust, Godot e PostgreSQL não são normativos aqui.
+> **Status:** Proposta para revisão após aprovação do GDD. ADR-0007 aceito; Rust, Godot e PostgreSQL são a stack normativa.
 
 ## Objetivo e fronteiras
 
@@ -29,7 +29,7 @@ Esta tabela é proposta de catálogo inicial. Cada aresta precisa declarar pré-
 
 ## Contratos e interfaces
 
-Os esquemas são independentes de linguagem. Se ADR-0007 for aceito, podem virar estruturas Rust/JSON Schema e persistência PostgreSQL, sem mudar semântica.
+Os esquemas são independentes de linguagem e serão implementados em Rust/JSON Schema com persistência PostgreSQL, sem mudar semântica.
 
 ```text
 Proposal {
@@ -164,4 +164,4 @@ Milissegundos, tokens e moeda dependem de provedor e de ADR-0007; devem ser conf
 
 - ADR-0005 — `DecisionPort`, modelo no servidor e resposta gravada.
 - ADR-0006 — motor determinístico, event sourcing e IA que só propõe.
-- ADR-0007 — stack (proposto; sem dependência obrigatória neste SDD).
+- ADR-0007 — stack aceita.

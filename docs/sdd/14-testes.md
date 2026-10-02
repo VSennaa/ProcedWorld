@@ -2,7 +2,7 @@
 
 > **Status:** Proposta. Depende da aprovação do GDD e da ratificação do ADR-0007.
 > Este documento define contratos e evidências independentes de stack. Onde houver exemplo
-> de Rust, Godot, PostgreSQL ou GitHub Actions, leia-se: **se ADR-0007 for aceito**.
+> de Rust, Godot, PostgreSQL ou GitHub Actions, conforme stack aceita no ADR-0007.
 
 ## Objetivo
 
@@ -167,7 +167,7 @@ máquinas de referência e ratificados antes de virar gate vermelho.
 | IA | tokens de entrada/saída, chamadas, custo estimado | sem chamada real em CI; excesso é aviso até teto aprovado |
 | Fixture | tamanho e tempo de replay | vermelho se exigir rede ou expor dado proibido |
 
-Se ADR-0007 for aceito, a CI pode registrar plataforma, duração e memória do binário Rust; GitHub
+A CI pode registrar plataforma, duração e memória do binário Rust; GitHub
 Actions é apenas um executor possível. O contrato permanece ser capaz de comparar ao menos duas
 arquiteturas suportadas (proposta: x86_64 e ARM) antes da fase que exige a garantia entre máquinas.
 

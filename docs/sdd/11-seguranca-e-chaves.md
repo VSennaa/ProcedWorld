@@ -1,7 +1,7 @@
 # 11 — Segurança e chaves (BYOK)
 
-> **Status: proposta.** Este documento detalha a sub-decisão proposta do ADR-0002.
-> O GDD ainda aguarda aprovação e o ADR-0007 também é proposto. Contratos e
+> **Status: proposta para revisão do SDD.** Este documento detalha as decisões do ADR-0002.
+> GDD aprovado em 2026-10-01 e ADR-0007 aceito. Contratos e
 > invariantes abaixo não dependem de linguagem, banco ou provedor.
 
 ## Contexto e objetivos
@@ -9,7 +9,7 @@
 O jogador pode fornecer uma API key para habilitar narrativa, planejamento e
 negociação em linguagem natural (T2). A chave é opcional: sem ela, ou quando
 ela não puder ser usada, a civilização continua com T0 determinístico. T1 é
-separado porque a titularidade da chave do Jev/Runware ainda não foi decidida.
+separado: a chave T1 de Jev/Runware é do operador (decidido em 2026-10-01).
 
 O subsistema protege segredos de jogadores, limita o gasto atribuível a cada
 jogador e permite que ele revogue seu acesso. Ele preserva a auditabilidade do
@@ -40,8 +40,8 @@ jogo sem colocar segredos, texto livre ou I/O no motor determinístico.
   `A`; esses valores pertencem à Diplomacia e ao motor.
 - Ser a fonte de verdade do estado, do log de comandos, de snapshots ou da
   identidade/autenticação de conta. Pode referenciá-los por IDs opacos.
-- Escolher provedor, preço, moeda ou a chave que financia T1; essas são
-  configurações/políticas sujeitas às perguntas abertas.
+- Escolher provedor, preço ou moeda; essas configurações permanecem abertas. A chave que financia
+  T1 pertence ao operador.
 
 ## Ameaças e mitigação
 
@@ -158,7 +158,7 @@ Metadados necessários para decifrar são autenticados junto ao cifrado, incluin
 `key_id`, `player_id`, `provider_id` e `algorithm_version`, para impedir troca
 entre registros.
 
-Se ADR-0007 for aceito, `KeyEnvelope`, `DailyUsage` e `UsageReservation` podem
+`KeyEnvelope`, `DailyUsage` e `UsageReservation` podem
 ser tabelas PostgreSQL com controle transacional de versão; a chave-mestra deve
 continuar fora do PostgreSQL. A escolha de biblioteca criptográfica, cofre de
 segredos e mecanismo de lock fica para ADR específico ou implementação aprovada.

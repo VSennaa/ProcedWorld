@@ -1,8 +1,8 @@
 # SDD 18 — Linguagem de catálogos e templates
 
-> **Status: proposta.** O GDD ainda aguarda aprovação formal e o ADR-0007 (stack)
-> está Proposto. Este documento descreve contratos e invariantes independentes de stack;
-> detalhes de implementação Rust, Godot ou PostgreSQL só se aplicam se ADR-0007 for aceito.
+> **Status: proposta para revisão do SDD.** GDD aprovado em 2026-10-01 e ADR-0007 aceito.
+> Este documento descreve contratos e invariantes;
+> detalhes de implementação seguem Rust, Godot e PostgreSQL conforme ADR-0007 aceito.
 
 ## 1. Objetivo e escopo
 
@@ -205,7 +205,7 @@ interfaces não recebem filesystem, socket, relógio, logger com efeitos laterai
 banco. Efeitos são valores de retorno, nunca chamadas a serviços. Uma auditoria de dependências
 deve provar que o módulo de avaliação não tem dependência transitiva de I/O ou execução dinâmica.
 
-Se ADR-0007 for aceito, o núcleo poderá ser implementado em Rust com tipos enum fechados e
+O núcleo será implementado em Rust com tipos enum fechados e
 `Result`; serialização/parse ocorre fora de `step`. O motor não serializa texto de catálogo
 dentro de `step`, e o cliente Godot recebe apenas DTOs aprovados para apresentação. PostgreSQL,
 se usado conforme ADR-0007, persiste manifestos, conteúdo versionado e hashes fora da avaliação.
@@ -296,7 +296,7 @@ chama provedores reais.
 - Teste arquitetural verifica dependências e símbolos do interpretador para bloquear eval,
   carregadores dinâmicos, acesso a relógio, rede, arquivos ou banco no módulo puro.
 
-Se ADR-0007 for aceito, estes testes podem rodar no workspace Rust e em CI; integração PostgreSQL
+Estes testes rodam no workspace Rust e em CI; integração PostgreSQL
 testa apenas publicação/leitura de conteúdo já versionado, e teste Godot valida apresentação
 dos DTOs sem reimplementar a semântica mecânica.
 
@@ -325,5 +325,5 @@ dos DTOs sem reimplementar a semântica mecânica.
 
 Este SDD detalha a lacuna apontada em `docs/sdd/REVISAO-CRUZADA.md` para DSL de catálogo.
 Relaciona-se ao ADR-0006 (aceito), aos SDDs do núcleo, Entropia, tecnologia, diplomacia e governo;
-se ADR-0007 for aceito, a implementação pode usar a stack proposta sem tornar sua escolha parte
+com ADR-0007 aceito, a implementação usa a stack decidida sem tornar sua escolha parte
 deste contrato. Tudo neste documento que não conste de decisão aceita é proposta para revisão.

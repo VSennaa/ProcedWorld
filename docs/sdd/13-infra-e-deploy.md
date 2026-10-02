@@ -1,8 +1,7 @@
 # SDD 13 — Infra e deploy
 
-> **Status: proposta.** Depende da aprovação do GDD e do ADR-0007. Contratos e
-> invariantes são independentes de stack; Docker Compose, PostgreSQL, Rust e GitHub
-> Actions aplicam-se somente **se ADR-0007 for aceito**.
+> **Status: proposta para revisão do SDD.** GDD aprovado em 2026-10-01 e ADR-0007 aceito.
+> Rust, Godot 4, PostgreSQL, Docker Compose e GitHub Actions compõem a stack decidida.
 
 ## Objetivo
 
@@ -35,7 +34,7 @@ dependências operacionais e evidências; não decide regras do jogo.
 
 ## Topologia proposta
 
-Se ADR-0007 for aceito, cada ambiente terá uma stack Docker Compose. Só o proxy fica
+Cada ambiente terá uma stack Docker Compose. Só o proxy fica
 na rede pública; servidor e banco usam rede interna. Na VPS, a stack fica em
 `/opt/stacks/procedworld/`; o clone de trabalho permanece separado em `~deploy/ProcedWorld`.
 
@@ -113,14 +112,14 @@ restore(manifest, isolated_target) -> RestoreReport
   post: sequência de log, hashes e metadados coincidem com o manifesto
 ```
 
-Promoção não constrói código no host. Se ADR-0007 for aceito, CI cria/publica a imagem;
+Promoção não constrói código no host. CI cria/publica a imagem;
 a VPS verifica digest, baixa e inicia. Build em contêiner na VPS fica apenas para
 desenvolvimento/diagnóstico, sem concorrer com a partida: o spike mostrou compilação
 apertada em 2 GB. Swap, se necessário, requer decisão explícita do usuário.
 
 ## Dados persistentes e invariantes
 
-O adaptador pode usar outro banco; se ADR-0007 for aceito, PostgreSQL guarda estes
+PostgreSQL guarda estes
 registros transacionais. Volumes e cópias externas são réplicas por `ObjectRef` e checksum.
 
 | Registro | Chave/versão | Retenção e uso |
@@ -190,7 +189,7 @@ rede nunca pode virar resultado de jogo. T0 continua sem chave, como decidido no
 
 ## CI, release e deploy
 
-Se ADR-0007 for aceito, GitHub Actions em runners limpos deve:
+GitHub Actions em runners limpos deve:
 
 1. Validar formatação, schemas, manifests e ausência de segredos conhecidos.
 2. Compilar/testar núcleo e servidor, com propriedades e fixtures sem rede.
@@ -255,6 +254,6 @@ restauram ou revertem. Nunca começam apagando volume, log ou snapshot.
 ## ADRs relacionados
 
 - ADR-0001 — servidor autoritativo (**aceito**).
-- ADR-0007 — stack tecnológica (**proposto**).
+- ADR-0007 — stack tecnológica (aceito).
 - ADR-0006 — motor determinístico e event sourcing (**aceito**; restrição aplicada sem
   reabrir suas decisões).

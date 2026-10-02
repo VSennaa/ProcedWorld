@@ -1,9 +1,7 @@
 # SDD 08 — Memória e contexto
 
-> **Status: Proposta.** O GDD ainda aguarda aprovação formal e o ADR-0007 (stack)
-> está Proposto. Este documento define contratos e invariantes independentes de
-> tecnologia; toda referência a Rust, PostgreSQL, Markdown ou SQLite/FTS5 só se
-> aplica se o ADR-0007 for aceito.
+> **Status: proposta para revisão do SDD.** GDD aprovado em 2026-10-01; ADR-0007 aceito.
+> Este documento define contratos e invariantes de memória.
 
 ## Objetivo
 
@@ -242,7 +240,7 @@ motivo de degradação, sem segredos.
 
 Não há prazo, tamanho de memória, tokens ou preço aceitos no GDD/ADR para este
 subsistema. Portanto, os valores de configuração e a janela `K` são propostas,
-não metas de produto. Se ADR-0007 for aceito, PostgreSQL pode guardar metadados e
+não metas de produto. PostgreSQL guarda metadados e
 artefatos de auditoria, enquanto Markdown como fonte legível e SQLite/FTS5 como
 índice derivado são implementações possíveis; a semântica acima permanece igual.
 
