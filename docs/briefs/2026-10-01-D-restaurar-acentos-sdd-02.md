@@ -20,3 +20,5 @@ Edite o arquivo **somente com a ferramenta de patch do Codex (apply_patch)**. N�
 
 - Arquivo permitido: apenas `docs/sdd/02-hex-e-mapa.md`. Não rode git. Não instale nada.
 - Ao terminar, responda com o resultado do check-encoding.
+
+<!-- encoding-check: quotes damaged text -->
