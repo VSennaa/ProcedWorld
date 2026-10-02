@@ -1,0 +1,11 @@
+[package]
+name = "determinism-hex"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Throwaway spike (ADR-0007): cross-machine determinism of a hex-grid toy simulation"
+
+[dependencies]
+
+[profile.release]
+debug = false

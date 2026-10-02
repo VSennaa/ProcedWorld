@@ -1,0 +1,35 @@
+# Throwaway spike (ADR-0007): same seed + same commands => same state hash on every platform.
+# Lives only on spike/** branches; never merged.
+name: spike-determinism
+
+on:
+  push:
+    branches: ["spike/**"]
+    paths: ["spikes/determinism-hex/**", ".github/workflows/spike-determinism.yml"]
+  workflow_dispatch:
+
+env:
+  # Produced on the reference VPS (Linux x86_64, musl, rustc 1.99.0) for seed 20261001, 1000 turns.
+  EXPECTED_FINAL: c14c36b8a8863813
+
+jobs:
+  hash:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: spikes/determinism-hex
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install stable --profile minimal && rustc -vV
+      - run: cargo test --quiet
+      - name: Run 1000 turns and compare final hash
+        run: |
+          cargo run --quiet --release -- 20261001 1000 | tee out.txt
+          final=$(grep '^FINAL' out.txt | awk '{print $2}')
+          echo "platform=${{ matrix.os }} arch=$(uname -m) final=$final expected=$EXPECTED_FINAL"
+          test "$final" = "$EXPECTED_FINAL"
