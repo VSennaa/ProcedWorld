@@ -9,9 +9,11 @@ const RADIUS := 64.0
 const ZOOM_MIN := 0.35
 const ZOOM_MAX := 1.35
 
-var map_data: Array
+var map_data: Dictionary
 var textures: Dictionary = {}
-var camera := Vector2(0, 0)
+var overlays: Dictionary = {}
+var icons: Dictionary = {}
+var camera := Vector2.ZERO
 var zoom := 0.62
 var selected := Vector2i(-1, -1)
 var dragging := false
@@ -25,16 +27,23 @@ func _ready() -> void:
 	map_data = MapGenerator.generate(MAP_WIDTH, MAP_HEIGHT, SEED)
 	for biome in MapGenerator.BIOMES:
 		textures[biome] = load("res://assets/tiles/%s-1.svg" % biome)
+	for direction in ["ne", "e", "se", "sw", "w", "nw"]:
+		overlays["rio-" + direction] = load("res://assets/tiles/overlays/rio-%s.svg" % direction)
+		overlays["fronteira-" + direction] = load("res://assets/tiles/overlays/fronteira-%s.svg" % direction)
+	overlays["remembered"] = load("res://assets/tiles/overlays/nevoa-lembrado.svg")
+	overlays["unknown"] = load("res://assets/tiles/overlays/nevoa-desconhecido.svg")
+	for resource in ["comida", "metal", "luxo", "producao"]:
+		icons[resource] = load("res://assets/icons/%s.svg" % resource)
 	info_label = Label.new()
 	info_label.position = Vector2(16, 16)
-	info_label.add_theme_font_size_override("font_size", 22)
+	info_label.add_theme_font_size_override("font_size", 20)
 	info_label.add_theme_color_override("font_color", Color("f4f0da"))
 	info_label.add_theme_color_override("font_shadow_color", Color("18212d"))
 	info_label.add_theme_constant_override("shadow_offset_x", 2)
 	info_label.add_theme_constant_override("shadow_offset_y", 2)
-	info_label.text = "Mapa 40×40 · seed %d\nArraste para mover · roda/pinça para zoom\nToque em um hexágono" % SEED
+	info_label.text = "Mapa 40×40 · seed %d · 8 civilizações\nArraste para mover · roda/pinça para zoom\nToque em um hexágono" % SEED
 	add_child(info_label)
-	camera = HexGeometry.cell_center(Vector2i(MAP_WIDTH / 2, MAP_HEIGHT / 2), RADIUS)
+	camera = HexGeometry.cell_center(map_data.capitals[0], RADIUS)
 	queue_redraw()
 
 func _draw() -> void:
@@ -47,15 +56,28 @@ func _draw() -> void:
 		for q in MAP_WIDTH:
 			var base := HexGeometry.cell_center(Vector2i(q, r), RADIUS)
 			for wrap in range(floori(left_world / world_width) - 1, floori(right_world / world_width) + 2):
-				var center := base + Vector2(wrap * world_width, 0)
-				var screen := (center - camera) * zoom + viewport * 0.5
+				var screen := (base + Vector2(wrap * world_width, 0) - camera) * zoom + viewport * 0.5
 				if screen.x < -RADIUS * zoom or screen.x > viewport.x + RADIUS * zoom or screen.y < -RADIUS * zoom or screen.y > viewport.y + RADIUS * zoom:
 					continue
-				var texture: Texture2D = textures[map_data[r][q]]
-				var size := Vector2(RADIUS * HexGeometry.SQRT_3, RADIUS * 2.0) * zoom
-				draw_texture_rect(texture, Rect2(screen - size * 0.5, size), false)
-				if selected == Vector2i(q, r):
-					draw_arc(screen, RADIUS * 0.84 * zoom, 0.0, TAU, 24, Color("e69f00"), 4.0)
+				draw_tile(screen, map_data.tiles[r][q], Vector2i(q, r))
+
+func draw_tile(screen: Vector2, tile: Dictionary, cell: Vector2i) -> void:
+	var size := Vector2(RADIUS * HexGeometry.SQRT_3, RADIUS * 2.0) * zoom
+	draw_texture_rect(textures[tile.biome], Rect2(screen - size * 0.5, size), false)
+	if tile.fog != "unknown":
+		for direction in tile.rivers:
+			draw_texture_rect(overlays["rio-" + direction], Rect2(screen - size * 0.5, size), false)
+		for direction in tile.borders:
+			draw_texture_rect(overlays["fronteira-" + direction], Rect2(screen - size * 0.5, size), false)
+		if tile.resource != "":
+			var icon_size := Vector2(31, 31) * zoom
+			draw_texture_rect(icons[tile.resource], Rect2(screen - icon_size * 0.5, icon_size), false)
+	if tile.fog != "visible":
+		draw_texture_rect(overlays[tile.fog], Rect2(screen - size * 0.5, size), false)
+	if cell == map_data.capitals[0] and tile.fog == "visible":
+		draw_circle(screen, 7.0 * zoom, Color("f4f0da"))
+	if selected == cell:
+		draw_arc(screen, RADIUS * 0.84 * zoom, 0.0, TAU, 24, Color("e69f00"), 4.0)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
@@ -106,6 +128,6 @@ func set_zoom(value: float) -> void:
 func select_at(screen_position: Vector2) -> void:
 	var world_position := (screen_position - get_viewport_rect().size * 0.5) / zoom + camera
 	selected = HexGeometry.pixel_to_cell(world_position, RADIUS, MAP_WIDTH, MAP_HEIGHT)
-	var biome: String = map_data[selected.y][selected.x]
-	info_label.text = "(%d, %d) · %s\nArraste para mover · roda/pinça para zoom" % [selected.x, selected.y, biome.capitalize()]
+	var tile: Dictionary = map_data.tiles[selected.y][selected.x]
+	info_label.text = "(%d, %d) · %s · névoa: %s\nArraste para mover · roda/pinça para zoom" % [selected.x, selected.y, tile.biome.capitalize(), tile.fog]
 	queue_redraw()

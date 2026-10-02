@@ -12,7 +12,20 @@ func expect(condition: bool, message: String) -> void:
 func _init() -> void:
 	var width := 40
 	var height := 40
-	expect(MapGenerator.generate(width, height, 20261001) == MapGenerator.generate(width, height, 20261001), "geração inteira deve repetir para a mesma seed")
+	var first_map := MapGenerator.generate(width, height, 20261001)
+	var repeated_map := MapGenerator.generate(width, height, 20261001)
+	expect(first_map == repeated_map, "geração inteira deve repetir para a mesma seed")
+	var land_tiles := 0
+	for row in first_map.tiles:
+		for tile in row:
+			if tile.land:
+				land_tiles += 1
+	expect(land_tiles == width * height * MapGenerator.LAND_PERCENT / 100, "a fração de terra deve ser estável")
+	expect(first_map.capitals.size() == MapGenerator.CIVILIZATION_COUNT, "o mapa deve conter oito capitais")
+	for capital in first_map.capitals:
+		for other in first_map.capitals:
+			if capital != other:
+				expect(HexGeometry.wrap_distance(capital, other, width) >= 8, "capitais devem respeitar oito hexes")
 	var seam_neighbors := HexGeometry.neighbors(Vector2i(0, 12), width, height)
 	expect(seam_neighbors.has(Vector2i(39, 12)), "vizinho oeste deve cruzar a costura")
 	expect(HexGeometry.neighbors(Vector2i(4, 0), width, height).size() == 4, "polo norte deve omitir dois vizinhos")
