@@ -4,6 +4,16 @@
 - Ações diplomáticas de bots precisam ser justificáveis pelo estado e pelo histórico.
 - Máquina de estados explícita mais Ledger de Relações; o motor calcula a aceitação e o LLM gera
   a proposta e o texto (CLAUDE.md §3.2).
+- **Negociação em dois modos**: cartões rápidos estruturados e conversa em linguagem natural. O motor
+  tenta primeiro interpretar o texto como uma ação rápida; só se divergir usa o LLM para converter a
+  conversa em intenção tipada. Todo texto de jogador é **dado não confiável**, com crivo rigoroso
+  contra prompt injection: nunca vira instrução, nunca concede efeito mecânico, e a saída do LLM
+  passa pela mesma validação de qualquer intenção. Decidido em 2026-10-01.
+- **Guerra com objetivo de catálogo** (proteger rota, conter incursão, recuperar território, forçar
+  reparação) e paz/trégua negociada; rendição total não é a única saída. Decidido em 2026-10-01.
+- **Relações após colapso**: dívidas, reivindicações e traições passam apenas ao sucessor
+  identificável que herdar o território; obrigações de defesa expiram; o novo regime pode ratificar,
+  renegociar ou repudiar tratados. Decidido em 2026-10-01.
 
 ## Proposta
 
@@ -42,8 +52,8 @@ partes, prazo, estado (ativa, cumprida, expirada ou quebrada), referência ao co
 que a sustentam. Categorias: promessa, dívida, ofensa, ajuda, comércio, fronteira, incidente e
 tratado. Saldos são derivados das entradas; não se editam saldos à mão.
 
-Para cada direção, confiança `C` e ressentimento `R` usam escala inteira 0–100, e dívida líquida
-`D` usa faixa limitada de −100 a +100; valores são iniciais, sujeitos a balanceamento. Um fato de
+Para cada direção, confiança `Cf` e ressentimento `R` usam escala inteira 0–100, e dívida líquida
+`Dv` usa faixa limitada de −100 a +100; valores são iniciais, sujeitos a balanceamento. Um fato de
 intensidade `w` (1–10, valor inicial, sujeito a balanceamento) aplica deltas catalogados. Exemplo:
 ajuda aceita soma até `+2w` em confiança e cria dívida favorável; promessa cumprida soma `+w`,
 quebrada subtrai `2w` de confiança e soma `2w` de ressentimento. Guerra e tratado alteram valores
@@ -69,10 +79,10 @@ passagem por rota/território, ajuda, pacto, aliança, reparação, trégua, ces
 vassalagem. O motor valida capacidade, fronteiras, Mandato, compatibilidade de estado e ausência de
 termos impossíveis antes de calcular aceitação.
 
-Para uma contraparte automática, o motor calcula `S = 40 + 0,30(C−50) − 0,25R + 0,20D + U − K`,
-limitado a 0–100; `C`, `R` e `D` são os valores direcionais normalizados para −100..100 onde
+Para uma contraparte automática, o motor calcula a aceitação `A = 40 + 0,30(Cf−50) − 0,25R + 0,20Dv + U − K`,
+limitada a 0–100; `Cf`, `R` e `Dv` são os valores direcionais normalizados para −100..100 onde
 necessário, `U` é utilidade concreta dos termos (−20..+20) e `K` é custo/risco (0..30). Faixas e
-pesos são valores iniciais, sujeitos a balanceamento. Aceita se `S ≥ 60`, recusa se `S < 40` e,
+pesos são valores iniciais, sujeitos a balanceamento. Aceita se `A ≥ 60`, recusa se `A < 40` e,
 entre esses limites, oferece contraproposta somente se houver template válido que melhore custo sem
 violar restrições. Guerra, trégua e vassalagem podem exigir limiares próprios em dados. O motor
 registra componentes e limiar usados; o resultado não depende de texto nem de chamada externa.
@@ -142,20 +152,13 @@ regras/templates e motivo de fallback ou rejeição. O relatório do harness lis
 intenções sem referência válida são descartadas. O texto do modelo é armazenado como entrada externa
 para replay, mas não é reexecutado nem tratado como prova mecânica (ADR-0006).
 
+Nomes: `Cf`, `R`, `Dv` e `A` evitam colisão com coesão `C`, privação `D` e estabilidade `S` dos
+outros pilares.
+
 Na tela, mostrar resumo de uma frase, até três fatos justificadores, termos em cartões e botões aceitar,
 rejeitar ou ajustar. Um toque abre histórico e impacto futuro; notificações são reservadas a guerra,
 quebra de tratado e prazo de paz. Isso preserva sessões curtas sem esconder compromissos permanentes.
 
 ## Perguntas abertas
-- Jogadores negociam com bots em linguagem natural (via LLM), por propostas estruturadas, ou ambos?
-  - **Recomendação:** ambos: cartões estruturados como caminho principal e linguagem natural opcional
-    convertida em intenção tipada. Assim a negociação é rápida no celular e flexível, sem deixar o
-    texto determinar regras ou resultados.
-- Guerra: objetivos de guerra explícitos e paz negociada?
-  - **Recomendação:** sim, com objetivos de catálogo e trégua negociada como descrito acima. Isso
-    torna custos e saídas legíveis, conecta guerra a recursos e coesão e evita que vitória militar
-    vire eliminação automática num mundo persistente.
-- Relações sobrevivem a colapso e renascimento? Sob quais condições?
-  - **Recomendação:** preservar apenas dívidas, reivindicações e traições vinculadas a sucessor
-    identificável; encerrar obrigações de defesa e permitir ratificação. A continuidade parcial dá
-    peso à história sem prender um novo regime a tratados impossíveis.
+- Como medir e testar o crivo contra prompt injection na negociação em linguagem natural (SDD, testes
+  adversariais com fixtures gravadas)?

@@ -10,6 +10,14 @@
 - **Magia como fenômeno + reação política**: a magia surge por template da Entropia (local, grupo ou
   traço de uma sociedade); cada nação reage por leis e políticas — aderir, proibir, regulamentar —
   com consequências mecânicas. Decidido em 2026-10-01.
+- **Pressão de crise em duas escalas**: a fórmula de 00-visao.md é aplicada **por cidade** (crises
+  locais, revoltas) e **por civilização** (média ponderada por população; crises nacionais e
+  colapso). Decidido em 2026-10-01.
+- **Governo por 3 eixos discretos** (centralização, participação, obrigação econômica), 3 posições
+  cada; reformas mudam um eixo por vez. Decidido em 2026-10-01.
+- **Revolução e Mandato, conforme a intensidade**: revolução moderada põe em vigor um Mandato proposto
+  pelo novo regime, que o jogador pode reverter; revolução severa impõe o Mandato do novo regime
+  (mudar depois exige reforma). Os níveis são definidos por regra do motor. Decidido em 2026-10-01.
 
 ## Proposta
 
@@ -34,10 +42,11 @@
 - Cada cidade tem uma **estabilidade local** `S` de 0 a 100. Ela parte do pacto nacional, mas responde
   a abastecimento, segurança, distância administrativa e presença de grupos locais. Assim, uma capital
   estável não mascara uma fronteira abandonada (ver [04-cidades-e-populacao.md](04-cidades-e-populacao.md)).
-- A civilização começa com dois a quatro **grupos sociais**, cada um com peso populacional `w`, de 10 a
-  60, e até duas demandas ativas: `segurança`, `abastecimento`, `autonomia`, `participação`,
-  `tradição` ou `reforma`. Os grupos são abstrações de interesses organizados, não identidades
-  obrigatórias ou equivalências com povos reais.
+- Os grupos sociais são os **três grupos por função** de 04-cidades-e-populacao.md (cultivadores,
+  ofícios, mercadores), presentes em cada cidade e somados na civilização. O peso `w` de um grupo é
+  sua fração da população. Cada grupo carrega até duas **demandas** ativas: `segurança`,
+  `abastecimento`, `autonomia`, `participação`, `tradição` ou `reforma`, que mudam com cultura,
+  crenças, magia e crises. Os grupos são abstrações de interesses organizados, não povos reais.
 - A cada resolução, o motor calcula a satisfação de demanda de cada grupo `A_g` entre 0 e 100 a partir
   de fatos do estado. Exemplo: abastecimento vem da cobertura de necessidades da cidade; autonomia vem
   de política vigente, distância e controle local. A tensão do grupo é `T_g = 100 - A_g`.
@@ -93,9 +102,11 @@
 
 ### Pressão, revolta e revolução
 
-- Para cada cidade, o motor calcula **pressão de crise**:
-  `P = limitar(0,100, 2D + G + W + E + (100-S)/2 - C/5)`, em que `D` é privação (0–20), `G` é tensão
-  dos grupos presentes (0–20), `W` é ameaça de guerra (0–20) e `E` é exposição ambiental (0–20).
+- A **pressão de crise** usa a fórmula única de [00-visao.md](00-visao.md) em duas escalas: `P_cidade`
+  com os termos locais e `P_civ` como média ponderada por população. Termos: `D` privação (0–20), `G`
+  tensão dos grupos (0–20), `W` ameaça de guerra (0–20), `E` exposição ambiental (0–20) e coesão.
+  O rascunho deste pilar propunha somar `(100−S)/2` (estabilidade local) em `P_cidade`; incluir ou
+  não esse termo fica para a consolidação, para não contar a estabilidade duas vezes.
   São escalas iniciais, sujeitas a balanceamento. Privação e exposição vêm de regras de economia, mapa
   e cidade, não de narrativa (ver [02-mapa-e-tiles.md](02-mapa-e-tiles.md),
   [03-economia.md](03-economia.md) e [04-cidades-e-populacao.md](04-cidades-e-populacao.md)).
@@ -175,12 +186,6 @@
 
 ## Perguntas abertas
 
-- Governos como lista fixa ou montados por eixos (centralização, participação, economia)?
-  - **Recomendação:** montados por três eixos discretos. A combinação mantém poucas escolhas por tela,
-    permite reformas graduais e produz governos reconhecíveis sem exigir um catálogo rígido que cresça
-    a cada era.
-- Uma revolução pode trocar o Mandato do Governador automaticamente?
-  - **Recomendação:** não trocar automaticamente. A revolução deve invalidar intenções incompatíveis e
-    exigir que o jogador revise o Mandato; enquanto isso, usar fallback determinístico conservador. Isso
-    preserva a autoridade do jogador e evita que uma regra social reconfigure silenciosamente sua
-    delegação.
+- Leis podem restringir a migração automática (ver 04-cidades-e-populacao.md)?
+- Quais limiares separam revolução moderada de severa?
+- Incluir a estabilidade local `S` em `P_cidade` ou mantê-la só como efeito sobre rendimentos?

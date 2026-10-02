@@ -52,6 +52,9 @@ Qualquer código ou documento que viole um destes itens está errado, mesmo que 
 5. **Grounding obrigatório.** Toda saída de IA que gera ação deve referenciar fatos do estado
    (ids de entidades, entradas do ledger de relações, eventos da crônica). Ação sem justificativa
    rastreável é descartada.
+   - **Texto de jogador é dado não confiável.** Mensagens e negociações em linguagem natural entram
+     nos prompts isoladas como dados, com defesa contra prompt injection; nunca viram instrução nem
+     concedem efeito mecânico. A saída do LLM passa pela mesma validação de qualquer intenção.
 6. **Provedores são plugáveis.** Toda IA entra por portas (`LLMPort`, `DecisionPort`, `MemoryPort`).
    Trocar DeepSeek por outro LLM, ou **Jev por Laya**, é mudança de configuração, não de código.
 7. **Custo é requisito.** Cada chamada de IA tem orçamento de tokens; cada jogador tem teto de custo
