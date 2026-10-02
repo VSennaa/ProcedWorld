@@ -71,8 +71,8 @@ MoveUnit(unit_id, destination_hex) | DeclareAttack(unit_id, target_id, stance)
 
 `Bundle` é um vetor ordenado por `ResourceId`; cada item tem `resource_id` e quantidade inteira
 positiva. Recursos negociáveis e limites vêm do catálogo. Conhecimento e cultura não são itens
-negociáveis. A criação de cidade, leis de migração, sucessão e efeitos de revolta ficam fora deste
-rascunho até que seus contratos sejam especificados.
+negociáveis. Sucessão e efeitos de revolta são especificados abaixo; detalhes marcados como proposta
+aguardam decisão do GDD.
 
 ### 2.2 Catálogos declarativos
 
@@ -195,7 +195,80 @@ Correção de alinhamento com a fórmula compartilhada do GDD 12, aplicada em 20
 - Mesmo `WorldSnapshot`, lista ordenada de `AcceptedCommand`, `RulesetRef` e seed produzem os mesmos
   `DomainEvent` e `StateHash` em qualquer máquina.
 
-## 6. Falhas, fallback e determinismo
+## 6. Sucessão e entrada tardia
+
+Esta seção distingue decisões do GDD de contratos ainda propostos. Os comandos aceitos entram no
+event log como `AcceptedCommand`; a validação usa estado, catálogo e `RulesetRef` versionados. A IA
+pode propor opções, mas não escolhe nem aplica transições.
+
+### Colapso e comunidades sucessoras
+
+Colapso ocorre quando `C = 0` por 2 turnos ou quando uma crise grave validada deixa o governo
+incapaz por 3 turnos (GDD 10; limiares compartilhados em `gdd/12-variaveis-e-formulas.md`). Uma
+revolução que resolve a perda de controle também pode produzir colapso parcial (GDD 06). Não há
+eliminação por um evento isolado da Entropia.
+
+No colapso, cidades preservam população sobrevivente, obras existentes, grupos e ligações locais;
+podem integrar uma sucessora, ficar autônomas ou perder infraestrutura conforme causas registradas
+(GDD 04 — decidido). O motor gera comunidades sucessoras com base em controle territorial, distância
+das cidades, população e regras de sucessão do catálogo. O jogador escolhe uma comunidade para
+continuar; as demais tornam-se civilizações de bot com territórios, relações e reivindicações
+registrados (GDD 06/10 — decidido). O motor conserva a Crônica da civilização anterior.
+
+Na sucessora escolhida, população e capacidade administrativa ficam em 40–60% das anteriores;
+reservas ficam limitadas a até dois turnos de manutenção e permanecem ativos no máximo dois legados.
+Essas faixas são valores iniciais sujeitos a balanceamento (GDD 10 e `gdd/12-variaveis-e-formulas.md`).
+O destino dos excedentes é ruína, patrimônio disputado, conhecimento degradado ou memória histórica,
+conforme regra/catalogo aplicável. Não se duplica estado ao dividir comunidades.
+
+Legados têm condição, efeito limitado, origem e dono atual. Patrimônio pode ser capturado com a cidade;
+se não for escolhido como instituição pela sucessora, fica como ruína. Memória social só sobrevive se
+a comunidade sucessora contiver população suficiente da anterior. O limiar de população e o algoritmo
+de atribuição são **proposta**, pois o GDD não os fixa. A regra de até dois legados ativos é decidida;
+qual legado permanece em caso de concorrência também depende da escolha registrada e de regra de
+catálogo determinística.
+
+Relações são herdadas apenas pelo sucessor identificável que herdar o território correspondente:
+dívidas, reivindicações e traições passam a esse sucessor; obrigações de defesa expiram. O novo regime
+pode ratificar, renegociar ou repudiar tratados, com consequências registradas (GDD 07 — decidido).
+Cada entrada do `Ledger` permanece imutável e é referenciada; a projeção de relação do sucessor não
+reescreve nem replica fatos para comunidades sem território/herdeiro identificável.
+
+### Entrada tardia e comandos do motor
+
+Entrada tardia oferece duas opções decididas: fundar comunidade nova como assentamento protegido,
+sem vínculos ou patrocinado por civilização existente; ou assumir civilização controlada por bot.
+Assumir bot herda estado, `Ledger` e Crônica; o Mandato vira preset inicial editável e a Doutrina vira
+sugestões. Só civilizações sem humano podem ser assumidas (GDD 10 — decidido).
+
+Os contratos exatos abaixo são **proposta** para tornar essas decisões reproduzíveis:
+
+```text
+EntryChoice =
+  | FoundCommunity { sponsorship_civilization_id?: CivilizationId }
+  | TakeOverBot { target_civilization_id: CivilizationId }
+
+ClaimCivilization { user_id, choice, turn, ruleset_ref }
+SelectSuccessor { user_id, former_civilization_id, successor_civilization_id, turn, ruleset_ref }
+```
+
+Pré-condições propostas para `ClaimCivilization`: conta autorizada e sem outra civilização humana no
+mundo; capacidade de entrada disponível; para `TakeOverBot`, alvo existente controlado por bot e sem
+humano. Fundação requer tile/local legal e, se houver patrocínio, patrocinador elegível. Parâmetros de
+proteção, distância, custos e obrigações do patrocínio seguem catálogo e ainda são proposta.
+Pré-condições para `SelectSuccessor`: colapso resolvido, sucessora na lista elegível emitida pelo
+motor e ator autorizado a escolher. Enquanto a escolha humana estiver pendente, o Governador não
+escolhe sucessor, conforme GDD 09 — decidido.
+
+Transições propostas e determinísticas: comando válido de fundação cria uma comunidade com estado
+inicial definido por catálogo; tomada de bot troca somente o controlador, mantendo estado, Ledger e
+Crônica, e prepara preset editável do Mandato e sugestões da Doutrina; sucessão atribui cada cidade,
+tile, legado e relação segundo as regras acima, efetiva a escolha, converte comunidades restantes em
+bots e transfere o controle humano sem intervalo com duas civilizações. Valores iniciais, empates de
+atribuição, identidade dos comandos e sequência exata dos eventos continuam proposta até fixação no
+catálogo/decisão do dono. Repetição idempotente do mesmo comando não pode duplicar a transição.
+
+## 7. Falhas, fallback e determinismo
 
 Validação rejeita antes da aceitação comando com proprietário, pré-requisito, recurso, rota, alvo,
 Mandato ou `GroundingRef` inválido. Rejeição não cobra custo e não entra em `AcceptedCommand`.
@@ -212,7 +285,7 @@ jogador, prompt/resposta de modelo, custo de API, presença de sessão, ordem in
 ou nova chamada de IA. Um `WorldSnapshot` periódico é armazenado pelo subsistema de persistência;
 PostgreSQL é a implementação desse armazenamento conforme ADR-0007.
 
-## 7. Orçamento
+## 8. Orçamento
 
 Metas propostas para a Fase 2, medidas no harness e não requisitos já aceitos:
 
@@ -226,7 +299,7 @@ Metas propostas para a Fase 2, medidas no harness e não requisitos já aceitos:
 A meta numérica absoluta de milissegundos, tamanho de mundo e orçamento de IA está aberta. O CI
 deve guardar baseline de tempo, alocações e número de eventos para detectar regressões mensuráveis.
 
-## 8. Estratégia de testes
+## 9. Estratégia de testes
 
 - Determinismo: executar o mesmo replay/seed em ambientes distintos e comparar cada `StateHash`.
 - Propriedades: gerar sequências válidas e inválidas; provar invariantes de estoque, grupos, limites,
@@ -240,7 +313,7 @@ deve guardar baseline de tempo, alocações e número de eventos para detectar r
 - Harness: partidas longas de bots T0 medem crises, migração, inadimplência, frequência de combate,
   distribuição de `P` e custo por turno; pesos provisórios só mudam por `RulesetRef` versionado.
 
-## 9. Perguntas abertas
+## 10. Perguntas abertas
 
 1. Qual proporção deve ser usada quando pacote misto contém apenas riqueza de um lado, e como
    atribuir uma entrega parcial causada por ambos? **Recomendação:** aprovar `r = min(r_lados)` e

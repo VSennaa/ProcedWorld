@@ -173,39 +173,60 @@ valer no próximo turno, preservando uma lista de participantes estável.
 ## 5. Associação, entrada tardia e sucessão
 
 Antes de criar ou alterar uma associação, o serviço consulta uma projeção autoritativa do mundo e
-envia a decisão elegível ao motor. A gravação operacional de `Membership` só é efetivada após o
-comando correspondente ter sido aceito.
+envia o comando ao motor. A gravação operacional de `Membership` só é efetivada após aceitação do
+comando correspondente. Entrada tardia tem duas opções decididas: fundar uma comunidade nova,
+protegida e sem vínculos ou patrocinada; assumir civilização controlada por bot. Só alvo sem humano
+pode ser assumido. Ao assumir, herda estado, `Ledger` e Crônica; o Mandato vira preset inicial
+editável e a Doutrina vira sugestões (GDD 10 — decidido).
 
 ```text
 EntryChoice =
   | FoundCommunity { sponsorship_civilization_id?: CivilizationId }
   | TakeOverBot { target_civilization_id: CivilizationId }
 
-ClaimCivilization {
-  user_id, membership_id, choice: EntryChoice, control_revision
-}
-SelectSuccessor {
-  user_id, former_civilization_id, successor_civilization_id, control_revision
-}
+ClaimCivilization { user_id, membership_id, choice: EntryChoice, turn, control_revision, ruleset_ref }
+SelectSuccessor { user_id, former_civilization_id, successor_civilization_id, turn,
+                  control_revision, ruleset_ref }
 ```
+
+Os nomes/campos desses comandos são **proposta**. Eles representam a reivindicação de entrada
+tardia e a escolha humana da comunidade sucessora; sua aceitação gera `AcceptedCommand` com origem
+`player`, sequência aceita e `ruleset_ref` canônico. A associação operacional não é a fonte do
+resultado mecânico.
 
 Pré-condições verificáveis para `ClaimCivilization`:
 
-- a conta e a sessão estão ativas e o usuário não possui outra civilização ativa no mundo;
-- o mundo admite a entrada segundo regra de capacidade; fundação e patrocínio passam pelas regras
-  determinísticas do catálogo;
-- `TakeOverBot` aponta para civilização sem humano e ainda controlada por bot;
-- a revisão de controle e o turno são atuais; a tomada não pode concorrer com outra reivindicação.
+- conta/sessão autorizadas e no máximo uma civilização humana por usuário/mundo (GDD 00 — decidido);
+- capacidade de entrada disponível segundo a regra de mundo (detalhe de capacidade é **proposta**);
+- `FoundCommunity` tem local legal; patrocinador, se informado, é elegível. Proteção, tile/local,
+  custos e obrigações do patrocínio seguem catálogo, mas seus valores e validações específicas são
+  **proposta**;
+- `TakeOverBot` aponta para civilização existente controlada por bot e sem humano (GDD 10 — decidido);
+- controle/revisão e turno correspondem à projeção autoritativa. Compare-and-swap impede duas
+  reivindicações concorrentes; mecanismo técnico é **proposta**.
 
-Ao assumir bot, o comando não reescreve história: mantém estado, Ledger e Crônica, transforma o
-Mandato existente em preset editável e expõe a Doutrina como sugestões. Fundar comunidade cria o
-assentamento apenas pelo comando e regras do motor; os detalhes propostos de proteção, distância,
-patrocínio e obrigações diplomáticas não pertencem a este SDD.
+Ao assumir bot, o comando não reescreve história: mantém estado, `Ledger` e Crônica, transforma o
+Mandato existente em preset inicial editável e expõe a Doutrina como sugestões (GDD 10 — decidido).
+Fundar comunidade cria o assentamento pelo comando e regras do motor. A transição de ownership e a
+materialização do preset no registro da conta após aceitação são **propostas**; não se copia estado
+para uma nova civilização na tomada de bot.
 
-Na sucessão, o motor determina comunidades elegíveis, território, relações e legado conforme o
-catálogo. `SelectSuccessor` somente escolhe uma opção legal. Em seguida a associação ativa é movida
-atomicamente da civilização colapsada para a sucessora; as demais permanecem bots. Não há segunda
-civilização humana no intervalo dessa transição.
+No colapso, o Governador só mantém sobrevivência básica validada; escolha de sucessor exige o jogador
+(GDD 09 — decidido). O motor calcula comunidades elegíveis e aplica território, relações e legados
+pelas regras da seção 6 de SDD 15. O serviço apresenta IDs estáveis e só encaminha `SelectSuccessor`
+para uma opção elegível; ordenação/apresentação da lista é **proposta**. Após aceitação, a associação
+ativa é transferida atomicamente da civilização colapsada à escolhida; as demais comunidades tornam-se
+civilizações de bot com suas relações e reivindicações. A transferência única sem intervalo de dois
+ownerships é contrato operacional **proposto**, derivado do limite de uma civilização humana por
+mundo.
+
+Herança determinística: estado/Ledger/Crônica existentes são mantidos ao tomar bot; na sucessão, cada
+relação (dívida, reivindicação, traição) só acompanha o sucessor identificável que herdou seu
+território, obrigações de defesa expiram e tratados podem ser ratificados, renegociados ou repudiados
+com registro causal (GDD 07 — decidido). Território, população, capacidade, reservas e legados da
+sucessora obedecem às proporções e condições decididas em GDD 04/10 e à regra mecânica de SDD 15.
+Matriz de campos herdados na projeção de conta, retentativa idempotente e atomicidade transacional
+são **propostas**; nenhum desses metadados de conta substitui o estado autoritativo do motor.
 
 ## 6. Modelo de dados, invariantes e autorização
 
