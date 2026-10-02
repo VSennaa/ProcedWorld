@@ -12,7 +12,7 @@
 # Usage: tools/agents/jev-codex.sh <task-name> <prompt-file> [sandbox]
 #   sandbox: read-only | workspace-write (default)
 # Env:   OPENROUTER_API_KEY (required, decision only), CODEX_BIN, JEV_CODEX_MODELS, JEV_FALLBACK_MODEL,
-#        JEV_MIN_CREDIT, JEV_CLAUDE_OK
+#        JEV_MIN_CREDIT, JEV_CLAUDE_OK, JEV_CODEX_SEARCH (=1 enables Codex live web search)
 # Anthropic picks: when the supervisor (Claude) has quota to spare it sets JEV_CLAUDE_OK=1; then an
 # `anthropic/*` pick is NOT run on Codex: the script records it and exits 76 so Claude runs the task
 # itself (Agent tool). Without JEV_CLAUDE_OK the pick is mapped to Codex as usual.
@@ -114,7 +114,8 @@ echo "[$name] codex model: $model ($pick)"
 
 # 2. Codex runs the task on the ChatGPT login (default provider), on the chosen model.
 start=$(date +%s); status=0
-"$codex_bin" exec -C "$root" -s "$sandbox" -m "$model" \
+search_flag=(); [ "${JEV_CODEX_SEARCH:-0}" = "1" ] && search_flag=(--search)
+"$codex_bin" "${search_flag[@]}" exec -C "$root" -s "$sandbox" -m "$model" \
   -o "$runs/$name.out.txt" - < "$prompt_file" > "$runs/$name.log" 2>&1 || status=$?
 tokens=$(grep -A1 '^tokens used' "$runs/$name.log" | tail -1 | tr -dc '0-9' || true)
 
