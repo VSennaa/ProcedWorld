@@ -83,13 +83,11 @@ TurnContext {
 }
 
 AcceptedCommand {
-  command_id, sequence: CommandSequence, turn, civilization_id,
-  actor: Human | Governor | Bot | Entropy,
-  origin: PlayerInput | GovernorFallback | BotPlan | EntropyTemplate,
-  payload: DomainCommand, accepted_against_hash, received_order
+  command_id, world_id, accepted_sequence: UInt64, turn, actor_id,
+  origin, kind, payload_canonical, rules_version, catalog_version, grounding_facts
 }
 
-CommandReceipt { command_id, status: Accepted | Rejected, sequence?, reason_code? }
+CommandReceipt { command_id, status: Accepted | Rejected, accepted_sequence?, reason_code? }
 ReadyState { civilization_id, turn, ready: bool, changed_sequence }
 ```
 
@@ -105,7 +103,7 @@ publish_turn(resolution) -> PublishedTurn
 ```
 
 `submit_command` valida autenticação, pertencimento à civilização, turno e fase atuais, schema e
-pré-condições contra o estado autoritativo. A aceitação atribui `sequence` monotonicamente; lotes
+pré-condições contra o estado autoritativo. A aceitação atribui `accepted_sequence` monotonicamente; lotes
 são desmembrados e não recebem prioridade. Um comando rejeitado não entra no log de comandos
 aceitos nem consome recurso. `set_ready(false)` é permitido apenas antes de `Closing`; não remove
 comandos previamente aceitos. `MaintainPlan` é um `DomainCommand` explícito para quem não quiser
@@ -163,7 +161,7 @@ Isso não altera o contrato: outro armazenamento precisa preservar a mesma ordem
 ## Invariantes verificáveis
 
 1. Para um `world_id` há no máximo um turno em `Open`, `Collecting`, `Closing` ou `Resolving`.
-2. `sequence` é única, crescente por mundo e define integralmente a ordem de comandos aceitos.
+2. `accepted_sequence` é única globalmente no mundo e define integralmente a ordem de comandos aceitos.
 3. Cada comando aceito pertence ao turno aberto e só pode ser aplicado uma vez.
 4. O conjunto `expected_humans` é congelado na abertura, exceto remoção por transição efetiva para
    `absent`; reconexão não o readiciona no turno corrente.
@@ -182,7 +180,7 @@ Isso não altera o contrato: outro armazenamento precisa preservar a mesma ordem
 | Ordem | Fase | Entrada e resultado |
 |---:|---|---|
 | 1 | Abertura | Publica estado do turno e congela presentes/agendamento. |
-| 2 | Entrada | Valida e aceita ações sequenciais pela `sequence`; ataques só reservam custo/unidade. |
+| 2 | Entrada | Valida e aceita ações sequenciais por `accepted_sequence`; ataques só reservam custo/unidade. |
 | 3 | Fechamento | Confirma `Pronto`, ausência e comandos automatizados/fallback. |
 | 4 | Conflitos | Resolve ataques declarados, perdas simultâneas e efeitos pendentes em ordem canônica. |
 | 5 | Sustento | Aplica manutenção, produção, consumo, crescimento e coesão. |

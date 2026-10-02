@@ -39,7 +39,7 @@ consulta sessões. Bots e Governadores são ordenados pela seed do mundo com rot
 
 ```text
 WorldId, EntityId, PlayerId      // IDs estáveis, sem semântica de ordenação implícita
-TurnIndex: UInt64                 // começa em 0 ou 1; convenção aberta
+TurnNumber: UInt64
 Fixed: Int64 + escala declarada   // ponto fixo; overflow é erro determinístico
 CatalogRef: (catalog_id, version, content_hash)
 PrngRef: (algorithm_id, algorithm_version, seed, stream_id)
@@ -59,16 +59,16 @@ canônica), nunca pela iteração incidental de hash map. O conteúdo exato dos 
 dos SDDs de mapa, economia, cidades, tecnologia, sociedade, Entropia e diplomacia.
 
 ```text
-CommandEnvelope = {
-  world_id, turn, sequence: UInt64, command_id, actor_id, source,
-  schema_version, payload, accepted_facts: FactRef[]
+AcceptedCommand = {
+  command_id, world_id, turn, accepted_sequence: UInt64, actor_id, origin,
+  kind, payload_canonical, rules_version, catalog_version, grounding_facts: GroundingRef[]
 }
-source = Human | Governor | Bot | Entropy | System
-FactRef = EntityRef | LedgerEntryRef | ChronicleEventRef | StateFactRef
+CommandOrigin = player | governor | bot | entropy | fallback | system
+GroundingRef = { kind, id, revision }
 ```
 
-`sequence` é atribuído pelo servidor ao aceitar o comando e forma a ordem total do log dentro do
-turno. IDs idempotentes evitam aplicar duas vezes a mesma submissão. `accepted_facts` é obrigatório
+`accepted_sequence` é atribuído pelo servidor ao aceitar o comando, é único globalmente no mundo e
+forma a ordem total do log. IDs idempotentes evitam aplicar duas vezes a mesma submissão. `grounding_facts` é obrigatório
 para propostas de IA que gerem ação e permite auditoria/grounding (CLAUDE.md §2).
 
 Exemplos de payloads conceituais:
@@ -90,13 +90,7 @@ estado; sua rejeição e motivo pertencem ao log operacional/auditável e não �
 
 ```text
 validate(state, envelope, catalogs) -> Accepted(command) | Rejected(reason)
-step(state, closed_turn_input, rules, catalogs) -> StepResult
-
-closed_turn_input = {
-  turn, commands: CommandEnvelope[],
-  automation_order: EntityId[],
-  entropy_inputs: RecordedEntropyInput[]
-}
+step(state, accepted_commands: AcceptedCommand[], seed, versions) -> StepResult
 
 StepResult = {
   next_state, emitted_events: Event[], state_hash,
@@ -104,12 +98,12 @@ StepResult = {
 }
 ```
 
-`step` exige todos os comandos de um único turno em ordem estritamente crescente de `sequence`,
+`step` exige todos os comandos de um único turno em ordem estritamente crescente de `accepted_sequence`,
 refs de catálogo exatas e `state.turn == input.turn`. Erros de formato/incompatibilidade retornam erro
 sem estado parcial. A transição não faz I/O, não lê hora, não chama IA nem busca recursos externos.
 
 ```text
-result = step(previous_state, closed_turn_input, ruleset, catalogs)
+result = step(previous_state, accepted_commands, seed, versions)
 assert hash(result.next_state) == result.state_hash
 ```
 
@@ -119,7 +113,7 @@ o novo estado. A separação transacional é proposta; o núcleo permanece indep
 ### 2.3 Intenções e IA
 
 LLM/DecisionPort não entram no núcleo. Um adaptador valida schema, versão, limites e referências
-factuais da intenção e a traduz para zero ou mais `CommandEnvelope`. Resposta bruta, fallback usado,
+factuais da intenção e a traduz para zero ou mais `AcceptedCommand`. Resposta bruta, fallback usado,
 validação e comando resultante devem ser gravados para replay, observando política de privacidade.
 Saída inválida, timeout ou erro de provedor aciona fallback determinístico T0; ausência de IA não
 impede `step`.
@@ -178,7 +172,7 @@ GDD 01 determina aplicação sequencial das ações, combate em fase própria e 
 que dependências sejam explícitas; cada fase percorre IDs em ordem canônica.
 
 1. Conferir turno, sequência, refs, versões e pré-condições estruturais; falhar atomicamente se inválido.
-2. Aplicar comandos aceitos em ordem de `sequence`: reservar custos, ordens, políticas, tratados e
+2. Aplicar comandos aceitos em ordem de `accepted_sequence`: reservar custos, ordens, políticas, tratados e
    declarações de ataque. Uma ação posterior observa efeitos já aplicados, salvo combate adiado.
 3. Resolver movimentos e ordens não combatentes, segundo regras de unidade/mapa.
 4. Resolver cada confronto: agrupar ataques válidos, calcular resultados com estado pré-dano do

@@ -109,9 +109,9 @@ e isolado do prompt.
 
 ## Fluxo por turno e seed
 
-Após as fases que atualizam os fatos do mundo, o motor executa a avaliação abaixo. A posição exata
-na ordem global de turnos deve ser definida pelo SDD 03; esta interface exige somente que ela seja
-fixa e registrada.
+Antes do fechamento do turno, a orquestração avalia as oportunidades determinísticas e obtém/valida
+eventual escolha T1/T2. Apenas o comando de ativação aceito é entregue a `step`; a posição exata
+na ordem global de turnos deve ser definida pelo SDD 03 e registrada.
 
 ```text
 evaluate_entropy(state, turn_seed):

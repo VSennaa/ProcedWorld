@@ -49,8 +49,8 @@ backup runner <--- database and snapshot manifests
 ```
 
 O proxy é o único processo que expõe 80/443. Reservas: servidor/API em
-`127.0.0.1:8100`, admin/health em `127.0.0.1:8101`, harness em `127.0.0.1:8110` e
-memória, se separada, em `127.0.0.1:8150`. Toda reserva pertence à faixa 8100–8199 e
+`<LOOPBACK>:8100`, admin/health em `<LOOPBACK>:8101`, harness em `<LOOPBACK>:8110` e
+memória, se separada, em `<LOOPBACK>:8150`. Toda reserva pertence à faixa operacional definida fora do repositório e
 deve entrar em `/opt/infra/PORTS.md` antes da publicação. PostgreSQL não terá `ports:`.
 
 ```yaml
@@ -69,7 +69,7 @@ services:
 networks: {proxy: {external: true}, procedworld_internal: {internal: true}}
 ```
 
-Serviço não público usa bind explícito em `127.0.0.1`, nunca `"81xx:porta"`, pois
+Serviço não público usa bind de loopback, nunca publicação direta de porta, pois
 Docker pode contornar firewall do host. Proxy e emissor de TLS permanecem intercambiáveis.
 
 ## Contratos operacionais

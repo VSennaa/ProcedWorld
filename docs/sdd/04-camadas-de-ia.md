@@ -57,8 +57,9 @@ state snapshot + catalog + mandate/ledger -> context builder -> T0/T1/T2 port
 `step(state, commands, seed)` recebe apenas comandos já aceitos e a seed versionada. Não recebe
 prompt, resposta, modelo, preço, timeout, memória, relógio nem identificador de provedor.
 
-Para replay, o leitor do log usa a intenção normalizada registrada — ou o marcador de fallback T0 —
-e passa novamente pela mesma validação versionada. Ele não chama `LLMPort` nem `DecisionPort`.
+Para replay mecânico, o leitor aplica exclusivamente os `AcceptedCommand` já gravados. A intenção
+normalizada, a resposta da IA e o fallback ficam em `IntentEvidence` para auditoria e fixtures;
+nunca são revalidados para decidir o efeito histórico. O replay não chama `LLMPort` nem `DecisionPort`.
 
 ## Contratos propostos
 

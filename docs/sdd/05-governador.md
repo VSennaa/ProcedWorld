@@ -238,13 +238,9 @@ resultado ao comando/template, custo, efeito e fatos do estado ou Ledger. Avisos
 determinísticos: confirmação requerida, guerra contra a civilização, `P >= 40`, `C < 30`, reserva
 prestes a uso e proposta que expira no próximo turno. Limiar e apresentação são valores iniciais.
 
-Em revolução, todos os escopos passam para `propose_wait`, exceto sobrevivência básica validada pelo
-motor. A troca de Mandato após intensidade de revolução é **proposta**: o motor deve receber um
-evento de revolução com intensidade catalogada e aplicar uma tabela de transição versionada. A
-recomendação inicial é: intensidade baixa preserva Mandato; média restringe escopos e eleva avisos;
-alta substitui por `Recuperar`, preservando linhas vermelhas e postura. Nada é aplicado por narrativa
-ou T1. Após sucessor confirmado, a proposta do GDD é herdar linhas/postura, zerar rumo para
-`Recuperar` e recalcular reservas na nova escala; requer validação de balanceamento.
+Em revolução moderada, o Mandato proposto do novo regime é reversível; em revolução severa, o
+Mandato do novo regime é imposto, conforme decisão do GDD 06. Intensidades intermediárias, catálogo
+e campos do Mandato do novo regime permanecem em aberto. Nada é aplicado por narrativa ou T1.
 
 ## Perguntas abertas para o usuário
 
@@ -256,4 +252,3 @@ ou T1. Após sucessor confirmado, a proposta do GDD é herdar linhas/postura, ze
    **Recomendação:** sim, tratá-los explicitamente como parâmetros de dados, não constantes de código.
 4. O relatório acumulado de ausência longa deve agrupar por turno, por crise ou por tema?
    **Recomendação:** por tema causal, com links para os turnos, para manter a volta legível no celular.
-

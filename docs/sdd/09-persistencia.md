@@ -56,11 +56,10 @@ pelo núcleo, sem ponto flutuante.
 ```text
 WorldRef { world_id, ruleset_version, seed_version, world_seed }
 
-CommandEnvelope {
-  command_id, world_id, turn, accepted_order, actor_id,
-  source: Player | Governor | Entropy | System,
-  command_type, payload_canonical_json, catalog_version,
-  accepted_at_sequence, correlation_id
+AcceptedCommand {
+  command_id, world_id, turn, accepted_sequence, actor_id,
+  origin: player | governor | bot | entropy | fallback | system,
+  kind, payload_canonical, rules_version, catalog_version, grounding_facts
 }
 
 TurnSeal {
@@ -75,19 +74,19 @@ Snapshot {
   created_sequence
 }
 
-PersistedIntentEvidence {
+IntentEvidence {
   evidence_id, command_id?, source, schema_version,
   request_fingerprint, response_canonical_json, validation_outcome,
   fallback_reason?, grounded_fact_refs, token_usage?, cost_microunits?
 }
 ```
 
-`payload_canonical_json` é canônico para hashing, mas sua semântica pertence ao
-schema do comando. Uma tentativa rejeitada não vira `CommandEnvelope`; ela pode
+`payload_canonical` é canônico para hashing, mas sua semântica pertence ao
+schema do comando. Uma tentativa rejeitada não vira `AcceptedCommand`; ela pode
 gerar registro operacional mínimo, sem conteúdo do jogador, para diagnóstico.
 
 ```text
-append_accepted(command: CommandEnvelope) -> AppendResult
+append_accepted(command: AcceptedCommand) -> AppendResult
 seal_turn(seal: TurnSeal) -> void
 store_snapshot(snapshot: Snapshot) -> void
 load_replay(world_id, from_turn, to_turn) -> ReplayBundle
@@ -97,7 +96,7 @@ verify_world(world_id, target_turn) -> VerificationReport
 ```
 
 `append_accepted` deve ser idempotente por `(world_id, command_id)`. Para um
-mesmo turno, somente o resolvedor autoritativo atribui `accepted_order`; o
+mesmo turno, somente o resolvedor autoritativo atribui `accepted_sequence`; o
 contrato rejeita colisão ou lacuna na sequência ao fechar o turno.
 
 `load_state` devolve o snapshot verificável mais recente em `turn <= target`
@@ -107,7 +106,7 @@ de persistência não calcula estado durante leitura.
 ### Fluxo de fechamento proposto
 
 ```text
-intent/tentativa -> validação do servidor -> CommandEnvelope(s) -> append
+intent/tentativa -> validação do servidor -> AcceptedCommand(s) -> append
 todos os presentes prontos + automações ordenadas pela seed
   -> resolver comandos e fases no núcleo -> state_hash -> TurnSeal
   -> snapshot se devido -> publicar turno fechado
@@ -126,7 +125,7 @@ stack, são o esquema lógico mínimo, com as mesmas chaves e restrições.
 |---|---|---|
 | `worlds` | `world_id` | seed, versões iniciais, status e turno fechado mais recente. |
 | `world_turns` | `(world_id, turn)` | selo do turno, hash, intervalo de ordens e versões efetivas. |
-| `command_log` | `(world_id, accepted_order)` | envelope imutável; `command_id` é único por mundo. |
+| `command_log` | `(world_id, accepted_sequence)` | envelope imutável; `command_id` é único por mundo. |
 | `snapshots` | `snapshot_id` | blob codificado, hash esperado e última ordem incorporada. |
 | `catalog_releases` | `catalog_version` | manifesto imutável, hash e compatibilidade de regras. |
 | `catalog_migrations` | `migration_id` | transição declarada, checksum, versões origem/destino e resultado. |
@@ -134,7 +133,7 @@ stack, são o esquema lógico mínimo, com as mesmas chaves e restrições.
 | `archives` | `archive_id` | pacote histórico, intervalo, hashes e localizador abstrato. |
 | `backup_runs` | `backup_id` | escopo, ponto consistente, hashes, restauração testada e retenção. |
 
-Índices mínimos: `command_log(world_id, turn, accepted_order)`,
+Índices mínimos: `command_log(world_id, turn, accepted_sequence)`,
 `snapshots(world_id, turn DESC)` e `world_turns(world_id, turn)`. Blobs grandes
 podem ficar fora da base relacional se o localizador, hash criptográfico e
 política de recuperação permanecerem transacionais com os metadados.
@@ -144,7 +143,7 @@ política de recuperação permanecerem transacionais com os metadados.
 - `world_turns.turn` é contíguo desde zero; um selo só existe após todos os
   comandos daquele turno terem sido gravados.
 - todo `command_log.turn` pertence a um turno selado ou ao único turno aberto;
-  `accepted_order` é único, estritamente crescente e nunca é reusado.
+  `accepted_sequence` é único globalmente no mundo, estritamente crescente e nunca é reusado.
 - o hash de `world_turns` é calculado sobre a serialização canônica do estado,
   com algoritmo e versões declarados; deve igualar o hash ao fazer replay.
 - um snapshot declara um `command_last_order` e seu hash deve igualar o selo do
@@ -156,7 +155,7 @@ política de recuperação permanecerem transacionais com os metadados.
 - a exclusão física de log só é permitida após arquivo íntegro, backup
   restaurável e regra de retenção satisfeita; no MVP recomendado, não excluir.
 - uma evidência de IA não pode mudar o comando já aceito; sua referência é
-  auditável, mas `step` depende somente de comando, seed, catálogo e estado.
+  auditável, mas `step` depende somente de `AcceptedCommand`, seed, catálogo e estado.
 
 ## Catálogos e migrações
 

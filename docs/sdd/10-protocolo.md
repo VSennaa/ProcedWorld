@@ -154,7 +154,7 @@ SubmitCommand {
 CommandAccepted {
   clientCommandId: UUID,
   commandId: CommandId,
-  acceptedSequence: uint64,
+  accepted_sequence: uint64,
   turn: TurnNumber
 }
 CommandRejected { clientCommandId: UUID, code: RejectionCode, safeReason: string }
@@ -163,7 +163,7 @@ TurnResolved { turn: TurnNumber, stateHash: Hash, nextTurn: TurnNumber }
 ```
 
 `expectedTurn` impede aplicar silenciosamente uma ordem preparada em turno antigo. O servidor
-responde `StaleTurn` com recuperação quando necessário. A ordem efetiva é `acceptedSequence`,
+responde `StaleTurn` com recuperação quando necessário. A ordem efetiva é `accepted_sequence`,
 gravada com o comando; ordem de chegada ao rádio, renderização ou coleção do cliente não tem
 efeito nas regras.
 
@@ -271,7 +271,7 @@ catálogo estabelecidas pelo núcleo (ADR-0006).
 
 - Testes de contrato para cada mensagem: schema, campos obrigatórios, versão, limites e erro seguro.
 - Testes de idempotência: reenvio, corrida entre duas sessões, reconexão e lote parcialmente aceito
-  não duplicam `commandId` nem `acceptedSequence`.
+  não duplicam `command_id` nem `accepted_sequence`.
 - Testes de autorização e névoa de guerra: uma visão/chunk nunca contém tile, entidade ou atributo
   desconhecido; tentativa de outro `worldId`/civilização é recusada.
 - Testes de propriedade: cursors publicados são monotônicos; uma sequência aceita é única por turno;

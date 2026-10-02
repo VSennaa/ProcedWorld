@@ -103,19 +103,21 @@ type ValidationResult =
   | { rejected: Rejection { code: RejectionCode, safeMessage: Text } }
 
 type AcceptedCommand = {
-  id: CommandId,
+  command_id: CommandId,
+  world_id: WorldId,
   turn: TurnNumber,
-  sequence: uint64,
-  actor: CivilizationId,
-  kind: CommandKind,
-  payload: CanonicalJson,
+  accepted_sequence: uint64,
+  actor_id: CivilizationId,
   origin: CommandOrigin,
-  acceptedAt: AcceptanceOrder
+  kind: CommandKind,
+  payload_canonical: CanonicalJson,
+  rules_version: RulesVersion,
+  catalog_version: CatalogVersion,
+  grounding_facts: GroundingRef[]
 }
 ```
 
-`sequence` é atribuído pelo servidor na aceitação e é a ordem gravada para replay. `acceptedAt` é
-ordem lógica, não timestamp exigido pelo núcleo. `origin` distingue `player`, `governor`, `bot`,
+`accepted_sequence` é atribuído pelo servidor na aceitação, globalmente único no mundo, e é a ordem gravada para replay. `origin` distingue `player`, `governor`, `bot`,
 `entropy`, `fallback` e `system`, sem conceder privilégios às IA.
 
 ```text
@@ -163,11 +165,12 @@ aceitar vassalagem e escolher sucessor — são rejeitadas enquanto o humano est
    somente intenção tipada. Falha ou invalidez resulta na ação T0 determinística apropriada.
 5. Todas as intenções aceitas viram `AcceptedCommand` no log. Os comandos ordinários são aplicados
    sequencialmente pela ordem gravada. Declarar ataque reserva unidade e custo, sem calcular dano.
-6. Quando todos os humanos presentes estão `Ready`, o núcleo executa a fase de combate, com perdas
-   simultâneas por confronto, e depois a fase de fim de turno: produção, crescimento, Entropia e
-   consolidação de memória.
-7. A Entropia escolhe e parametriza apenas templates de catálogo validados. Seu texto narrativo não
-   tem efeito por si; o efeito entra como comando validado no mesmo log.
+6. Antes do fechamento, o orquestrador calcula a ordem de automação e obtém/valida qualquer seleção
+   externa da Entropia. Toda escolha externa vira comando aceito antes de `step`; avaliações
+   determinísticas podem ser funções internas puras.
+7. Quando todos os humanos presentes estão `Ready`, `step(state, accepted_commands, seed, versions)`
+   aplica os comandos e resolve fases de forma determinística. Texto narrativo da Entropia não tem
+   efeito por si.
 8. O servidor calcula o hash canônico, persiste resultado e snapshot quando devido, deriva novas
    projeções e publica o próximo turno. Prazos internos são contados em turnos, nunca em horas.
 
