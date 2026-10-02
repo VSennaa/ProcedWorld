@@ -36,9 +36,9 @@
 - **Economia, cidades, tecnologia, sociedade e combate — coberta por SDD 15** — `sdd/15` estabelece proprietário, comandos, ordem de resolução, estado e invariantes para esses domínios. A fórmula de entrega proporcional de contratos mistos e os parâmetros de balanceamento continuam pendentes em `gdd/12` e no SDD.
 - **Visibilidade/fog of war — coberta por SDD 16** — `sdd/16` define estados de conhecimento, observações, autorização de `GroundingRef`, compartilhamento de mapa e projeções. Custos de visão e atributos lembrados continuam em aberto no SDD.
 - **Identidade, autorização e ciclo de vida de conta — coberta por SDD 17** — `sdd/17` define credenciais, associação usuário–civilização, revogação, múltiplos dispositivos e contratos de sessão.
-- **Política de presença** — além da divergência RC-08, falta contrato para batimento, reconexão, presença na abertura, transição durante fechamento e auditoria de `Ready` sem introduzir relógio no motor.
-- **Criação/entrada tardia e sucessão** — GDD 10 decide assumir bot ou fundar comunidade; `05`, `07` e `09` pressupõem sucessor, herança de território/Ledger e Mandato. Falta comando, pré-condições, projeção de ownership e regras determinísticas para a transição.
-- **Retenção e eliminação de conteúdo não mecânico** — `04`, `08`, `09` e `11` delegam entre si texto de jogador, corpo de resposta de IA, evidência, Crônica e itens supersedidos. Falta uma política única de classificação, prazo, expurgo verificável e efeito em backup/exportação.
+- **Política de presença — coberta por SDD 17** — `sdd/17` define `PresencePolicy`, presença por usuário, múltiplos dispositivos, congelamento na abertura, reconexão, corte e auditoria de `Pronto`; a janela técnica decidida é 60 s.
+- **Criação/entrada tardia e sucessão — coberta por SDDs 15 e 17** — `sdd/15` e `sdd/17` especificam os comandos, pré-condições, herança de estado/Ledger/Crônica e transição de controle já decidida; detalhes ainda marcados como proposta continuam nos próprios SDDs.
+- **Retenção e eliminação de conteúdo não mecânico — coberta por SDD 19** — `sdd/19` centraliza classificação, prazo proposto, expurgo verificável, backup, exportação e exclusão; os prazos e as escolhas jurídicas/operacionais permanecem abertos nele.
 
 ## Violações dos invariantes do `CLAUDE.md` §2
 
@@ -58,6 +58,15 @@
 | RC2-02 | `sdd/17-identidade-e-contas.md` §3; tabela de contratos canônicos acima | `AcceptedCommand` usava o campo `ruleset`, enquanto a nomenclatura canônica é `ruleset_ref: RulesetRef`. | Renomear o campo no contrato para `ruleset_ref`. Aplicada em 2026-10-01. | não |
 | RC2-03 | `sdd/15-regras-de-dominio.md` §2 e §4; `sdd/17-identidade-e-contas.md` §2 | Sucessão/entrada tardia e efeitos de revolta seguem sem regras mecânicas completas; os SDDs delimitam a coordenação, mas não especificam todos os comandos e transições já decididos no GDD. | Proposta escrita em 15 e 17; decisões existentes do GDD foram especificadas e detalhes não decididos permanecem marcados como proposta. | não |
 | RC2-04 | `sdd/16-visibilidade.md` §5; `sdd/10-protocolo.md` §9; `sdd/02-hex-e-mapa.md` §8 | Limite de chunk divergente entre documentos. | Resolvido: 48 KiB até benchmark no Android; valor final pelo benchmark. Aplicado em 2026-10-01. | não — decidido em 2026-10-01 |
+
+## Revisão 3 (SDDs 19–21 e catálogos)
+
+| ID | Arquivos | Divergência | Correção | Precisa do usuário? |
+|---|---|---|---|---|
+| RC3-01 | `sdd/17-identidade-e-contas.md` §4; RC-08 e decisões da revisão | `PresencePolicy.reconnect_grace_ms` estava em 45 s, mas a decisão registrada fixa janela técnica de reconexão em 60 s. | Alterar para `60_000` ms. Aplicada em 2026-10-01. | não |
+| RC3-02 | `sdd/21-notificacoes.md` §FCM e privacidade | O exemplo de payload usava `category: "decision_needed"`, valor ausente de `NotificationCategory`, cujo contrato define quatro categorias específicas. | Usar `critical_choice` no exemplo e declarar que `category` segue `NotificationCategory`. Aplicada em 2026-10-01. | não |
+| RC3-03 | `data/catalogs/*.json`; `sdd/18-dsl-catalogos.md` §3.1–3.3 | Os catálogos-rascunho são separados por domínio e não trazem, por template, todos os metadados do contrato de publicação proposto (`revision`, parâmetros, limites, hash e versão mínima do motor). O formato-fonte e a compatibilidade ainda estão abertos no SDD 18. | Não aplicar: definir antes se esses metadados ficam em cada arquivo, em manifesto gerado ou em outro pacote publicado; então alinhar validador e dados. | sim |
+| RC3-04 | `sdd/06-entropia.md` §§Contratos/Templates especiais; `data/catalogs/event_templates.json` | SDD 06 nomeia a categoria `terrain_change`; o catálogo usa `terrain`. Os verbos de interferência também diferem (`redirect`/`invoke` no SDD e `divert` nos dados). Nenhuma das formas foi decidida. | Não aplicar: escolher os enums canônicos de categoria e interferência, depois sincronizar SDD, catálogo e validador. | sim |
 
 ## Decisões do usuário sobre itens "sim" (2026-10-01)
 

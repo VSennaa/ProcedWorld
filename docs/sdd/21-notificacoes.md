@@ -119,12 +119,13 @@ Payload mínimo proposto, sem texto específico do mundo:
 {
   "notification_id": "opaque-id",
   "world_ref": "opaque-ref",
-  "category": "decision_needed",
+  "category": "critical_choice",
   "revision": 42
 }
 ```
 
-Os nomes e esquema finais devem ser alinhados ao protocolo. Não incluir narrativa, texto de jogador,
+O valor de `category` usa `NotificationCategory`; os nomes e esquema finais devem ser alinhados ao protocolo.
+Correção aplicada em 2026-10-01. Não incluir narrativa, texto de jogador,
 Mandato, termos diplomáticos, nomes de entidades, conteúdo de tiles, estado do mundo, API key ou token
 de sessão. O app usa os identificadores opacos somente como pistas para buscar dados que a sessão
 autorizada pode acessar. Logs e métricas registram IDs de correlação, categoria, latência e resultado,
