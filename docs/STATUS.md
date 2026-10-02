@@ -25,6 +25,13 @@ Agente ativo: nenhum
   quebra em JSON → usar patch de três estados); spike `spike/front/godot-hex-render` (Godot 4.7, testes
   headless passam, screenshot). No PC, o Smart App Control bloqueia executáveis recém-compilados
   (build scripts do cargo); compilação Rust roda na VPS em Docker.
+- **Feito em 2026-10-02 11:30–12:05 (fila 2 no Codex, autônomo)**: `docs/sdd/GUIA-DE-REVISAO.md` (pares de
+  revisão com 39 perguntas de múltipla escolha); catálogos v2 (10 unidades, 14 edifícios, 12 melhorias,
+  24 eventos; validador ok); assets v2 em `assets/entities/` (138 SVGs, determinísticos); sucessão e
+  entrada tardia como comandos (SDD 15/17, RC2-03); SDDs 19 (retenção), 20 (conflitos), 21
+  (notificações); glossário sincronizado; spike Godot v2 (continentes, rios, fronteiras, névoa,
+  recursos; testes headless ok).
+- **Próximo passo**: revisão do SDD 2 a 2 seguindo `docs/sdd/GUIA-DE-REVISAO.md` → aprovação → Fase 2.
 - **Pendente para o usuário**: avaliar o visual em `assets/preview.html`; atualizar
   `docs/PERGUNTAS-ABERTAS.md` com as decisões de 2026-10-01; revisão do SDD 2 a 2.
 - **Cotas (00:10)**: Claude 68% (5 h) / 77% (semana); Codex 95% (5 h) / 46% (semana) — Codex esgotado
