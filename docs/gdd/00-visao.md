@@ -130,8 +130,8 @@
 ### Ciclo infinito sem inflação
 
 - Eras avançam por marcos do mundo e da civilização, com salvaguarda de duração para impedir espera
-  indefinida. Duração-alvo inicial: 6–8 turnos; é um valor inicial, sujeito a balanceamento, e deve
-  coexistir com a regra de eras por marcos em [10-ciclo-infinito-e-eras.md](10-ciclo-infinito-e-eras.md).
+  indefinida. Duração decidida: por marcos, de 4 a 12 turnos, com média esperada de 6–8 (ver
+  [10-ciclo-infinito-e-eras.md](10-ciclo-infinito-e-eras.md)).
 - Rendimentos e capacidades crescem por novas opções, eficiência e especialização, não por duplicação
   automática a cada era. Manutenção de cidades, rotas e instituições aumenta com alcance e complexidade;
   custos e rendimentos usam faixas/tetos definidos em dados (ver [03-economia.md](03-economia.md)).

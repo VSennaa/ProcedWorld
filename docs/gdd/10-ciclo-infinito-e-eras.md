@@ -2,6 +2,15 @@
 
 ## Decidido
 - Não há condição de vitória obrigatória.
+- **Era por marcos, de 4 a 12 turnos**: abre por marcos (mínimo de 4 turnos entre eras) e fecha ao
+  resolver a crise, colapsar ou após 12 turnos sem marco novo; 6–8 turnos é a média esperada, não
+  regra. Decidido em 2026-10-01.
+- **Até 2 legados ativos no total**, de qualquer tipo: instituição, patrimônio, memória social ou
+  tecnologia preservada (que conta como instituição; ver 05-tecnologia.md). Decidido em 2026-10-01.
+- **Mundos eternos no MVP**; temporadas podem virar um modo separado depois. Decidido em 2026-10-01.
+- **Entrada tardia com duas opções**: fundar uma comunidade nova (assentamento protegido, sem vínculos
+  ou com patrocínio de uma civilização existente) **ou** assumir uma civilização controlada por bot,
+  com sua história, Ledger e Crônica. Decidido em 2026-10-01.
 
 ## Proposta
 
@@ -182,13 +191,5 @@
 
 ## Perguntas abertas
 
-- O mundo tem fim (mundos "temporada") ou é realmente eterno?
-  - **Recomendação:** iniciar o MVP com mundos persistentes e eternos, pois o ciclo de legado,
-    colapso e renascimento precisa provar seu valor antes de uma reinicialização periódica. Avaliar
-    temporadas depois como modo separado, com regra explícita para arquivo de Crônica e novos mundos;
-    elas atendem recomeços competitivos, mas não devem invalidar a promessa principal.
-- Como entram novos jogadores num mundo antigo e avançado?
-  - **Recomendação:** usar assentamento protegido por curto período, duas posturas de entrada e
-    progressão limitada pelos mesmos tetos de manutenção e legado descritos acima. Isso permite
-    participação imediata sem presenteá-lo com tecnologia avançada nem tornar a diplomacia opcional;
-    validar os valores de proteção em simulação e testes de entrada tardia.
+- Ao assumir uma civilização de bot, o novo jogador herda o Mandato e a Doutrina do bot ou começa
+  com um preset? Quais civilizações de bot ficam disponíveis (todas, só as sem jogador há N eras)?

@@ -5,8 +5,10 @@
 - **Árvore base fixa em dados + descobertas emergentes** por templates validados da Entropia. Decidido em 2026-10-01.
 - **Até 3 práticas ativas**, número fixo que não cresce com as eras (valor exato sujeito a
   balanceamento). Decidido em 2026-10-01.
-- **Legado no colapso**: o jogador escolhe até 2 tecnologias elegíveis (com base material ou
-  instituição sobrevivente); ausente, o Governador escolhe pelo Mandato. Decidido em 2026-10-01.
+- **Legado no colapso**: o jogador escolhe tecnologias elegíveis (com base material ou instituição
+  sobrevivente) para preservar; ausente, o Governador escolhe pelo Mandato. Cada tecnologia
+  preservada **conta como um legado de instituição** dentro do limite de 2 legados ativos no total
+  (10-ciclo-infinito-e-eras.md). Decidido em 2026-10-01.
 - **Magia**: civilizações que aderem a um fenômeno mágico (ver 00-visao.md e 06) podem desenvolver
   **práticas mágicas**, que seguem as mesmas regras de práticas (vagas, manutenção, tetos). Decidido em 2026-10-01.
 

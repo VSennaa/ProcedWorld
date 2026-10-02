@@ -3,6 +3,10 @@
 ## Decidido
 - Cliente para celular; o servidor faz todo o processamento (ADR-0001).
 - BYOK: o jogador informa a API key e o resto é automático.
+- **A chave é opcional**: sem chave, o jogo roda só com regras determinísticas (T0); com chave, entram
+  narrativa, planejamento e negociação em linguagem natural. Decidido em 2026-10-01.
+- **Android primeiro**, com cliente web/desktop interno só para teste e depuração. Decidido em 2026-10-01.
+- **Retrato** como padrão; o mapa pode girar para paisagem se isso não esconder ações. Decidido em 2026-10-01.
 
 ## Proposta
 
@@ -177,7 +181,8 @@
 - A interface de era não transforma progresso em uma pilha de números. Ao alcançar um marco, a
   Pauta oferece uma escolha de consolidação entre um pequeno conjunto de legados elegíveis — por
   exemplo, instituição, rede ou conhecimento — e mostra o custo de manutenção ou renúncia envolvido.
-  Valor inicial, sujeito a balanceamento: 2–3 opções por marco e um legado ativo por categoria.
+  Valor inicial, sujeito a balanceamento: 2–3 opções por marco; no máximo 2 legados ativos no total
+  (10-ciclo-infinito-e-eras.md).
 - Painéis de longo prazo usam tendências e marcos, não totais sem limite. Recursos excedentes devem
   aparecer como reserva com teto, manutenção futura ou oportunidade de conversão, nunca como um
   multiplicador permanente invisível. Assim, o jogador decide entre ampliar alcance, fortalecer a
@@ -210,12 +215,5 @@
   validação, não decisões de produto aprovadas.
 
 ## Perguntas abertas
-- Android primeiro? Cliente web/desktop para testes?
-  - **Recomendação:** priorizar Android para validar a interação por toque e manter um cliente web ou
-    desktop interno para teste e depuração do servidor. Isso concentra o primeiro produto no público
-    alvo sem transformar ferramentas de desenvolvimento em promessa de plataforma pública.
-- Orientação de tela (retrato ou paisagem)?
-  - **Recomendação:** adotar retrato como padrão da pauta, relatórios e decisões; permitir paisagem
-    somente no mapa se o cliente suportar a transição sem esconder ações críticas. Retrato favorece
-    sessões de poucos minutos e alcance com uma mão, enquanto paisagem pode melhorar a leitura de
-    mapas hexagonais densos.
+
+- Janela do teto diário de custo (fuso, moeda exibida, conversão por provedor): definir no SDD.

@@ -18,15 +18,15 @@
 
 | Arquivo | Pilar | Estado |
 |---|---|---|
-| [00-visao.md](00-visao.md) | Visão, público, fantasia do jogador | proposta (rascunho) |
-| [01-loop-e-turnos.md](01-loop-e-turnos.md) | Loop principal, turnos simultâneos, ritmo | proposta (rascunho) |
-| [02-mapa-e-tiles.md](02-mapa-e-tiles.md) | Mapa hexagonal, terreno, geração procedural | proposta (rascunho) |
-| [03-economia.md](03-economia.md) | Recursos, rendimentos, comércio | proposta (rascunho) |
-| [04-cidades-e-populacao.md](04-cidades-e-populacao.md) | Cidades, população, estabilidade | proposta (rascunho) |
-| [05-tecnologia.md](05-tecnologia.md) | Progressão tecnológica, descobertas emergentes | proposta (rascunho) |
-| [06-sociedade-e-governo.md](06-sociedade-e-governo.md) | Governo, cultura, crenças, revoltas | proposta (rascunho) |
-| [07-diplomacia.md](07-diplomacia.md) | Relações, tratados, guerra, ledger | proposta (rascunho) |
-| [08-entropia-e-eventos.md](08-entropia-e-eventos.md) | Diretor de eventos, catálogo | proposta (rascunho) |
-| [09-governador-e-mandato.md](09-governador-e-mandato.md) | Delegação e configuração | proposta (rascunho) |
-| [10-ciclo-infinito-e-eras.md](10-ciclo-infinito-e-eras.md) | Eras, colapso, renascimento | proposta (rascunho) |
-| [11-experiencia-mobile.md](11-experiencia-mobile.md) | UX, sessões, notificações, onboarding BYOK | proposta (rascunho) |
+| [00-visao.md](00-visao.md) | Visão, público, fantasia do jogador | revisado (rodada 1) |
+| [01-loop-e-turnos.md](01-loop-e-turnos.md) | Loop principal, turnos simultâneos, ritmo | revisado (rodada 1) |
+| [02-mapa-e-tiles.md](02-mapa-e-tiles.md) | Mapa hexagonal, terreno, geração procedural | revisado (rodada 1) |
+| [03-economia.md](03-economia.md) | Recursos, rendimentos, comércio | revisado (rodada 1) |
+| [04-cidades-e-populacao.md](04-cidades-e-populacao.md) | Cidades, população, estabilidade | revisado (rodada 1) |
+| [05-tecnologia.md](05-tecnologia.md) | Progressão tecnológica, descobertas emergentes | revisado (rodada 1) |
+| [06-sociedade-e-governo.md](06-sociedade-e-governo.md) | Governo, cultura, crenças, revoltas | revisado (rodada 1) |
+| [07-diplomacia.md](07-diplomacia.md) | Relações, tratados, guerra, ledger | revisado (rodada 1) |
+| [08-entropia-e-eventos.md](08-entropia-e-eventos.md) | Diretor de eventos, catálogo | revisado (rodada 1) |
+| [09-governador-e-mandato.md](09-governador-e-mandato.md) | Delegação e configuração | revisado (rodada 1) |
+| [10-ciclo-infinito-e-eras.md](10-ciclo-infinito-e-eras.md) | Eras, colapso, renascimento | revisado (rodada 1) |
+| [11-experiencia-mobile.md](11-experiencia-mobile.md) | UX, sessões, notificações, onboarding BYOK | revisado (rodada 1) |

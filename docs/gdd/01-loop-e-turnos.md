@@ -133,8 +133,8 @@
 
 - A estrutura do turno persiste em todas as eras. Mudam opções e curva de tensão, sem multiplicador
   gratuito por era. O marco abre foco e renúncia, enquanto território e instituições extensos
-  aumentam manutenção. Alvo inicial de 6–8 turnos por era: valor inicial, sujeito a balanceamento
-  e aos marcos de [10-ciclo-infinito-e-eras.md](10-ciclo-infinito-e-eras.md).
+  aumentam manutenção. Era por marcos, de 4 a 12 turnos (média esperada de 6–8), conforme
+  [10-ciclo-infinito-e-eras.md](10-ciclo-infinito-e-eras.md).
 - Na síntese, o motor calcula `P` de [00-visao.md](00-visao.md). `P` de 40–69 pede mitigação;
   `P` de 70–100 por dois turnos abre crise. A Entropia pode propor evento elegível dentro do
   orçamento, mas não provocar colapso só por narrativa. O jogador escolhe consumir reservas,

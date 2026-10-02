@@ -6,13 +6,16 @@
 
 - **Fase**: 0 — Concepção (GDD)
 - **Branch ativa**: `docs/gdd/draft-proposals` (ainda não mergeada em `develop`).
-- **Todos os 12 pilares têm proposta redigida**, aguardando revisão do usuário. "Decidido" intacto em todos.
-- **Próximo passo**: o usuário revisar os pilares; depois, uma passada de consolidação (Claude) para
-  alinhar termos e fórmulas entre pilares e levar as perguntas abertas restantes ao usuário.
-- **Revisão 2 a 2 com o usuário**: 00–05 revisados e decididos (ver "Decidido" de cada pilar e
-  ADR-0008). Próximos: 06+07, 08+09, 10+11. Inconsistência 04×06 resolvida (grupos híbridos); o 06
-  precisa ser ajustado ao modelo híbrido na sua revisão.
-- **Última auditoria** (2026-10-01 ~23:40 UTC): Codex 32% semanal; OpenRouter ~US$ 3,02 (só decisões do Jev).
+- **Revisão 2 a 2 concluída (rodada 1)**: os 12 pilares foram revisados com o usuário em 2026-10-01;
+  decisões registradas no "Decidido" de cada pilar e no ADR-0008 (turno sem relógio).
+- **Próximo passo**: passada de consolidação (Claude) para alinhar fórmulas e termos entre pilares,
+  depois pedir ao usuário a **aprovação do GDD** (critério de saída da Fase 0) e o merge em `develop`.
+- **Pendências de consolidação conhecidas**:
+  1. Termo de estabilidade `(100−S)/2` em `P_cidade` (06) — incluir ou não.
+  2. Fórmula de proporção em contratos mistos (03) — SDD.
+  3. Perguntas abertas restantes listadas em cada pilar (magia, interferir na Entropia, entrada
+     tardia assumindo bot, presença/queda de conexão).
+- **Última auditoria** (2026-10-02): Claude 7% (5 h) / 69% (semana); Codex 32% semanal; OpenRouter ~US$ 3,02.
 
 ## Feito
 
@@ -28,6 +31,9 @@
   OpenRouter (reserva de crédito em requisições paralelas). Execução movida para o Codex na conta do
   ChatGPT; OpenRouter ficou só com a decisão do Jev.
 - 2026-10-01 — Mapeamento Jev → Codex pelo benchmark do Akita (`tools/agents/model-scores.json`).
+- 2026-10-01/02 — Revisão 2 a 2 dos 12 pilares com o usuário via perguntas de múltipla escolha;
+  ADR-0008 (turno sem relógio); regra "texto de jogador é dado não confiável" no CLAUDE.md;
+  regra de execução de escolhas Anthropic do Jev no próprio Claude (com ≥ 20% de cota livre).
 - 2026-10-01 — Segundo lote: 10 pilares redigidos, todos com saída 0 (01, 03, 04, 05 com `gpt-6-sol`
   pela regra antiga de preço; 06, 08, 09, 10, 11 com `gpt-5.6-terra`; 07 com `gpt-6-luna`).
 
