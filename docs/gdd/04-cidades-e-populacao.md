@@ -1,7 +1,15 @@
 # 04 — Cidades e população
 
 ## Decidido
-- (nada ainda)
+- **População agregada com grupos híbridos**: três grupos por função (cultivadores, ofícios,
+  mercadores) existem em cada cidade e somam na civilização. As demandas políticas de
+  06-sociedade-e-governo.md (autonomia, participação, tradição, reforma etc.) são **atributos desses
+  mesmos grupos** e mudam com cultura e crises. Não há um segundo modelo de grupos. Decidido em 2026-10-01.
+- **Sem limite rígido de cidades**: a expansão é contida por carga administrativa crescente; acima da
+  capacidade, a estabilidade cai e a secessão fica possível. Decidido em 2026-10-01.
+- **Migração interna totalmente automática**: as pessoas migram sozinhas pelas regras do motor; o
+  jogador influencia pelas condições das cidades (comida, moradia, estabilidade) e vê as
+  consequências no relatório. Decidido em 2026-10-01.
 
 ## Proposta
 
@@ -63,12 +71,12 @@
   e demanda, permitindo recuperação. A privação urbana compõe `D` da pressão de crise
   definida em [00-visao.md](00-visao.md): `D = limitar(0, 20, teto(Σ(pop_c × D_c)
   / Σpop_c))`. Cidade vazia pesa zero. Assim não surge outra fórmula de crise.
-- Migração interna transfere pessoas, nunca as multiplica. Se uma cidade tem privação ou
-  estabilidade abaixo de 40 e outra tem vaga, comida e ligação, há opção de transferir
-  até um ponto de população por turno. O grupo acompanha o migrante. O jogador escolhe
-  acolher, restringir ou investir na origem; acolher preserva trabalho, mas consome a
-  margem da receptora. Limiar e fluxo são **valores iniciais, sujeitos a balanceamento**.
-  Uma política permanente de governo ou Mandato também pode autorizar a transferência.
+- Migração interna é automática e transfere pessoas, nunca as multiplica. Se uma cidade tem
+  privação ou estabilidade abaixo de 40 e outra tem vaga, comida e ligação, o motor transfere
+  até um ponto de população por turno, em ordem estável. O grupo acompanha o migrante.
+  Limiar e fluxo são **valores iniciais, sujeitos a balanceamento**. O jogador não ordena a
+  migração: decide onde investir (moradia, comida, estabilidade), sabendo que uma cidade bem
+  cuidada atrai gente e esvazia a vizinha, e o relatório mostra quem migrou e por quê.
 
 ### Grupos de interesse e estabilidade
 
@@ -180,15 +188,4 @@
   por texto livre, conforme ADR-0006.
 
 ## Perguntas abertas
-- Nível de detalhe da população (número agregado, grupos, ou "pops" estilo Victoria)?
-  - **Recomendação:** população agregada repartida em três grupos por função. Gera
-    disputas políticas verificáveis sem exigir microgestão; testar os três grupos
-    antes de adicionar identidades.
-- Limite de cidades e como a expansão é contida a longo prazo.
-  - **Recomendação:** sem limite rígido; carga crescente, capacidade limitada e
-    autonomia como saída. Permite império arriscado e fragmentação jogável; validar
-    em simulações longas para evitar expansão dominante ou colapso inevitável.
-- Migração interna deve exigir ordem individual ou seguir política permanente?
-  - **Recomendação:** permitir política permanente e pedir confirmação quando a
-    mudança alterar o grupo dominante ou deixar a origem sem posto essencial.
-    Reduz toques e preserva controle nas consequências políticas relevantes.
+- Leis podem restringir a migração automática (ex.: proibir saída de uma região)? Tratar em 06.

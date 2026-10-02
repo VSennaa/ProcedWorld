@@ -3,6 +3,13 @@
 ## Decidido
 
 - Revoltas são parte dos eventos possíveis.
+- **Grupos híbridos** (ver 04-cidades-e-populacao.md): os três grupos por função de cada cidade são
+  os mesmos grupos políticos deste pilar; demandas (autonomia, participação, tradição, reforma etc.)
+  são atributos deles. As regras de grupos abaixo devem ser lidas sobre esse modelo único e
+  ajustadas na revisão deste pilar. Decidido em 2026-10-01.
+- **Magia como fenômeno + reação política**: a magia surge por template da Entropia (local, grupo ou
+  traço de uma sociedade); cada nação reage por leis e políticas — aderir, proibir, regulamentar —
+  com consequências mecânicas. Decidido em 2026-10-01.
 
 ## Proposta
 

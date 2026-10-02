@@ -9,10 +9,9 @@
 - **Todos os 12 pilares têm proposta redigida**, aguardando revisão do usuário. "Decidido" intacto em todos.
 - **Próximo passo**: o usuário revisar os pilares; depois, uma passada de consolidação (Claude) para
   alinhar termos e fórmulas entre pilares e levar as perguntas abertas restantes ao usuário.
-- **Inconsistências conhecidas a reconciliar**:
-  1. Grupos de interesse: `04-cidades-e-populacao.md` define grupos **por cidade** (satisfação 0–100);
-     `06-sociedade-e-governo.md` define grupos **da civilização** (peso `w`, demandas, tensão `T_g`).
-     Escolher um modelo (ou civ → cidade explícito).
+- **Revisão 2 a 2 com o usuário**: 00–05 revisados e decididos (ver "Decidido" de cada pilar e
+  ADR-0008). Próximos: 06+07, 08+09, 10+11. Inconsistência 04×06 resolvida (grupos híbridos); o 06
+  precisa ser ajustado ao modelo híbrido na sua revisão.
 - **Última auditoria** (2026-10-01 ~23:40 UTC): Codex 32% semanal; OpenRouter ~US$ 3,02 (só decisões do Jev).
 
 ## Feito
@@ -35,7 +34,6 @@
 ## Perguntas abertas (para o usuário)
 
 1. Chave do modelo de decisão (Jev/Runware/OpenRouter) no jogo: do operador do servidor ou do jogador? (ADR-0002)
-2. Ordem de ação de bots/Governadores no turno simultâneo (ADR-0003): o pilar 01 propõe ordem rotativa com janelas — aprovar?
 3. Ratificar a stack proposta (ADR-0007).
 4. Hospedagem futura do Laya, dado que a VPS atual não tem GPU (ADR-0005).
 

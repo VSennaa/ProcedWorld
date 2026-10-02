@@ -167,5 +167,5 @@
 
 ## Perguntas abertas
 
-- Qual sistema de magia livre usar como base, e como a magia entra no motor (template da Entropia,
-  recurso, tecnologia, instituição)? Tratar nos pilares 05, 06 e 08.
+- Qual sistema de magia livre usar como base? (Como entra no motor já foi decidido: fenômeno
+  surgido por template da Entropia + reação política das nações; ver 05 e 06.)

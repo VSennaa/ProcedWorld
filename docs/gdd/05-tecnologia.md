@@ -2,6 +2,13 @@
 
 ## Decidido
 - A Entropia pode fazer tecnologias "surgirem" como eventos.
+- **Árvore base fixa em dados + descobertas emergentes** por templates validados da Entropia. Decidido em 2026-10-01.
+- **Até 3 práticas ativas**, número fixo que não cresce com as eras (valor exato sujeito a
+  balanceamento). Decidido em 2026-10-01.
+- **Legado no colapso**: o jogador escolhe até 2 tecnologias elegíveis (com base material ou
+  instituição sobrevivente); ausente, o Governador escolhe pelo Mandato. Decidido em 2026-10-01.
+- **Magia**: civilizações que aderem a um fenômeno mágico (ver 00-visao.md e 06) podem desenvolver
+  **práticas mágicas**, que seguem as mesmas regras de práticas (vagas, manutenção, tetos). Decidido em 2026-10-01.
 
 ## Proposta
 
@@ -169,15 +176,5 @@
   Saída inválida ou timeout usa fallback T0; replay nunca consulta IA novamente.
 
 ## Perguntas abertas
-- Árvore fixa, árvore com ramos aleatórios por mundo, ou totalmente emergente?
-  - **Recomendação:** árvore base fixa em dados e descobertas por templates validados.
-    Pré-requisitos previsíveis facilitam decisões curtas e balanceamento; variações
-    ligadas ao mapa e à Crônica dão identidade ao mundo sem efeitos inventados pela IA.
-- O que acontece quando a árvore termina num jogo infinito?
-  - **Recomendação:** manter revisões substitutivas e descobertas ocasionais como
-    escolhas horizontais, sem níveis infinitos de bônus. Assim, crises continuam
-    relevantes e cada era pede recomposição de prioridades.
-- A preservação no colapso deve ser escolha direta ou efeito automático de instituições?
-  - **Recomendação:** deixar o jogador escolher até dois legados entre os elegíveis
-    pelas instituições e territórios sobreviventes. Há agência sem salvar uma prática
-    que perdeu toda a sua base material.
+- Como uma prática mágica difere de uma tecnológica (requisito de adesão, risco, reação de vizinhos)?
+  Detalhar junto com 06 e 08.
