@@ -4,7 +4,7 @@
 
 ## Agora
 
-Agente ativo: Sonnet P16 (`feat/engine/unit-orders`, área `engine/`) e Sonnet P17 (`feat/front/live-client`, área `client/`), desde 2026-10-03
+Agente ativo: nenhum (2026-10-03, após P16–P18)
 
 - **Fase**: **3 — Alfa**. Fase 2 mergeada em `develop` (tag `v0.1.0-indev.1` aguarda o usuário).
 - **`feat/ai/phase3-core`** (98 testes na VPS: 81 motor, 11 harness, 6 servidor), feito em 2026-10-02 com
@@ -24,8 +24,20 @@ Agente ativo: Sonnet P16 (`feat/engine/unit-orders`, área `engine/`) e Sonnet P
   colapso nunca são autoescolhidos; era fixa de 8 turnos na Entropia; `turn_diff` do servidor é visão
   completa (não delta); sem autenticação real nem PostgreSQL no servidor; cliente não fala com o servidor
   ainda (só fixture); sem `Cargo.lock` versionado.
-- **2026-10-03**: decisão do usuário — só unidades ociosas bloqueiam Pronto (GDD 01); contrato no SDD
-  03/10/12/15 (`bb4b322`); árvore de pesquisa só leitura no cliente. P16/P17 em andamento.
+- **2026-10-03 — cliente ao vivo jogável** (`feat/ai/phase3-core`):
+  - decisão do usuário: só unidades ociosas bloqueiam Pronto (GDD 01); contrato no SDD 03/10/12/15;
+  - P16 ordens de unidade persistentes (`Idle/Fortify/Explore/MoveTo`), `SkipUnit`, `idle_units`,
+    gate `units_awaiting_orders`, frame `catalog`, `protocol_version "1.0"`; correção minha: ociosa
+    ignora a sobra de movimento do turno anterior;
+  - P17 cliente ligado ao servidor: tela de conexão, unidades no mapa com ordens, fila de ociosas,
+    Pronto bloqueado, árvore de pesquisa só leitura;
+  - P18 fundar capital/cidade e fila de produção no cliente; `home_tile` e custos no catálogo;
+  - P12b coesão centrada em 50 aplicada; meta de pressão ≥ 10 virou aviso (média 4) e pergunta aberta;
+  - testes: Rust 114 na VPS (`VPS_EXIT=0`), cliente 475 + 33 ao vivo, ponta a ponta contra servidor
+    real na VPS 15/15 (`client/tests/real_server.gd`: funda capital, produz batedor no turno 8, ordena);
+  - builds na VPS serializados com `flock` (corrida no volume de target compartilhado).
+- **Próximo**: teste do `.exe` Windows do cliente (Smart App Control); servidor publicado na VPS atrás
+  do proxy (precisa de aprovação do usuário); foco de cidade e escolha de pesquisa no cliente.
 - **Para o usuário**: aprovar a tag `v0.1.0-indev.1`; revisar `feat/ai/phase3-core` antes do merge em `develop`.
 - **Quadro**: `https://<hostname da VPS>/board.html` (HTTP Basic).
 
