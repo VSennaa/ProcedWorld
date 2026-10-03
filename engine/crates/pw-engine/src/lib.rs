@@ -6,7 +6,10 @@
 pub mod hash;
 pub mod hex;
 pub mod ids;
+pub mod mapgen;
 pub mod rng;
+pub mod bots;
+pub mod world;
 
 /// Version printed by the harness and pinned by future replay metadata.
 pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");

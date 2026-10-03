@@ -6,4 +6,5 @@ license.workspace = true
 
 [dependencies]
 pw-engine = { path = "../pw-engine" }
-
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

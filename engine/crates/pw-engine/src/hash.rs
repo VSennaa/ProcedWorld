@@ -16,7 +16,7 @@ pub fn fnv1a(bytes: &[u8]) -> u64 {
 }
 
 /// Hash of a canonically serialized simulation state.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]
 pub struct StateHash(pub u64);
 
 impl StateHash {
