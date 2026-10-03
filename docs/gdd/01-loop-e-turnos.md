@@ -13,6 +13,9 @@
   e são produzidas na fila da cidade, como no *Civilization*. Só a unidade **ociosa** (sem ordem em
   andamento) impede Pronto; ordens de vários turnos (construir, explorar, fortificar, rota) não pedem
   atenção. **Pular** resolve com um toque e vale só para o turno. Ausente: o Governador decide.
+  **Prontidão** (decidido em 2026-10-03) é um pular persistente: a unidade fica parada fora da fila
+  até receber nova ordem ou até uma unidade de outra civilização aparecer no alcance de visão dela;
+  então volta a ociosa e pede ordem, como o "Alerta" do *Civilization*.
 - Fase de resolução depois das ações: produção, crescimento, Entropia, consolidação de memória.
 
 ## Proposta

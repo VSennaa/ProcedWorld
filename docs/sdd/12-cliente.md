@@ -68,7 +68,8 @@ permanecem provisórios até validação no harness.
 
 - **Unidades no mapa**: toda unidade visível aparece no tile com ícone por papel (`assets/entities`)
   e cor da civilização; a seleção mostra tipo, movimento restante, vida e ordem atual, com as ações
-  legais **Mover** (toque no destino: `MoveTo`), **Explorar**, **Fortificar** e **Pular**.
+  legais **Mover** (toque no destino: `MoveTo`), **Explorar**, **Fortificar**, **Prontidão** (`Sentry`)
+  e **Pular**.
 - **Fila de atenção**: a Pauta lista as unidades ociosas (`idle_units`); tocar centraliza o mapa
   nela. O botão **Pronto** fica desabilitado com o contador "N unidades aguardam ordem"; o servidor
   é quem garante a regra (`units_awaiting_orders`).

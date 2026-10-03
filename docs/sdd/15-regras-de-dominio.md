@@ -185,13 +185,14 @@ Cada unidade guarda uma **ordem persistente** e o turno em que foi pulada:
 
 ```text
 UnitState { ..., order: UnitOrder, skipped_turn: Option<Turn> }
-UnitOrder = Idle | Fortify | Explore | MoveTo { target: TileIndex }
+UnitOrder = Idle | Fortify | Sentry | Explore | MoveTo { target: TileIndex }
 ```
 
 - Unidade recém-produzida nasce `Idle`. `MoveTo` avança pelo caminho a cada turno (mesma regra de
   movimento de `MoveUnit`) e volta a `Idle` ao chegar ou se o destino ficar inalcançável.
   `Explore` volta a `Idle` quando não há tile desconhecido alcançável. `Fortify` só termina por nova
-  ordem. Ordens de construção/melhoria entram quando o motor tiver melhorias (catálogo existente).
+  ordem. `Sentry` (Prontidão, decidido em 2026-10-03) volta a `Idle` no fim do turno em que uma unidade
+  de outra civilização está dentro do alcance de visão da unidade (mesma regra de visibilidade do motor). Ordens de construção/melhoria entram quando o motor tiver melhorias (catálogo existente).
 - Comandos: `SetUnitOrder { unit_id, order }` (substitui a ordem) e `SkipUnit { unit_id }`
   (`skipped_turn = turno atual`, sem efeito mecânico). `MoveUnit` continua sendo o movimento de
   um turno e não muda a ordem. Ambos validam dono, unidade viva e alvo legal.
