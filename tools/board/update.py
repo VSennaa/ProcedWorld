@@ -32,6 +32,16 @@ def save(board):
     with open(os.path.join(RUNS, "board-data.js"), "w", encoding="utf-8") as f:
         f.write("window.BOARD = " + json.dumps(board, ensure_ascii=False) + ";\n")
     shutil.copyfile(os.path.join(os.path.dirname(__file__), "board.html"), os.path.join(RUNS, "board.html"))
+    # Optional mirror to the VPS board container (BOARD_REMOTE=deploy@<VPS_HOST>); never blocks the caller.
+    remote = os.environ.get("BOARD_REMOTE")
+    if remote:
+        import subprocess
+        try:
+            subprocess.run(["scp", "-q", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5",
+                            os.path.join(RUNS, "board-data.js"), os.path.join(RUNS, "board.html"),
+                            remote + ":/opt/stacks/procedworld/board/"], timeout=20, check=False)
+        except (OSError, subprocess.SubprocessError):
+            pass
 
 
 def main(argv):

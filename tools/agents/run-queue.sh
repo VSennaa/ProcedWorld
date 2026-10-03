@@ -14,7 +14,7 @@ mkdir -p "$root/.agent-runs"
 runs="$root/.agent-runs"
 board() { python "$root/tools/board/update.py" "$@" >/dev/null 2>&1 || true; }
 title_of() { head -1 "$root/$1" | sed 's/^# *//; s/^Brief *//'; }
-model_of() { grep "\"task\": \"$1\"" "$runs/decisions.jsonl" 2>/dev/null | tail -1 | sed -n 's/.*"model": "\([^"]*\)".*/codex · /p'; }
+model_of() { grep "\"task\": \"$1\"" "$runs/decisions.jsonl" 2>/dev/null | tail -1 | sed -n 's/.*"model": "\([^"]*\)".*/codex · \1/p'; }
 seed_board() { while IFS='|' read -r n b _rest; do [ -z "$n" ] || [ "${n:0:1}" = "#" ] && continue; board "$n" todo --title "$(title_of "$b")"; done < "$queue"; }
 echo "START $(date '+%F %T')" >> "$log"
 seed_board
