@@ -72,6 +72,12 @@ permanecem provisórios até validação no harness.
 - **Fila de atenção**: a Pauta lista as unidades ociosas (`idle_units`); tocar centraliza o mapa
   nela. O botão **Pronto** fica desabilitado com o contador "N unidades aguardam ordem"; o servidor
   é quem garante a regra (`units_awaiting_orders`).
+- **Pronto compacto e contador de decisões** (pedido do usuário em 2026-10-03): fora da Pauta, um botão
+  flutuante compacto no canto inferior do Mapa (e das demais telas do jogo) mostra só ícone e um selo
+  com o número de **decisões restantes** = unidades ociosas + eventos aguardando resposta + capital por
+  fundar. Com decisões restantes, tocar leva à próxima (centraliza a unidade, abre o evento ou o cartão
+  da capital), como o "próxima unidade" do *Civilization*; com zero, vira **Pronto** (ícone de
+  confirmação) e envia `ready`. O botão grande da Pauta continua igual.
 - **Árvore de pesquisa**: tela só leitura a partir do `catalog`, com pré-requisitos em colunas,
   tecnologias dominadas, pesquisa atual e progresso. Escolher pesquisa fica para depois.
 - **Conexão**: tela inicial com URL do servidor, criar mundo (seed, civilizações) ou entrar
