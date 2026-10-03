@@ -27,7 +27,7 @@ var civ_id := 0
 ## Resource chips shown in the header: Array of {icon, value, label}. Empty = use `resources`.
 var header_chips: Array = []
 ## Units visible to this civilization. Each: {id, owner, own, cell, type, role, hp, movement_left,
-## order ("Idle"|"Fortify"|"Explore"|"MoveTo"|"" when the server did not say), order_target, skipped_turn}.
+## order ("Idle"|"Fortify"|"Explore"|"MoveTo"|"Sentry"|"" when the server did not say), order_target, skipped_turn}.
 var units: Array = []
 ## Ids of own units awaiting an order (server list, adjusted by local optimistic orders).
 var idle_units: Array = []

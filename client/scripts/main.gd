@@ -783,6 +783,8 @@ func _on_unit_action(action: String) -> void:
 			_issue_order(unit_id, "Explore", Vector2i(-1, -1))
 		"fortify":
 			_issue_order(unit_id, "Fortify", Vector2i(-1, -1))
+		"sentry":
+			_issue_order(unit_id, "Sentry", Vector2i(-1, -1))
 		"found":
 			var unit: Dictionary = world.unit_by_id(unit_id)
 			_issue_found(Protocol.settler_city_id(unit_id), unit["cell"])

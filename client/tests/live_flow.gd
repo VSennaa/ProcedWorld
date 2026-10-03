@@ -62,6 +62,12 @@ func _run() -> void:
 	var command: Dictionary = _received.back()
 	check(command["type"] == "submit_command" and command["payload"]["command"]["type"] == "set_unit_order" and int(command["payload"]["command"]["data"]["unit_id"]) == 3 and command["payload"]["command"]["data"]["order"] == {"type": "fortify"}, "Fortificar sends SetUnitOrder")
 	check(_main.world.unit_by_id(3)["order"] == "Fortify", "accepted order is shown locally")
+	var sentry_from := _received.size()
+	_main._on_unit_action("sentry")
+	await _wait(func() -> bool: return _main.world.unit_by_id(3)["order"] == "Sentry")
+	var sentry: Dictionary = _received[sentry_from]
+	check(sentry["payload"]["command"]["type"] == "set_unit_order" and sentry["payload"]["command"]["data"]["order"] == {"type": "sentry"}, "Prontidão sends SetUnitOrder sentry")
+	check(_main.world.idle_units == [5], "a unit in prontidão stays out of the queue")
 
 	_main._select_unit(5)
 	_main._on_unit_action("move")

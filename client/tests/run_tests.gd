@@ -339,11 +339,15 @@ func test_agenda_ready_gate() -> void:
 
 func test_unit_panel_actions() -> void:
 	var view := _adapt(_load_view_payload(), _load_catalog())
-	check(UnitPanel.legal_actions(view.unit_by_id(3)) == ["move", "explore", "fortify", "skip"], "scout: move, explore, fortify, skip")
-	check(UnitPanel.legal_actions(view.unit_by_id(4)) == ["move", "fortify", "skip"], "militia: no explore")
+	check(UnitPanel.legal_actions(view.unit_by_id(3)) == ["move", "explore", "fortify", "sentry", "skip"], "scout: move, explore, fortify, skip")
+	check(UnitPanel.legal_actions(view.unit_by_id(4)) == ["move", "fortify", "sentry", "skip"], "militia: no explore")
 	check(UnitPanel.legal_actions(view.unit_by_id(5)) == ["move", "found", "skip"], "settler: move, found a city, skip")
 	check(UnitPanel.legal_actions(view.unit_by_id(20)).is_empty(), "foreign unit offers no orders")
 	check(UnitPanel.order_label(view.unit_by_id(3)) == "aguardando ordem", "idle label")
+	check(UnitPanel.order_label({"order": "Sentry"}) == "em prontidão", "sentry label")
+	check(Protocol.order_wire("Sentry") == {"type": "sentry"}, "sentry wire format")
+	check(ServerView.parse_order({"type": "sentry"}, 24) == {"kind": "Sentry", "target": Vector2i(-1, -1)}, "sentry order decodes")
+	check(not UnitPanel.legal_actions(view.unit_by_id(5)).has("sentry"), "settler has no sentry")
 	check(UnitPanel.order_label(view.unit_by_id(6)) == "indo para (11, 9)", "MoveTo label shows the destination")
 	check(UnitPanel.order_label({"order": ""}) == "ordem desconhecida", "unknown order label")
 

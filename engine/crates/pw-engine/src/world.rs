@@ -184,6 +184,8 @@ pub enum UnitOrder {
     Fortify,
     Explore,
     MoveTo { target: TileIndex },
+    /// Prontidao: parked outside the idle queue until a foreign unit comes into sight.
+    Sentry,
 }
 
 /// Minimal unit state.
@@ -326,6 +328,7 @@ impl WorldState {
                 UnitOrder::Fortify => hasher.write_u8(1),
                 UnitOrder::Explore => hasher.write_u8(2),
                 UnitOrder::MoveTo { target } => { hasher.write_u8(3); hasher.write_u32(target.0); }
+                UnitOrder::Sentry => hasher.write_u8(4),
             }
             hasher.write_bool(unit.skipped_turn.is_some());
             hasher.write_u32(unit.skipped_turn.unwrap_or(0));
@@ -773,6 +776,7 @@ pub fn step(
     resolve_movement(&mut next, seed);
     resolve_conflicts(&mut next, seed);
     resolve_visibility(&mut next);
+    resolve_sentries(&mut next);
     resolve_economy(&mut next, seed);
     resolve_growth_and_migration(&mut next, seed, &mut events);
     resolve_society(&mut next, seed, &mut events);
@@ -952,7 +956,7 @@ fn apply_command(state: &mut WorldState, command: &AcceptedCommand, events: &mut
                 UnitOrder::Explore => {
                     if state.attacks.contains_key(unit_id) { return Err(RejectionReason::UnitAlreadyReserved); }
                 }
-                UnitOrder::Idle | UnitOrder::Fortify => {}
+                UnitOrder::Idle | UnitOrder::Fortify | UnitOrder::Sentry => {}
             }
             state.units.get_mut(unit_id).expect("unit was checked above").order = *order;
             Ok(())
@@ -1167,7 +1171,7 @@ fn resolve_movement(state: &mut WorldState, seed: u64) {
 fn execute_order(state: &mut WorldState, id: UnitId) {
     let Some(unit) = state.units.get(&id) else { return };
     let order = unit.order;
-    if matches!(order, UnitOrder::Idle | UnitOrder::Fortify) || state.attacks.contains_key(&id) { return; }
+    if matches!(order, UnitOrder::Idle | UnitOrder::Fortify | UnitOrder::Sentry) || state.attacks.contains_key(&id) { return; }
     let (from, movement) = (unit.tile, unit_movement(&unit.unit_type));
     let mut left = unit.movement_left;
     let mut at = from;
@@ -1200,7 +1204,7 @@ fn execute_order(state: &mut WorldState, id: UnitId) {
                 left -= cost as u8;
             }
         }
-        UnitOrder::Idle | UnitOrder::Fortify => return,
+        UnitOrder::Idle | UnitOrder::Fortify | UnitOrder::Sentry => return,
     }
     let unit = state.units.get_mut(&id).expect("unit was checked above");
     if at != from { unit.explored = true; }
@@ -1400,6 +1404,23 @@ fn resolve_visibility(state: &mut WorldState) {
             if let Ok(tile) = grid.tile_index(cell) { known.insert(tile, Visibility::Visible); }
         }
     }
+}
+
+/// `Sentry` units wake to `Idle` when a unit of another civilization is inside their vision range
+/// (the same radius `resolve_visibility` uses). Runs in unit-id order on the post-movement state.
+fn resolve_sentries(state: &mut WorldState) {
+    let Ok(grid) = grid_for(state) else { return; };
+    let woken: Vec<UnitId> = state.units.iter()
+        .filter(|(_, unit)| unit.order == UnitOrder::Sentry)
+        .filter(|(_, unit)| {
+            let Ok(cell) = grid.cell(unit.tile) else { return false; };
+            let seen: BTreeSet<TileIndex> = grid.area(cell, VISIBILITY_RADIUS).unwrap_or_default().into_iter()
+                .filter_map(|cell| grid.tile_index(cell).ok()).collect();
+            state.units.values().any(|other| other.owner != unit.owner && seen.contains(&other.tile))
+        })
+        .map(|(id, _)| *id)
+        .collect();
+    for id in woken { if let Some(unit) = state.units.get_mut(&id) { unit.order = UnitOrder::Idle; } }
 }
 
 fn allocate_workplaces(state: &WorldState, city: &CityState, claimed: &BTreeSet<TileIndex>) -> Vec<TileIndex> {
@@ -2036,6 +2057,52 @@ mod tests {
         assert!(idle_units_with(&result.state, CivId(1), &[fortify]).is_empty());
     }
 
+    fn sentry_set(initial: &WorldState, foreign_tile: u32) -> StepResult {
+        let mut initial = initial.clone();
+        initial.units.get_mut(&UnitId(2)).unwrap().tile = TileIndex(foreign_tile);
+        initial.units.get_mut(&UnitId(1)).unwrap().order = UnitOrder::Sentry;
+        step(&initial, &[], 99, &versions())
+    }
+
+    #[test]
+    fn sentry_is_not_idle_and_stays_while_no_foreign_unit_is_in_range() {
+        let initial = order_world();
+        let order = command(1, 1, CivId(1), CommandPayload::SetUnitOrder { unit_id: UnitId(1), order: UnitOrder::Sentry });
+        assert!(idle_units_with(&initial, CivId(1), &[order.clone()]).is_empty());
+        let set = step(&initial, &[order], 99, &versions());
+        assert_eq!(rejection_of(&set, 1), None);
+        assert_eq!(set.state.units[&UnitId(1)].order, UnitOrder::Sentry);
+        assert!(idle_units(&set.state, CivId(1)).is_empty());
+        let next = step(&set.state, &[], 99, &versions());
+        assert_eq!(next.state.units[&UnitId(1)].order, UnitOrder::Sentry);
+        assert!(idle_units(&next.state, CivId(1)).is_empty());
+    }
+
+    #[test]
+    fn sentry_wakes_when_a_foreign_unit_is_in_range_and_not_for_own_units() {
+        let far = sentry_set(&order_world(), 50);
+        assert_eq!(far.state.units[&UnitId(1)].order, UnitOrder::Sentry);
+        let near = sentry_set(&order_world(), 1);
+        assert_eq!(near.state.units[&UnitId(1)].order, UnitOrder::Idle);
+        assert_eq!(idle_units(&near.state, CivId(1)), vec![UnitId(1)]);
+        let mut own = order_world();
+        own.units.get_mut(&UnitId(2)).unwrap().owner = CivId(1);
+        own.units.get_mut(&UnitId(2)).unwrap().tile = TileIndex(1);
+        own.units.get_mut(&UnitId(1)).unwrap().order = UnitOrder::Sentry;
+        assert_eq!(step(&own, &[], 99, &versions()).state.units[&UnitId(1)].order, UnitOrder::Sentry);
+    }
+
+    #[test]
+    fn sentry_wake_is_deterministic_and_wire_format_is_tagged() {
+        let (a, b) = (sentry_set(&order_world(), 1), sentry_set(&order_world(), 1));
+        assert_eq!(a.state_hash, b.state_hash);
+        assert_eq!(serde_json::to_value(UnitOrder::Sentry).unwrap(), serde_json::json!({ "type": "sentry" }));
+        let mut asleep = order_world();
+        asleep.units.get_mut(&UnitId(1)).unwrap().order = UnitOrder::Sentry;
+        assert_ne!(asleep.state_hash(), order_world().state_hash());
+    }
+
+    #[test]
     #[test]
     fn a_unit_that_spent_all_movement_is_idle_again_next_turn() {
         let initial = order_world();
