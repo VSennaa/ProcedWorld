@@ -1,0 +1,228 @@
+{
+ "catalog_version": 1,
+ "catalog_hash": "0000a1b2c3d4e5f6",
+ "technologies": [
+  {
+   "id": "tech.foraging",
+   "name": "Forrageamento",
+   "cost": 12,
+   "prerequisites": [],
+   "branch": "sustenance"
+  },
+  {
+   "id": "tech.storage",
+   "name": "Armazenamento",
+   "cost": 14,
+   "prerequisites": [
+    "tech.foraging"
+   ],
+   "branch": "sustenance"
+  },
+  {
+   "id": "tech.irrigation",
+   "name": "Irrigação",
+   "cost": 20,
+   "prerequisites": [
+    "tech.storage"
+   ],
+   "branch": "sustenance"
+  },
+  {
+   "id": "tech.crop_rotation",
+   "name": "Rotação de cultivos",
+   "cost": 24,
+   "prerequisites": [
+    "tech.irrigation"
+   ],
+   "branch": "sustenance"
+  },
+  {
+   "id": "tech.herbal_care",
+   "name": "Cuidado herbal",
+   "cost": 18,
+   "prerequisites": [
+    "tech.foraging"
+   ],
+   "branch": "sustenance"
+  },
+  {
+   "id": "tech.council",
+   "name": "Conselho local",
+   "cost": 12,
+   "prerequisites": [],
+   "branch": "organization"
+  },
+  {
+   "id": "tech.recordkeeping",
+   "name": "Escrituração",
+   "cost": 16,
+   "prerequisites": [
+    "tech.council"
+   ],
+   "branch": "organization"
+  },
+  {
+   "id": "tech.granary_administration",
+   "name": "Administração de celeiros",
+   "cost": 22,
+   "prerequisites": [
+    "tech.storage",
+    "tech.recordkeeping"
+   ],
+   "branch": "organization"
+  },
+  {
+   "id": "tech.public_works",
+   "name": "Obras públicas",
+   "cost": 24,
+   "prerequisites": [
+    "tech.recordkeeping"
+   ],
+   "branch": "organization"
+  },
+  {
+   "id": "tech.mediation",
+   "name": "Mediação institucional",
+   "cost": 20,
+   "prerequisites": [
+    "tech.council"
+   ],
+   "branch": "organization"
+  },
+  {
+   "id": "tech.paths",
+   "name": "Caminhos",
+   "cost": 13,
+   "prerequisites": [],
+   "branch": "circulation"
+  },
+  {
+   "id": "tech.bridgework",
+   "name": "Pontes e travessias",
+   "cost": 18,
+   "prerequisites": [
+    "tech.paths"
+   ],
+   "branch": "circulation"
+  },
+  {
+   "id": "tech.caravanserai",
+   "name": "Entreposto de caravanas",
+   "cost": 25,
+   "prerequisites": [
+    "tech.paths",
+    "tech.recordkeeping"
+   ],
+   "branch": "circulation"
+  },
+  {
+   "id": "tech.navigation",
+   "name": "Navegação costeira",
+   "cost": 21,
+   "prerequisites": [
+    "tech.paths"
+   ],
+   "branch": "circulation"
+  },
+  {
+   "id": "tech.market_charter",
+   "name": "Carta de mercado",
+   "cost": 30,
+   "prerequisites": [
+    "tech.caravanserai",
+    "tech.mediation"
+   ],
+   "branch": "circulation"
+  },
+  {
+   "id": "tech.water_clock",
+   "name": "Relógio d'água",
+   "cost": 27,
+   "prerequisites": [
+    "tech.public_works"
+   ],
+   "branch": "organization"
+  },
+  {
+   "id": "tech.dryland_capture",
+   "name": "Captação em terra seca",
+   "cost": 26,
+   "prerequisites": [
+    "tech.irrigation"
+   ],
+   "branch": "sustenance"
+  }
+ ],
+ "unit_types": [
+  {
+   "id": "unit.scout",
+   "name": "Batedor",
+   "role": "exploration",
+   "movement": 3,
+   "strength": 1
+  },
+  {
+   "id": "unit.pathfinder",
+   "name": "Guia de trilhas",
+   "role": "exploration",
+   "movement": 3,
+   "strength": 1
+  },
+  {
+   "id": "unit.militia",
+   "name": "Milícia",
+   "role": "defense",
+   "movement": 2,
+   "strength": 3
+  },
+  {
+   "id": "unit.guard",
+   "name": "Guarda de muralha",
+   "role": "defense",
+   "movement": 1,
+   "strength": 5
+  },
+  {
+   "id": "unit.raider",
+   "name": "Incursor",
+   "role": "attack",
+   "movement": 3,
+   "strength": 4
+  },
+  {
+   "id": "unit.siege_crew",
+   "name": "Equipe de cerco",
+   "role": "attack",
+   "movement": 1,
+   "strength": 6
+  },
+  {
+   "id": "unit.settler",
+   "name": "Colono",
+   "role": "settler",
+   "movement": 2,
+   "strength": 1
+  },
+  {
+   "id": "unit.worker",
+   "name": "Trabalhador",
+   "role": "worker",
+   "movement": 2,
+   "strength": 1
+  },
+  {
+   "id": "unit.caravan",
+   "name": "Caravana",
+   "role": "trade",
+   "movement": 3,
+   "strength": 1
+  },
+  {
+   "id": "unit.coastal_trader",
+   "name": "Mercador costeiro",
+   "role": "trade",
+   "movement": 3,
+   "strength": 1
+  }
+ ]
+}
