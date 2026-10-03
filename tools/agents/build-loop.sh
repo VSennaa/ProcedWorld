@@ -39,6 +39,14 @@ while IFS='|' read -r name brief dir attempts; do
     (cd "$dir" && "$root/tools/agents/jev-codex.sh" "$name-fix$((n+1))" "$fix" workspace-write < /dev/null > /dev/null 2>&1)
   done
   summary=$(grep -E "^test result|warning: unused" "$runs/$name".test-*.txt 2>/dev/null | tail -2 | tr '\n' ' ')
+  if [[ "$status" == PASS* ]] && [ "${BUILD_LOOP_COMMIT:-1}" = "1" ]; then
+    # Commit each passing task before the next one starts, so commits never mix tasks.
+    (cd "$dir" && git add engine && git commit -q -m "feat(engine): $name passes cargo test on the VPS (build loop)
+
+Brief: $brief
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" && git push -q) >/dev/null 2>&1
+  fi
   echo "$name | $start-$(date '+%T') | $status | $summary" >> "$log"
 done < "$queue"
 echo "DONE $(date '+%F %T')" >> "$log"
