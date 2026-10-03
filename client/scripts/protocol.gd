@@ -64,9 +64,9 @@ static func build_envelope(type: String, payload: Dictionary, request_id: String
 
 # --- Command payloads for `submit_command` (serde adjacent tagging: {"type": snake_case, "data": {...}}) ---
 
-## UnitOrder on the wire (engine serde adjacent tagging): {"type": "fortify"} or
+## UnitOrder on the wire (engine serde adjacent tagging): {"type": "fortify"}, {"type": "sentry"} or
 ## {"type": "move_to", "data": {"target": N}}. `kind` is the client name ("Idle", "MoveTo", ...).
-const ORDER_WIRE := {"Idle": "idle", "Fortify": "fortify", "Explore": "explore", "MoveTo": "move_to"}
+const ORDER_WIRE := {"Idle": "idle", "Fortify": "fortify", "Explore": "explore", "MoveTo": "move_to", "Sentry": "sentry"}
 
 
 static func order_wire(kind: String, tile_index: int = -1) -> Dictionary:

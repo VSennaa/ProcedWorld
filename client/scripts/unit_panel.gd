@@ -3,10 +3,10 @@ extends PanelContainer
 ## Foreign units show information only. The server validates every order; the client only offers
 ## the actions that make sense for the unit role.
 
-signal action_requested(action: String)  # "move" | "explore" | "fortify" | "found" | "skip"
+signal action_requested(action: String)  # "move" | "explore" | "fortify" | "sentry" | "found" | "skip"
 
 const MUTED_COLOR := Color("b9c1c8")
-const ACTION_LABELS := {"move": "Mover", "explore": "Explorar", "fortify": "Fortificar", "found": "Fundar cidade", "skip": "Pular"}
+const ACTION_LABELS := {"move": "Mover", "explore": "Explorar", "fortify": "Fortificar", "sentry": "Prontidão", "found": "Fundar cidade", "skip": "Pular"}
 const NO_FORTIFY_ROLES: Array[String] = ["settler", "worker", "trade"]
 
 var _title: Label
@@ -68,6 +68,7 @@ static func legal_actions(unit: Dictionary, tile: Dictionary = {}) -> Array[Stri
 		result.append("explore")
 	if not NO_FORTIFY_ROLES.has(unit.get("role", "")):
 		result.append("fortify")
+		result.append("sentry")
 	if unit.get("role", "") == "settler" and not unit.get("founding", false) and not tile.has("city") and tile.get("biome", "") != "oceano":
 		result.append("found")
 	result.append("skip")
@@ -82,6 +83,8 @@ static func order_label(unit: Dictionary) -> String:
 			return "aguardando ordem"
 		"Fortify":
 			return "fortificada"
+		"Sentry":
+			return "em prontidão"
 		"Explore":
 			return "explorando"
 		"MoveTo":
