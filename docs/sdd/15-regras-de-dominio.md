@@ -190,6 +190,16 @@ Correção de alinhamento com a fórmula compartilhada do GDD 12, aplicada em 20
 - O jogador escolhe o foco da cidade (`SetCityFocus`) no cliente: Abastecimento, Construção ou
   Diversificar.
 
+### 4.2.2 Melhorias de terreno (alfa mini, 2026-10-03)
+
+- Ordem `Build { improvement }` para unidade de papel `worker` no tile atual: valida tecnologia,
+  bioma/recurso do catálogo `core.improvements`, tile próprio ou neutro adjacente ao território, sem
+  melhoria existente nem outra obra. Cada turno com a ordem soma trabalho; concluída, o tile guarda
+  `improvement` e a unidade volta a `Idle`. Efeitos de rendimento vêm do catálogo (limite 0–6 do GDD 03);
+  manutenção entra na prioridade de pagamento do GDD 03. Ritmo de obra e custos não-produção são
+  proposta de balanceamento, registrados no código e no DIAGNOSTICO, nunca inventados no cliente.
+- Visão do tile: `improvement` (id ou `null`) e `build_progress` quando houver obra.
+
 ### 4.3 Ordens de unidade (decidido em 2026-10-03)
 
 Cada unidade guarda uma **ordem persistente** e o turno em que foi pulada:

@@ -154,6 +154,11 @@ versão/hash do catálogo. Cada tipo de unidade traz também `cost` (mapa recurs
 `requires_technology`, para o cliente listar o que a cidade pode produzir. O estado de pesquisa da própria civilização já vem em `civilization`.
 O cliente nunca lê `data/` diretamente.
 
+Alfa mini (2026-10-03): o `catalog` também traz `event_templates` (`id`, `name`, `category`, texto
+narrativo quando houver e `choices` com `id` e rótulo PT-BR) e `improvements` (`id`, `name`, custo,
+tecnologia, biomas). O servidor persiste cada mundo em disco (snapshot + log de comandos) e o recarrega
+ao reiniciar; replay do log tem de reproduzir o mesmo hash.
+
 Correção de implementação: o envelope usa `protocol_version: "1.0"` (texto, §3) em ambos os lados.
 
 ## 6. Comandos, confirmação e resolução
