@@ -8,28 +8,48 @@ const DEFAULT_URL := "ws://127.0.0.1:8100/ws"
 signal envelope_received(envelope: Dictionary)
 signal protocol_error(message: String)
 signal connection_changed(is_open: bool)
+## Emitted once when the socket ends; `was_open` is false when it never connected.
+signal connection_lost(was_open: bool)
 
 var _peer := WebSocketPeer.new()
 var _was_open := false
+var _ever_open := false
 var _active := false
 var _counter := 0
 
 
 func connect_to_server(url: String = DEFAULT_URL) -> Error:
+	_peer = WebSocketPeer.new()
+	_was_open = false
+	_ever_open = false
 	_active = true
 	return _peer.connect_to_url(url)
+
+
+func close() -> void:
+	_active = false
+	_peer.close()
+	if _was_open:
+		_was_open = false
+		connection_changed.emit(false)
 
 
 func is_open() -> bool:
 	return _peer.get_ready_state() == WebSocketPeer.STATE_OPEN
 
 
-func send_message(type: String, payload: Dictionary) -> bool:
+## Sends a request and returns its request id, or "" when the socket is not open.
+func send_request(type: String, payload: Dictionary) -> String:
 	if not is_open():
-		return false
+		return ""
 	_counter += 1
-	_peer.send_text(Protocol.build_envelope(type, payload, "c-%d" % _counter))
-	return true
+	var request_id := "c-%d" % _counter
+	_peer.send_text(Protocol.build_envelope(type, payload, request_id))
+	return request_id
+
+
+func send_message(type: String, payload: Dictionary) -> bool:
+	return send_request(type, payload) != ""
 
 
 func _process(_delta: float) -> void:
@@ -40,6 +60,12 @@ func _process(_delta: float) -> void:
 	if open != _was_open:
 		_was_open = open
 		connection_changed.emit(open)
+	if open:
+		_ever_open = true
+	if _peer.get_ready_state() == WebSocketPeer.STATE_CLOSED:
+		_active = false
+		connection_lost.emit(_ever_open)
+		return
 	while open and _peer.get_available_packet_count() > 0:
 		var parsed := Protocol.parse_envelope(_peer.get_packet().get_string_from_utf8())
 		if parsed["ok"]:
