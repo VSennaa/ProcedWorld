@@ -5,6 +5,16 @@ extends SceneTree
 const Hex := preload("res://scripts/hex.gd")
 const Protocol := preload("res://scripts/protocol.gd")
 const WorldView := preload("res://scripts/world_view.gd")
+const ServerView := preload("res://scripts/server_view.gd")
+const CatalogView := preload("res://scripts/catalog_view.gd")
+const SessionStore := preload("res://scripts/session_store.gd")
+const AgendaView := preload("res://scripts/agenda_view.gd")
+const UnitPanel := preload("res://scripts/unit_panel.gd")
+const TechView := preload("res://scripts/tech_view.gd")
+const ConnectView := preload("res://scripts/connect_view.gd")
+
+const SERVER_VIEW := "res://fixtures/server_view.json"
+const SERVER_CATALOG := "res://fixtures/server_catalog.json"
 
 var _failures := 0
 var _checks := 0
@@ -17,6 +27,19 @@ func _init() -> void:
 	test_envelope()
 	test_fixture()
 	test_agenda_limits()
+	test_push_envelopes()
+	test_commands()
+	test_hex_index()
+	test_server_view_adapter()
+	test_adapter_tolerates_missing_fields()
+	test_adapter_rejects_bad_input()
+	test_idle_queue_and_gate()
+	test_agenda_ready_gate()
+	test_unit_panel_actions()
+	test_catalog_layout()
+	test_catalog_rejects_bad_input()
+	test_session_store()
+	test_views_build()
 	print("%d checks, %d failures" % [_checks, _failures])
 	if _failures == 0:
 		print("ALL TESTS PASSED")
@@ -126,3 +149,278 @@ func test_agenda_limits() -> void:
 	payload["agenda"] = cards
 	var limited := WorldView.from_payload(payload)
 	check(limited["ok"] and limited["view"].agenda.size() == 3, "agenda trimmed to 1 critical + 2 important")
+
+
+# --- live client (P17) ---
+
+func _load_view_payload() -> Dictionary:
+	var file := FileAccess.open(SERVER_VIEW, FileAccess.READ)
+	return JSON.parse_string(file.get_as_text())
+
+
+func _load_catalog() -> RefCounted:
+	var loaded := CatalogView.load_fixture(SERVER_CATALOG)
+	check(loaded["ok"], "catalog fixture loads: %s" % loaded["error"])
+	return loaded["catalog"]
+
+
+func _adapt(payload: Dictionary, catalog: RefCounted = null) -> RefCounted:
+	var result := ServerView.from_payload(payload, catalog)
+	check(result["ok"], "adapter accepts payload: %s" % result["error"])
+	return result["view"]
+
+
+func test_push_envelopes() -> void:
+	var push := Protocol.parse_envelope('{"protocol_version":"1.0","request_id":null,"type":"turn_diff","payload":{}}')
+	check(push["ok"] and push["envelope"]["request_id"] == "", "push frame with request_id null parses")
+	var legacy := Protocol.parse_envelope('{"protocol_version":1,"request_id":"r","type":"joined","payload":{}}')
+	check(legacy["ok"] and legacy["envelope"]["protocol_version"] == "1.0", "integer protocol_version 1 is read as 1.0")
+	check(not Protocol.parse_envelope('{"protocol_version":2,"request_id":"r","type":"t","payload":{}}')["ok"], "integer major 2 rejected")
+	check(not Protocol.parse_envelope('{"protocol_version":"1.0","request_id":"","type":"t","payload":{}}')["ok"], "empty request_id rejected")
+
+
+func test_commands() -> void:
+	var set_order := Protocol.command_set_unit_order(3, "Fortify")
+	check(set_order == {"command": {"type": "set_unit_order", "data": {"unit_id": 3, "order": "Fortify"}}}, "SetUnitOrder payload shape (serde adjacent tagging)")
+	var move := Protocol.command_set_unit_order(3, Protocol.order_move_to(99))
+	check(move["command"]["data"]["order"] == {"MoveTo": {"target": 99}}, "MoveTo order is externally tagged")
+	check(Protocol.command_skip_unit(5) == {"command": {"type": "skip_unit", "data": {"unit_id": 5}}}, "SkipUnit payload shape")
+	check(Protocol.command_respond_to_event(7, "ration")["command"]["data"] == {"event_id": 7, "choice_id": "ration"}, "RespondToEvent payload shape")
+	var framed := Protocol.parse_envelope(Protocol.build_envelope("submit_command", Protocol.command_skip_unit(5), "c-9"))
+	check(framed["ok"] and framed["envelope"]["payload"]["command"]["type"] == "skip_unit", "command survives the envelope round trip")
+
+
+func test_hex_index() -> void:
+	check(Hex.cell_of_index(0, 24) == Vector2i(0, 0) and Hex.cell_of_index(25, 24) == Vector2i(1, 1), "tile index to cell is row-major")
+	for cell in [Vector2i(0, 0), Vector2i(23, 5), Vector2i(7, 15)]:
+		check(Hex.cell_of_index(Hex.index_of_cell(cell, 24), 24) == cell, "index round-trips %s" % cell)
+	var even := Hex.edge_offsets(2)
+	check(even.size() == 6 and even[0] == Vector2i(0, -1), "edge offsets follow neighbor order (even row)")
+	check(Hex.edge_offsets(3)[0] == Vector2i(1, -1), "edge offsets follow neighbor order (odd row)")
+
+
+func test_server_view_adapter() -> void:
+	var catalog := _load_catalog()
+	var view := _adapt(_load_view_payload(), catalog)
+	check(view.live and view.turn == 42 and view.civ_id == 0 and view.world_id == 20261003, "header fields come from the view")
+	check(view.map_width == 24 and view.map_height >= 13 and view.tiles.size() == view.map_height, "map dimensions: width given, height inferred from the highest tile")
+	for row in view.tiles:
+		check(row.size() == 24, "every row has map_width tiles")
+	check(view.tile_at(Vector2i(10, 7))["fog"] == "visible" and view.tile_at(Vector2i(10, 7))["biome"] == "planicie", "own capital tile: visible plains (terrain 0)")
+	check(view.tile_at(Vector2i(0, 0))["fog"] == "unknown" and not view.tile_at(Vector2i(0, 0)).has("biome"), "tiles the server did not send stay unknown and blank")
+	var remembered := 0
+	var visible := 0
+	for row in view.tiles:
+		for tile in row:
+			if tile["fog"] == "remembered":
+				remembered += 1
+			elif tile["fog"] == "visible":
+				visible += 1
+	check(visible > 0 and remembered > 0, "visible and remembered tiles are kept apart")
+	check(view.tile_at(Vector2i(10, 7)).has("city") and view.tile_at(Vector2i(10, 7))["city"]["own"], "own city is on the capital tile")
+	check(view.tile_at(Vector2i(15, 6)).has("city") and not view.tile_at(Vector2i(15, 6))["city"]["own"], "foreign city is marked as not own")
+	check(view.capital == Vector2i(10, 7), "capital = first own city")
+	var borders := 0
+	for row in view.tiles:
+		for tile in row:
+			borders += tile.get("borders", []).size()
+	check(borders > 0, "ownership produces border edges")
+	check(view.tile_at(Vector2i(10, 7)).get("borders", []).is_empty(), "interior tile of own territory has no border edge")
+
+	check(view.units.size() == 7, "all seven units are adapted")
+	var scout: Dictionary = view.unit_by_id(3)
+	check(scout["name"] == "Batedor" and scout["role"] == "exploration" and scout["cell"] == Vector2i(12, 6), "unit type, role and cell")
+	check(scout["own"] and scout["order"] == "Idle" and scout["movement_max"] == 3 and scout["movement_left"] == 3, "own unit: order and movement from view + catalog")
+	var worker: Dictionary = view.unit_by_id(6)
+	check(worker["order"] == "MoveTo" and worker["order_target"] == Vector2i(11, 9), "MoveTo order decodes its target tile index to a cell")
+	check(view.unit_by_id(4)["order"] == "Fortify" and view.unit_by_id(7)["order"] == "Explore", "string orders decode")
+	check(view.unit_by_id(8)["skipped_turn"] == 42, "skipped_turn is kept")
+	check(not view.unit_by_id(20)["own"] and view.unit_by_id(20)["owner"] == 1, "foreign unit is not own")
+	check(view.units_at(Vector2i(10, 7)).size() == 1 and view.units_at(Vector2i(10, 7))[0]["id"] == 4, "units_at finds the militia in the capital")
+	check(view.idle_units == [3, 5], "idle_units come from the server list")
+	check(view.civ_colors[0] != view.civ_colors[1], "each civilization gets its own color")
+
+	check(view.research["current"] == "tech.storage" and view.research["done"].has("tech.council") and view.research["progress"]["tech.storage"] == 6, "research state of the own civilization")
+	check(view.header_chips.size() == 4 and view.header_chips[0]["value"] == 18, "header chips: wealth, knowledge, culture, cohesion")
+	check(view.agenda.size() == 1 and view.agenda[0]["event_id"] == 7 and view.agenda[0]["options"].size() == 2, "pending event becomes an agenda card with its choices")
+	check(view.agenda[0]["deadline_turns"] == 3 and view.agenda[0]["options"][1]["sacrifice"] == "wealth -3", "event deadline and choice effects")
+	check(view.pending_events.size() == 1, "pending events are kept for the response command")
+
+
+func test_adapter_tolerates_missing_fields() -> void:
+	var payload := _load_view_payload()
+	payload.erase("idle_units")
+	payload.erase("pending_events")
+	payload.erase("cities")
+	for entry in payload["units"]:
+		entry["unit"].erase("order")
+		entry["unit"].erase("skipped_turn")
+	var view := _adapt(payload)  # no catalog either
+	check(view.idle_units.is_empty(), "no idle_units from an older server: queue stays empty")
+	check(not view.ready_blocked(), "no gate without server idle list")
+	check(view.unit_by_id(3)["order"] == "" and view.unit_by_id(3)["skipped_turn"] == -1, "missing order/skipped_turn are tolerated")
+	check(view.unit_by_id(3)["name"] == "Scout", "name falls back to the humanized type without a catalog")
+	check(view.unit_by_id(3)["role"] == "exploration", "role falls back to the built-in table without a catalog")
+	check(view.capital == Vector2i(12, 6), "capital falls back to the first own unit when there is no city")
+	check(view.agenda.is_empty(), "no pending events, no cards")
+	payload["map_height"] = 20
+	check(_adapt(payload).map_height == 20, "optional map_height is honored")
+	payload["idle_units"] = [3, 20, 999]
+	check(_adapt(payload).idle_units == [3], "idle list keeps only own, visible units")
+	var strange := ServerView.parse_order({"Weird": 1}, 24)
+	check(strange["kind"] == "", "unrecognized order decodes to unknown, not a crash")
+
+
+func test_adapter_rejects_bad_input() -> void:
+	var payload := _load_view_payload()
+	payload.erase("map_width")
+	check(not ServerView.from_payload(payload)["ok"], "missing map_width rejected")
+	payload = _load_view_payload()
+	payload["tiles"][0]["terrain"] = 42
+	check(not ServerView.from_payload(payload)["ok"], "unknown terrain id rejected")
+	payload = _load_view_payload()
+	payload["map_width"] = 0
+	check(not ServerView.from_payload(payload)["ok"], "zero width rejected")
+	payload = _load_view_payload()
+	payload.erase("tiles")
+	check(not ServerView.from_payload(payload)["ok"], "missing tiles rejected")
+
+
+func test_idle_queue_and_gate() -> void:
+	var view := _adapt(_load_view_payload(), _load_catalog())
+	check(view.awaiting_count() == 2 and view.ready_blocked(), "two idle units block Pronto")
+	check(WorldView.gate_text(2) == "2 unidades aguardam ordem" and WorldView.gate_text(1) == "1 unidade aguarda ordem", "gate copy, plural and singular")
+	view.apply_local_order(3, "Fortify")
+	check(view.idle_units == [5] and view.unit_by_id(3)["order"] == "Fortify", "ordering a unit removes it from the queue")
+	check(view.awaiting_count() == 1 and view.ready_blocked(), "one idle unit still blocks")
+	view.apply_local_skip(5)
+	check(view.idle_units.is_empty() and not view.ready_blocked(), "skipping the last idle unit opens the gate")
+	check(view.unit_by_id(5)["skipped_turn"] == view.turn, "skip records the current turn")
+	view.apply_local_order(3, "Idle")
+	check(view.idle_units == [3], "an idle order with movement left re-enters the queue")
+	view.apply_local_order(7, "Idle")
+	check(view.idle_units == [3], "a unit without movement left never enters the queue")
+	view.apply_local_order(6, "MoveTo", Vector2i(2, 2))
+	check(view.unit_by_id(6)["order_target"] == Vector2i(2, 2) and not view.idle_units.has(6), "MoveTo stores its target")
+	view.apply_local_order(404, "Fortify")
+	check(view.idle_units == [3], "orders for unknown units are ignored")
+
+
+func test_agenda_ready_gate() -> void:
+	var agenda := AgendaView.new()
+	agenda.build([], 42)
+	var focused: Array = []
+	agenda.unit_focus_requested.connect(func(id: int) -> void: focused.append(id))
+	check(not agenda._ready_button.disabled and agenda._ready_button.text == "Pronto", "Pronto starts enabled")
+	agenda.set_idle_units([{"id": 3, "label": "Batedor · (12, 6)"}, {"id": 5, "label": "Colono · (9, 7)"}])
+	check(agenda._ready_button.disabled and agenda._ready_button.text == "2 unidades aguardam ordem", "Pronto disabled with the unit count")
+	check(agenda._idle_box.get_child_count() == 3, "queue shows a heading and one row per idle unit")
+	var first_row: Button = agenda._idle_box.get_child(1)
+	check(first_row.custom_minimum_size.y >= 44, "queue rows are at least 44 px tall")
+	first_row.pressed.emit()
+	check(focused == [3], "tapping a queue row asks the map to focus that unit")
+	agenda.set_idle_units([{"id": 5, "label": "Colono · (9, 7)"}])
+	check(agenda._ready_button.text == "1 unidade aguarda ordem", "singular copy in the button")
+	agenda.set_idle_units([])
+	check(not agenda._ready_button.disabled and agenda._ready_button.text == "Pronto", "gate opens when the queue is empty")
+	agenda.mark_ready(true)
+	check(agenda._ready_button.disabled and agenda._ready_button.text == "Pronto (enviado)", "sent state locks the button")
+	agenda.reset_ready()
+	check(not agenda._ready_button.disabled, "reset_ready reopens the button")
+	agenda.free()
+
+
+func test_unit_panel_actions() -> void:
+	var view := _adapt(_load_view_payload(), _load_catalog())
+	check(UnitPanel.legal_actions(view.unit_by_id(3)) == ["move", "explore", "fortify", "skip"], "scout: move, explore, fortify, skip")
+	check(UnitPanel.legal_actions(view.unit_by_id(4)) == ["move", "fortify", "skip"], "militia: no explore")
+	check(UnitPanel.legal_actions(view.unit_by_id(5)) == ["move", "skip"], "settler: only move and skip")
+	check(UnitPanel.legal_actions(view.unit_by_id(20)).is_empty(), "foreign unit offers no orders")
+	check(UnitPanel.order_label(view.unit_by_id(3)) == "aguardando ordem", "idle label")
+	check(UnitPanel.order_label(view.unit_by_id(6)) == "indo para (11, 9)", "MoveTo label shows the destination")
+	check(UnitPanel.order_label({"order": ""}) == "ordem desconhecida", "unknown order label")
+
+
+func test_catalog_layout() -> void:
+	var catalog := _load_catalog()
+	check(catalog.techs.size() == 17 and catalog.unit_types.size() == 10 and catalog.version == 1, "catalog counts and version")
+	check(catalog.depth("tech.foraging") == 0 and catalog.depth("tech.storage") == 1 and catalog.depth("tech.irrigation") == 2 and catalog.depth("tech.crop_rotation") == 3, "depth follows the prerequisite chain")
+	check(catalog.depth("tech.granary_administration") == 2, "depth is the longest prerequisite path (storage 1, recordkeeping 1)")
+	check(catalog.depth("tech.market_charter") == 3, "market charter sits three levels deep")
+	var columns: Array = catalog.columns()
+	check(columns.size() == 4, "four columns for a depth-3 tree")
+	var placed := {}
+	var column_of := {}
+	for depth in columns.size():
+		for id in columns[depth]:
+			check(not placed.has(id), "tech %s is in exactly one column" % id)
+			placed[id] = true
+			column_of[id] = depth
+	check(placed.size() == catalog.techs.size(), "every tech is placed")
+	for id in catalog.techs:
+		for prereq in catalog.techs[id]["prerequisites"]:
+			check(column_of[prereq] < column_of[id], "%s sits right of its prerequisite %s" % [id, prereq])
+	var research := {"current": "tech.storage", "done": ["tech.foraging", "tech.council"], "progress": {"tech.storage": 6}}
+	check(catalog.status("tech.foraging", research) == "done", "mastered tech")
+	check(catalog.status("tech.storage", research) == "current", "current research")
+	check(catalog.status("tech.irrigation", research) == "locked", "prerequisite not mastered: locked")
+	check(catalog.status("tech.herbal_care", research) == "available", "all prerequisites mastered: available")
+	check(catalog.status("tech.paths", research) == "available", "root tech is available")
+	check(catalog.progress("tech.storage", research) == {"have": 6, "cost": 14}, "progress of the current research")
+	check(catalog.progress("tech.foraging", research)["have"] == catalog.progress("tech.foraging", research)["cost"], "mastered tech reads full")
+	check(catalog.progress("tech.irrigation", {"progress": {"tech.irrigation": 999}})["have"] == 20, "progress is capped at the cost")
+	check(catalog.missing_prerequisites("tech.irrigation", research) == ["Armazenamento"], "locked tech names what it still needs")
+	check(TechView.summary_text(catalog, research) == "2 de 17 dominadas. Em pesquisa: Armazenamento (6/14). Somente leitura.", "summary line")
+	check(TechView.summary_text(catalog, {"current": "", "done": [], "progress": {}}).contains("Nenhuma pesquisa em andamento"), "summary without current research")
+
+
+func test_catalog_rejects_bad_input() -> void:
+	var cycle := CatalogView.from_payload({"technologies": [{"id": "a", "prerequisites": ["b"]}, {"id": "b", "prerequisites": ["a"]}]})
+	check(not cycle["ok"], "prerequisite cycle rejected")
+	var duplicate := CatalogView.from_payload({"technologies": [{"id": "a"}, {"id": "a"}]})
+	check(not duplicate["ok"], "duplicate tech id rejected")
+	check(not CatalogView.from_payload({"technologies": [{"name": "no id"}]})["ok"], "tech without id rejected")
+	var tolerant := CatalogView.from_payload({"tech_tree": {"technologies": [{"id": "a"}, {"id": "b", "requires": ["a", "ghost"]}]}, "units": [{"id": "unit.x", "name": "X"}]})
+	check(tolerant["ok"] and tolerant["catalog"].depth("b") == 1 and tolerant["catalog"].unit_types.has("unit.x"), "aliases accepted; unknown prerequisites ignored")
+
+
+func test_session_store() -> void:
+	var path := "user://test_sessions.cfg"
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	check(SessionStore.load_token(7, 1, path) == "", "no token before saving")
+	SessionStore.save_token(7, 1, "tok-abc", path)
+	SessionStore.save_token(7, 2, "tok-def", path)
+	check(SessionStore.load_token(7, 1, path) == "tok-abc" and SessionStore.load_token(7, 2, path) == "tok-def", "tokens are kept per world and civilization")
+	SessionStore.forget_token(7, 1, path)
+	check(SessionStore.load_token(7, 1, path) == "" and SessionStore.load_token(7, 2, path) == "tok-def", "forgetting one token keeps the others")
+	var fallback := SessionStore.load_last("ws://default/ws", path)
+	check(fallback["url"] == "ws://default/ws" and fallback["world_id"] == 1 and fallback["civ"] == 0, "defaults before any session")
+	SessionStore.save_last("ws://h:1/ws", 7, 2, path)
+	var last := SessionStore.load_last("ws://default/ws", path)
+	check(last["url"] == "ws://h:1/ws" and last["world_id"] == 7 and last["civ"] == 2, "last session is remembered")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+
+
+func test_views_build() -> void:
+	var catalog := _load_catalog()
+	var view := _adapt(_load_view_payload(), catalog)
+	var tech := TechView.new()
+	tech.build(catalog, view.research)
+	check(tech.get_child_count() > 0, "tech view builds without errors")
+	tech.free()
+	var connect := ConnectView.new()
+	var created: Array = []
+	connect.create_requested.connect(func(url: String, seed: int, civs: int) -> void: created.append([url, seed, civs]))
+	connect.build("ws://127.0.0.1:8100/ws", 5, 1)
+	connect._on_create()
+	check(created == [["ws://127.0.0.1:8100/ws", 1, 4]], "create emits url, seed and civilization count")
+	var joined: Array = []
+	connect.join_requested.connect(func(_url: String, world_id: int, civ: int) -> void: joined.append([world_id, civ]))
+	connect._on_join()
+	check(joined == [[5, 1]], "join emits the prefilled world and civilization")
+	connect.set_join_target(9, 3)
+	connect._on_join()
+	check(joined[1] == [9, 3], "join target can be updated after a world is created")
+	for button in connect._buttons:
+		check(button.custom_minimum_size.y >= 44, "start screen buttons are at least 44 px tall")
+	connect.free()

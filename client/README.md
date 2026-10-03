@@ -14,15 +14,23 @@ $GODOT --headless --path client --import
 # testes headless (devem terminar com ALL TESTS PASSED)
 $GODOT --headless --path client -s res://tests/run_tests.gd
 
-# abrir o jogo (janela)
+# fluxo ao vivo contra um servidor simulado em processo (socket em 127.0.0.1:18123)
+$GODOT --headless --path client -s res://tests/live_flow.gd
+
+# abrir o jogo (janela): começa na tela inicial (servidor, criar mundo, entrar, demonstração)
 $GODOT --path client
-# argumentos úteis, depois de "--": --screen=mapa  --select-capital  --connect
+# argumentos úteis, depois de "--": --server=ws://host:porta/ws  --demo=pauta|servidor
+#   --screen=pauta|mapa|pesquisa  --select-capital  --select-unit=<id>
 ```
 
-`--connect` tenta abrir `ws://127.0.0.1:8100/ws`. Sem ele (padrão) o cliente usa só o fixture.
+A tela inicial pede a URL do servidor (padrão `ws://127.0.0.1:8100/ws`). **Criar mundo** envia
+`create_world` e entra como civilização 0; **Entrar** usa o token de sessão guardado em
+`user://sessions.cfg` (reconexão). As duas **Demonstrações** não usam rede: "pauta de exemplo" abre
+`fixtures/state_snapshot.json` (escrito à mão) e "visão do servidor" abre `fixtures/server_view.json`
+e `fixtures/server_catalog.json`, no formato real de `view_for` e do frame `catalog`.
 
-Capturas: `client/docs/pauta.png` e `client/docs/mapa.png`, geradas com
-`--write-movie <caminho>/frame.png --quit-after 20 --resolution 720x1280`.
+Capturas em `client/docs/` (`inicio`, `pauta`, `pauta-unidades`, `mapa`, `pesquisa`), geradas com
+`--write-movie <pasta existente>/frame.png --quit-after 20 --resolution 720x1280` e pegando o último quadro.
 
 ## O que é real
 
@@ -31,14 +39,22 @@ Capturas: `client/docs/pauta.png` e `client/docs/mapa.png`, geradas com
 - Projeção do snapshot (`scripts/world_view.gd`): valida o mapa (tiles desconhecidos não carregam bioma) e limita a pauta a 1 decisão crítica + 2 importantes.
 - Mapa renderizado com os SVGs de `assets/` (tiles, rios, fronteiras, névoa, ícones, cidade), arrastar, zoom (roda/pinça) e toque para selecionar. A pinça não foi testada em aparelho.
 - Pauta com cartões de decisão (causa, efeito imediato, risco futuro, prazo, opções com sacrifício) e botão "Pronto".
-- Barra inferior com as cinco superfícies.
-- Código de WebSocket (`scripts/net_client.gd`); os testes nunca o usam.
+- Barra inferior com as superfícies (Pesquisa só aparece quando há catálogo).
+- Cliente WebSocket (`scripts/net_client.gd`) e fluxo ao vivo em `main.gd`: `create_world`, `join` (com token guardado), `state_snapshot`, `turn_diff`, `catalog`, `ready_state`, `submit_command`, `ready`, `get_snapshot` e erros do servidor em PT-BR. `run_tests.gd` nunca abre rede; `live_flow.gd` usa um servidor simulado local.
+- Adaptador da visão do servidor (`scripts/server_view.gd`): `tile` row-major para célula odd-r, terreno numérico para bioma, fronteiras derivadas de `owner`, cidades, unidades (`order`, `skipped_turn`), `idle_units` e eventos pendentes da Entropia como cartões da Pauta. Campos opcionais ausentes são tolerados.
+- Unidades no mapa (ícone por tipo/papel, cor da civilização, marca âmbar quando ociosa), cartão da unidade com **Mover** (toque no destino, `MoveTo`), **Explorar**, **Fortificar** e **Pular**. A ordem só aparece na tela depois de `command_accepted`.
+- Pauta com a fila de unidades ociosas (toque centraliza o mapa) e **Pronto** desabilitado com "N unidades aguardam ordem"; `units_awaiting_orders` pede novo snapshot.
+- Pesquisa (só leitura) a partir do frame `catalog`: colunas por profundidade de pré-requisito, dominadas, atual e progresso (`scripts/catalog_view.gd`, `scripts/tech_view.gd`).
 
 ## O que é placeholder ou limitado
 
-- Os dados vêm de `fixtures/state_snapshot.json`, um exemplo escrito à mão; não refletem nenhum servidor real. O formato do payload `state_snapshot` ainda não está fixado no SDD 10 e pode mudar.
+- A demonstração "pauta de exemplo" usa `fixtures/state_snapshot.json`, escrito à mão; não reflete nenhum servidor real.
 - Sociedade, Relações e Crônica mostram "em breve" e não fazem nada.
-- "Pronto" sem conexão marca só um rascunho local e avisa que nada foi enviado. Com `--connect` e socket aberto, envia `ready_set` (mensagem ainda sem contrato fechado no servidor).
-- Não há login, onboarding BYOK, cache local, diffs nem recuperação por cursor.
+- Em demonstração, "Pronto" marca só um rascunho local e avisa que nada foi enviado; ordens de unidade valem só no cliente. onboarding BYOK, cache local, diffs nem recuperação por cursor.
+- Contrato assumido do P16 (ainda não verificado contra o servidor real): `protocol_version: "1.0"`, `order`/`skipped_turn` por unidade, `idle_units`, frame `catalog` (`technologies` e `unit_types`) e comandos `set_unit_order`/`skip_unit` no formato `{"type": ..., "data": {...}}` do `CommandPayload`.
+- O servidor não envia nomes de cidade, civilização nem prosa de eventos: o cliente mostra "Cidade N", "Civilização N" e ids de evento/escolha humanizados (em inglês). Rios chegam só como booleano por tile, sem arestas, e por isso não são desenhados no modo ao vivo.
+- Escolher pesquisa, desfazer Pronto e agrupar muitas unidades no mesmo tile ainda não existem na interface.
+- O mapa ao vivo infere a altura pelo maior índice de tile conhecido (a visão traz só `map_width`).
+- Não há login, onboarding BYOK, cache local nem recuperação por cursor.
 - Sem texto de tela para tiles em modo daltônico/monocromático; apenas os assets "standard" foram copiados.
 - Exportação para Android ainda não foi configurada.
