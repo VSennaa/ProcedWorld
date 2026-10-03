@@ -1,0 +1,9 @@
+[package]
+name = "pw-harness"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+pw-engine = { path = "../pw-engine" }
+
