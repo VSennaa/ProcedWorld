@@ -56,6 +56,11 @@ impl BotT0 {
             proposals.push(BotProposal { payload: CommandPayload::SetResearch { research: technology.into() }, grounding });
             proposals.push(BotProposal { payload: CommandPayload::SetResearchInvestment { percent: 20 }, grounding: base.clone() });
         }
+        // Governors select one command per civilization and turn. Keep proposing
+        // the selected investment until it is accepted after research begins.
+        if civ.research.is_some() && civ.research_investment != 20 {
+            proposals.push(BotProposal { payload: CommandPayload::SetResearchInvestment { percent: 20 }, grounding: base.clone() });
+        }
         for (unit_id, unit) in state.units.iter().filter(|(_, unit)| unit.owner == civilization) {
             let mut grounding = base.clone();
             grounding.push(GroundingRef::Unit { unit: *unit_id });
@@ -86,7 +91,7 @@ pub struct BotProposal { pub payload: CommandPayload, pub grounding: Vec<Groundi
 impl BotProposal {
     pub fn accept(self, state: &WorldState, actor_id: CivId, command_id: u64, accepted_sequence: u64) -> AcceptedCommand {
         let kind = command_kind(&self.payload);
-        AcceptedCommand { command_id, world_id: state.world_id, turn: state.turn, accepted_sequence, actor_id, origin: CommandOrigin::Bot, kind, payload: self.payload, grounding: self.grounding, intent_evidence: None }
+        AcceptedCommand { command_id, world_id: state.world_id, turn: state.turn, accepted_sequence, actor_id, origin: CommandOrigin::Bot, kind, payload: self.payload, grounding: self.grounding, intent_evidence: None, mandate: None }
     }
 }
 
@@ -231,6 +236,22 @@ mod tests {
         city.unit_queue.push("unit.settler".into());
         assert!(BotT0.decide(&state, CivId(0), TileIndex(0)).iter().any(|proposal| matches!(
             proposal.payload, CommandPayload::SetCityFocus { focus: CityFocus::Supply, .. }
+        )));
+    }
+
+    #[test]
+    fn active_research_requests_the_selected_investment() {
+        // A civilization without cities only proposes founding one, so found the capital first.
+        let initial = expansion_world();
+        let versions = crate::world::SimulationVersions { ruleset: initial.ruleset.clone(), resolver_version: 1 };
+        let founding = BotT0.decide(&initial, CivId(0), TileIndex(0)).remove(0).accept(&initial, CivId(0), 1, 1);
+        let mut state = crate::world::step(&initial, &[founding], initial.seed, &versions).state;
+        let civ = state.civilizations.get_mut(&CivId(0)).unwrap();
+        civ.research = Some("tech.storage".into());
+        // Governors only re-propose the investment while it differs from the selected one.
+        civ.research_investment = 0;
+        assert!(BotT0.decide(&state, CivId(0), TileIndex(0)).iter().any(|proposal| matches!(
+            proposal.payload, CommandPayload::SetResearchInvestment { percent: 20 }
         )));
     }
 

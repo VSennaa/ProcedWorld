@@ -7,6 +7,8 @@ use crate::{
     world::{AcceptedCommand, CommandKind, CommandOrigin, CommandPayload, GroundingRef, RulesetRef, Visibility, WorldState},
 };
 
+pub use crate::governor::Mandate;
+
 pub use crate::world::{AiLayer, AiStatus, IntentEvidence};
 
 pub const ACTION_INTENT_SCHEMA_VERSION: u32 = 1;
@@ -32,17 +34,6 @@ pub struct ActionIntent {
     pub kind: CommandKind,
     pub parameters: CommandPayload,
     pub grounding: Vec<GroundingRef>,
-}
-
-/// Governor permissions are deliberately narrow until the full Mandate domain is added.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Mandate {
-    pub version: u32,
-    pub allowed_kinds: Vec<CommandKind>,
-}
-
-impl Mandate {
-    pub fn permits(&self, kind: CommandKind) -> bool { self.allowed_kinds.contains(&kind) }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -85,6 +76,7 @@ impl IntentValidator {
             payload: intent.parameters,
             grounding: intent.grounding,
             intent_evidence: Some(evidence),
+            mandate: mandate.cloned(),
         })
     }
 }
@@ -98,7 +90,7 @@ fn validate_intent(state: &WorldState, intent: &ActionIntent, origin: CommandOri
     if intent.grounding.is_empty() { return Err(IntentRejection::MissingGrounding); }
     if origin == CommandOrigin::Governor {
         let mandate = mandate.ok_or(IntentRejection::MandateRequired)?;
-        if !mandate.permits(intent.kind) { return Err(IntentRejection::MandateViolation); }
+        if !mandate.allows_payload(&intent.parameters) { return Err(IntentRejection::MandateViolation); }
     }
     validate_parameter_range(&intent.parameters)?;
     for reference in &intent.grounding { validate_grounding(state, intent.actor_id, reference)?; }
@@ -277,6 +269,7 @@ fn t0_keep_plan(state: &WorldState, request_id: u64, actor_id: CivId, command_id
         origin: CommandOrigin::Fallback, kind: CommandKind::KeepPlan, payload: CommandPayload::KeepPlan,
         grounding: vec![GroundingRef::Turn { turn: state.turn }],
         intent_evidence: Some(IntentEvidence { request_id, schema_version: ACTION_INTENT_SCHEMA_VERSION, ruleset_ref: state.ruleset.clone(), layer: AiLayer::T0, status: AiStatus::Ok, fixture_id: None, fallback_from: Some(fallback_from) }),
+        mandate: None,
     }
 }
 
@@ -308,7 +301,7 @@ mod tests {
     #[test]
     fn intent_without_grounding_is_rejected() {
         let state = state();
-        assert_eq!(IntentValidator::accept(&state, intent(&state, Vec::new()), CommandOrigin::Governor, Some(&Mandate { version: 1, allowed_kinds: vec![CommandKind::KeepPlan] }), 1, 1, evidence()), Err(IntentRejection::MissingGrounding));
+        assert_eq!(IntentValidator::accept(&state, intent(&state, Vec::new()), CommandOrigin::Governor, Some(&Mandate::balanced(1)), 1, 1, evidence()), Err(IntentRejection::MissingGrounding));
     }
 
     #[test]
@@ -316,7 +309,7 @@ mod tests {
         let mut state = state();
         state.tiles.push(TileState::default());
         let intent = intent(&state, vec![GroundingRef::Tile { tile: TileIndex(1) }]);
-        assert_eq!(IntentValidator::accept(&state, intent, CommandOrigin::Governor, Some(&Mandate { version: 1, allowed_kinds: vec![CommandKind::KeepPlan] }), 1, 1, evidence()), Err(IntentRejection::GroundingNotVisible));
+        assert_eq!(IntentValidator::accept(&state, intent, CommandOrigin::Governor, Some(&Mandate::balanced(1)), 1, 1, evidence()), Err(IntentRejection::GroundingNotVisible));
     }
 
     #[test]
@@ -336,7 +329,7 @@ mod tests {
         let recorded = intent(&state, vec![GroundingRef::Tile { tile: TileIndex(0) }]);
         let json = serde_json::to_string(&serde_json::json!({ "intents": [recorded] })).unwrap();
         let fixture = FixturePort::from_json(&json).unwrap();
-        let mandate = Mandate { version: 1, allowed_kinds: vec![CommandKind::KeepPlan] };
+        let mandate = Mandate::balanced(1);
         let request = LlmRequest { request_id: 9, actor_id: CivId(0), origin: CommandOrigin::Governor, player_text: UntrustedPlayerText::new("data") };
         let first = intent_from_text_or_t0(&state, &request, &fixture, Some(&mandate), 1, 1);
         let second = intent_from_text_or_t0(&state, &request, &fixture, Some(&mandate), 1, 1);

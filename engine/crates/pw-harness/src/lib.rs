@@ -2,7 +2,7 @@
 
 use std::{collections::BTreeMap, fs, path::Path};
 use serde::{Deserialize, Serialize};
-use pw_engine::{bots::BotT0, hash::StateHash, ids::{CivId, TileIndex, TurnNumber}, mapgen::{generate, Catalog, WorldParams}, rng::Rng, world::{replay, step, CivilizationState, CommandLog, DomainEvent, SimulationVersions, TileState, TileYields, WorldId, WorldSnapshot, WorldState, TERRAIN_COAST, TERRAIN_DESERT, TERRAIN_FOREST, TERRAIN_JUNGLE, TERRAIN_OCEAN, TERRAIN_PLAINS, TERRAIN_STEPPE, TERRAIN_SWAMP}};
+use pw_engine::{governor::{Governor, Mandate, MandatePreset}, hash::StateHash, ids::{CivId, TileIndex, TurnNumber}, mapgen::{generate, Catalog, WorldParams}, rng::Rng, world::{replay, step, CivilizationState, CommandLog, DomainEvent, SimulationVersions, TileState, TileYields, Visibility, WorldId, WorldSnapshot, WorldState, TERRAIN_COAST, TERRAIN_DESERT, TERRAIN_FOREST, TERRAIN_JUNGLE, TERRAIN_OCEAN, TERRAIN_PLAINS, TERRAIN_STEPPE, TERRAIN_SWAMP}};
 
 pub const SNAPSHOT_INTERVAL: u32 = 100;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)] pub struct RunConfig { pub seed: u64, pub civilizations: u32, pub turns: u32 }
@@ -25,14 +25,14 @@ pub fn run_simulation(config: RunConfig) -> Result<SimulationRun, String> {
     if config.civilizations == 0 || config.turns == 0 { return Err("civilizations and turns must be greater than zero".into()); }
     let (mut state, versions, homes) = initial_world(config.seed, config.civilizations)?;
     let snapshot = WorldSnapshot::new(state.clone(), versions);
-    let mut log = CommandLog::default(); let bot = BotT0; let mut command_id = 1_u64; let mut final_events = Vec::new(); let mut pressure_sum = 0_u64; let mut pressure_samples = 0_u64;
+    let mut log = CommandLog::default(); let mandate = Mandate::preset(MandatePreset::GrowCautiously, 1); let mut command_id = 1_u64; let mut final_events = Vec::new(); let mut pressure_sum = 0_u64; let mut pressure_samples = 0_u64;
     for _ in 0..config.turns {
         let mut commands = Vec::new();
         for civilization in rotating_order(config.seed, state.turn, &homes) {
-            for proposal in bot.decide(&state, civilization, homes[&civilization]) {
-                commands.push(proposal.accept(&state, civilization, command_id, commands.len() as u64 + 1));
-                command_id = command_id.checked_add(1).ok_or_else(|| "command id exhausted".to_string())?;
-            }
+            let governor = Governor { mandate: &mandate, decision_port: None };
+            let decision = governor.decide(&state, civilization, homes[&civilization], true, command_id, commands.len() as u64 + 1);
+            command_id = command_id.checked_add(decision.commands.len().max(1) as u64).ok_or_else(|| "command id exhausted".to_string())?;
+            commands.extend(decision.commands);
         }
         for command in commands.iter().cloned() { log.append(command); }
         let turn = state.turn; let result = step(&state, &commands, state.seed, &snapshot.versions);
@@ -68,7 +68,8 @@ fn initial_world(seed: u64, civilizations: u32) -> Result<(WorldState, Simulatio
     let mut civilization_states = BTreeMap::new(); let mut homes = BTreeMap::new();
     for start in &generated.starting_points { let id = CivId(start.civilization); let mut civilization = CivilizationState::default(); civilization.researched_technologies.insert("tech.foraging".into()); civilization_states.insert(id, civilization); homes.insert(id, start.tile); }
     let tiles = generated.tiles.iter().map(|tile| TileState { terrain: terrain(&tile.biome_id), river: false, yields: yields(&tile.biome_id) }).collect();
-    let state = WorldState { world_id: WorldId(seed), turn: TurnNumber::ZERO, seed, ruleset: generated.ruleset_ref.clone(), schema_version: 1, map_width: generated.grid.width, tiles, civilizations: civilization_states, cities: BTreeMap::new(), units: BTreeMap::new(), attacks: BTreeMap::new(), control: BTreeMap::new(), visibility: BTreeMap::new(), ledger: Vec::new() };
+    let visibility = homes.iter().map(|(civilization, home)| (*civilization, BTreeMap::from([(*home, Visibility::Visible)]))).collect();
+    let state = WorldState { world_id: WorldId(seed), turn: TurnNumber::ZERO, seed, ruleset: generated.ruleset_ref.clone(), schema_version: 1, map_width: generated.grid.width, tiles, civilizations: civilization_states, cities: BTreeMap::new(), units: BTreeMap::new(), attacks: BTreeMap::new(), control: BTreeMap::new(), visibility, ledger: Vec::new() };
     Ok((state, SimulationVersions { ruleset: generated.ruleset_ref, resolver_version: 1 }, homes))
 }
 fn rotating_order(seed: u64, turn: TurnNumber, homes: &BTreeMap<CivId, TileIndex>) -> Vec<CivId> { let mut order: Vec<_> = homes.keys().copied().collect(); let mut rng = Rng::derive(seed, "bot-order"); for index in (1..order.len()).rev() { order.swap(index, rng.below(index as u32 + 1) as usize); } if !order.is_empty() { let offset = turn.0 as usize % order.len(); order.rotate_left(offset); } order }
@@ -92,6 +93,13 @@ fn yields(biome: &str) -> TileYields { match biome { "forest" => TileYields { fo
         let run = run_simulation(RunConfig { seed: 84, civilizations: 8, turns: 2 }).unwrap();
         assert_eq!(run.pressure_samples, 16);
         assert_eq!(run.metrics().average_pressure, (run.pressure_sum / run.pressure_samples) as u8);
+    }
+
+    #[test] fn initial_world_makes_each_starting_tile_visible_to_its_civilization() {
+        let (state, _, homes) = initial_world(84, 8).unwrap();
+        for (civilization, home) in homes {
+            assert_eq!(state.visibility[&civilization][&home], Visibility::Visible);
+        }
     }
 
     #[test] fn one_thousand_bot_turns_complete_without_a_panic() {

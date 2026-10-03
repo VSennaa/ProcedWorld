@@ -496,6 +496,11 @@ pub struct AcceptedCommand {
     /// Audit-only AI provenance. Replay applies this command without consulting it.
     #[serde(default)]
     pub intent_evidence: Option<IntentEvidence>,
+    /// The immutable mandate snapshot used for a Governor command. The pure
+    /// engine repeats the red-line check; callers cannot bypass it by avoiding
+    /// Governor orchestration.
+    #[serde(default)]
+    pub mandate: Option<crate::governor::Mandate>,
 }
 
 /// Stable reason codes for command rejection.
@@ -530,6 +535,8 @@ pub enum RejectionReason {
     AttackOutOfRange,
     UnitIdExhausted,
     TurnOverflow,
+    MandateRequired,
+    MandateViolation,
 }
 
 #[derive(Deserialize)]
@@ -684,6 +691,12 @@ fn apply_command(state: &mut WorldState, command: &AcceptedCommand) -> Result<()
     }
     if state.civilizations.get(&command.actor_id).is_some_and(|civilization| civilization.frozen) {
         return Err(RejectionReason::CivilizationFrozen);
+    }
+    if command.origin == CommandOrigin::Governor {
+        let mandate = command.mandate.as_ref().ok_or(RejectionReason::MandateRequired)?;
+        if !mandate.valid() || !mandate.allows_payload(&command.payload) {
+            return Err(RejectionReason::MandateViolation);
+        }
     }
 
     match &command.payload {
@@ -1036,6 +1049,13 @@ fn resolve_visibility(state: &mut WorldState) {
             if let Ok(tile) = grid.tile_index(cell) { known.insert(tile, Visibility::Visible); }
         }
     }
+    for city in state.cities.values() {
+        let Ok(cell) = grid.cell(city.tile) else { continue; };
+        let known = state.visibility.entry(city.owner).or_default();
+        for cell in grid.area(cell, VISIBILITY_RADIUS).unwrap_or_default() {
+            if let Ok(tile) = grid.tile_index(cell) { known.insert(tile, Visibility::Visible); }
+        }
+    }
 }
 
 fn allocate_workplaces(state: &WorldState, city: &CityState, claimed: &BTreeSet<TileIndex>) -> Vec<TileIndex> {
@@ -1286,6 +1306,7 @@ mod tests {
             payload: CommandPayload::MoveUnit { unit_id: unit, target: TileIndex(target) },
             grounding: Vec::new(),
             intent_evidence: None,
+            mandate: None,
         }
     }
 
@@ -1302,7 +1323,7 @@ mod tests {
     }
 
     fn command(id: u64, sequence: u64, actor: CivId, payload: CommandPayload) -> AcceptedCommand {
-        AcceptedCommand { command_id: id, world_id: WorldId(9), turn: TurnNumber::ZERO, accepted_sequence: sequence, actor_id: actor, origin: CommandOrigin::Player, kind: payload.kind(), payload, grounding: Vec::new(), intent_evidence: None }
+        AcceptedCommand { command_id: id, world_id: WorldId(9), turn: TurnNumber::ZERO, accepted_sequence: sequence, actor_id: actor, origin: CommandOrigin::Player, kind: payload.kind(), payload, grounding: Vec::new(), intent_evidence: None, mandate: None }
     }
 
     #[test]
@@ -1409,6 +1430,7 @@ mod tests {
             payload: CommandPayload::SetResearch { research: "pottery".into() },
             grounding: Vec::new(),
             intent_evidence: None,
+            mandate: None,
         };
         let second = step(&first.state, &[second_command.clone()], 99, &versions());
         let mut log = CommandLog::default();
