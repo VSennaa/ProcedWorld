@@ -4,7 +4,7 @@
 
 ## Agora
 
-Agente ativo: fila do Codex agendada para 2026-10-03 02:20 (P13 → P12b) em `feat/ai/phase3-core`, área `engine/`
+Agente ativo: Sonnet P16 (`feat/engine/unit-orders`, área `engine/`) e Sonnet P17 (`feat/front/live-client`, área `client/`), desde 2026-10-03
 
 - **Fase**: **3 — Alfa**. Fase 2 mergeada em `develop` (tag `v0.1.0-indev.1` aguarda o usuário).
 - **`feat/ai/phase3-core`** (98 testes na VPS: 81 motor, 11 harness, 6 servidor), feito em 2026-10-02 com
@@ -24,6 +24,8 @@ Agente ativo: fila do Codex agendada para 2026-10-03 02:20 (P13 → P12b) em `fe
   colapso nunca são autoescolhidos; era fixa de 8 turnos na Entropia; `turn_diff` do servidor é visão
   completa (não delta); sem autenticação real nem PostgreSQL no servidor; cliente não fala com o servidor
   ainda (só fixture); sem `Cargo.lock` versionado.
+- **2026-10-03**: decisão do usuário — só unidades ociosas bloqueiam Pronto (GDD 01); contrato no SDD
+  03/10/12/15 (`bb4b322`); árvore de pesquisa só leitura no cliente. P16/P17 em andamento.
 - **Para o usuário**: aprovar a tag `v0.1.0-indev.1`; revisar `feat/ai/phase3-core` antes do merge em `develop`.
 - **Quadro**: `https://<hostname da VPS>/board.html` (HTTP Basic).
 
