@@ -10,6 +10,8 @@ pub mod mapgen;
 pub mod rng;
 pub mod bots;
 pub mod ai;
+pub mod dsl;
+pub mod entropy;
 pub mod governor;
 pub mod world;
 

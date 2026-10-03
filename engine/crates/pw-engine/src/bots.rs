@@ -97,7 +97,7 @@ impl BotProposal {
 
 fn command_kind(payload: &CommandPayload) -> CommandKind {
     match payload {
-        CommandPayload::EndTurn => CommandKind::EndTurn, CommandPayload::MoveUnit { .. } => CommandKind::MoveUnit, CommandPayload::FoundCity { .. } => CommandKind::FoundCity, CommandPayload::SetCityFocus { .. } => CommandKind::SetCityFocus, CommandPayload::SetResearch { .. } => CommandKind::SetResearch, CommandPayload::SetResearchInvestment { .. } => CommandKind::SetResearchInvestment, CommandPayload::ActivatePractice { .. } => CommandKind::ActivatePractice, CommandPayload::DeactivatePractice { .. } => CommandKind::DeactivatePractice, CommandPayload::QueueUnit { .. } => CommandKind::QueueUnit, CommandPayload::DeclareAttack { .. } => CommandKind::DeclareAttack, CommandPayload::Explore { .. } => CommandKind::Explore, CommandPayload::KeepPlan => CommandKind::KeepPlan,
+        CommandPayload::EndTurn => CommandKind::EndTurn, CommandPayload::MoveUnit { .. } => CommandKind::MoveUnit, CommandPayload::FoundCity { .. } => CommandKind::FoundCity, CommandPayload::SetCityFocus { .. } => CommandKind::SetCityFocus, CommandPayload::SetResearch { .. } => CommandKind::SetResearch, CommandPayload::SetResearchInvestment { .. } => CommandKind::SetResearchInvestment, CommandPayload::ActivatePractice { .. } => CommandKind::ActivatePractice, CommandPayload::DeactivatePractice { .. } => CommandKind::DeactivatePractice, CommandPayload::QueueUnit { .. } => CommandKind::QueueUnit, CommandPayload::DeclareAttack { .. } => CommandKind::DeclareAttack, CommandPayload::Explore { .. } => CommandKind::Explore, CommandPayload::KeepPlan => CommandKind::KeepPlan, CommandPayload::ApplyEvent { .. } => CommandKind::ApplyEvent, CommandPayload::RespondToEvent { .. } => CommandKind::RespondToEvent,
     }
 }
 
@@ -168,7 +168,7 @@ mod tests {
             } }; 200],
             civilizations: BTreeMap::from([(CivId(0), civ)]), cities: BTreeMap::new(),
             units: BTreeMap::new(), attacks: BTreeMap::new(), control: BTreeMap::new(),
-            visibility: BTreeMap::new(), ledger: Vec::new(),
+            visibility: BTreeMap::new(), ledger: Vec::new(), entropy: Default::default(),
         }
     }
 
@@ -258,7 +258,7 @@ mod tests {
     #[test]
     fn first_decision_founds_a_city_with_grounding() {
         let mut civilizations = BTreeMap::new(); civilizations.insert(CivId(0), CivilizationState::default());
-        let state = WorldState { world_id: WorldId(1), turn: TurnNumber::ZERO, seed: 1, ruleset: RulesetRef { id: "test".into(), version: "1".into(), content_hash: 1 }, schema_version: 1, map_width: 2, tiles: vec![TileState::default(); 4], civilizations, cities: BTreeMap::new(), units: BTreeMap::new(), attacks: BTreeMap::new(), control: BTreeMap::new(), visibility: BTreeMap::new(), ledger: Vec::new() };
+        let state = WorldState { world_id: WorldId(1), turn: TurnNumber::ZERO, seed: 1, ruleset: RulesetRef { id: "test".into(), version: "1".into(), content_hash: 1 }, schema_version: 1, map_width: 2, tiles: vec![TileState::default(); 4], civilizations, cities: BTreeMap::new(), units: BTreeMap::new(), attacks: BTreeMap::new(), control: BTreeMap::new(), visibility: BTreeMap::new(), ledger: Vec::new(), entropy: Default::default() };
         let proposal = BotT0.decide(&state, CivId(0), TileIndex(3)).pop().unwrap();
         assert!(matches!(proposal.payload, CommandPayload::FoundCity { target: TileIndex(3), .. }));
         assert!(!proposal.grounding.is_empty());

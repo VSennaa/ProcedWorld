@@ -2,14 +2,14 @@
 
 use std::{collections::BTreeMap, fs, path::Path};
 use serde::{Deserialize, Serialize};
-use pw_engine::{governor::{Governor, Mandate, MandatePreset}, hash::StateHash, ids::{CivId, TileIndex, TurnNumber}, mapgen::{generate, Catalog, WorldParams}, rng::Rng, world::{replay, step, CivilizationState, CommandLog, DomainEvent, SimulationVersions, TileState, TileYields, Visibility, WorldId, WorldSnapshot, WorldState, TERRAIN_COAST, TERRAIN_DESERT, TERRAIN_FOREST, TERRAIN_JUNGLE, TERRAIN_OCEAN, TERRAIN_PLAINS, TERRAIN_STEPPE, TERRAIN_SWAMP}};
+use pw_engine::{entropy::{bundled_catalog, respond_commands, EntropyDirector}, governor::{Governor, Mandate, MandatePreset}, hash::StateHash, ids::{CivId, TileIndex, TurnNumber}, mapgen::{generate, Catalog, WorldParams}, rng::Rng, world::{replay, step, CivilizationState, CommandLog, CommandOrigin, DomainEvent, SimulationVersions, TileState, TileYields, Visibility, WorldId, WorldSnapshot, WorldState, TERRAIN_COAST, TERRAIN_DESERT, TERRAIN_FOREST, TERRAIN_JUNGLE, TERRAIN_OCEAN, TERRAIN_PLAINS, TERRAIN_STEPPE, TERRAIN_SWAMP}};
 
 pub const SNAPSHOT_INTERVAL: u32 = 100;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)] pub struct RunConfig { pub seed: u64, pub civilizations: u32, pub turns: u32 }
 impl Default for RunConfig { fn default() -> Self { Self { seed: 1, civilizations: 8, turns: 1_000 } } }
 #[derive(Clone, Debug, Serialize, Deserialize)] pub struct StoredRun { pub snapshot: WorldSnapshot, pub log: CommandLog, pub home_tiles: BTreeMap<CivId, TileIndex> }
 #[derive(Clone, Debug)] pub struct SimulationRun { pub stored: StoredRun, pub final_state: WorldState, pub final_events: Vec<DomainEvent>, pressure_sum: u64, pressure_samples: u64 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq)] pub struct Metrics { pub cities: u32, pub population: u32, pub average_pressure: u8, pub crises: u32, pub collapses: u32 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq)] pub struct Metrics { pub cities: u32, pub population: u32, pub average_pressure: u8, pub crises: u32, pub collapses: u32, pub events: u32 }
 
 impl SimulationRun {
     pub fn final_hash(&self) -> StateHash { self.final_state.state_hash() }
@@ -17,7 +17,7 @@ impl SimulationRun {
         let cities = self.final_state.cities.len() as u32;
         let population = self.final_state.cities.values().map(|city| city.population).sum();
         let average_pressure = if self.pressure_samples == 0 { 0 } else { (self.pressure_sum / self.pressure_samples).min(100) as u8 };
-        Metrics { cities, population, average_pressure, crises: self.final_state.cities.values().filter(|city| city.crisis_turns >= 2).count() as u32, collapses: self.final_state.civilizations.values().filter(|civ| civ.frozen).count() as u32 }
+        Metrics { cities, population, average_pressure, crises: self.final_state.cities.values().filter(|city| city.crisis_turns >= 2).count() as u32, collapses: self.final_state.civilizations.values().filter(|civ| civ.frozen).count() as u32, events: self.stored.log.commands.iter().filter(|command| command.origin == CommandOrigin::Entropy).count() as u32 }
     }
 }
 
@@ -25,7 +25,7 @@ pub fn run_simulation(config: RunConfig) -> Result<SimulationRun, String> {
     if config.civilizations == 0 || config.turns == 0 { return Err("civilizations and turns must be greater than zero".into()); }
     let (mut state, versions, homes) = initial_world(config.seed, config.civilizations)?;
     let snapshot = WorldSnapshot::new(state.clone(), versions);
-    let mut log = CommandLog::default(); let mandate = Mandate::preset(MandatePreset::GrowCautiously, 1); let mut command_id = 1_u64; let mut final_events = Vec::new(); let mut pressure_sum = 0_u64; let mut pressure_samples = 0_u64;
+    let mut log = CommandLog::default(); let mandate = Mandate::preset(MandatePreset::GrowCautiously, 1); let catalog = bundled_catalog(); let director = EntropyDirector { catalog: &catalog, decision_port: None }; let mut command_id = 1_u64; let mut final_events = Vec::new(); let mut pressure_sum = 0_u64; let mut pressure_samples = 0_u64;
     for _ in 0..config.turns {
         let mut commands = Vec::new();
         for civilization in rotating_order(config.seed, state.turn, &homes) {
@@ -34,6 +34,15 @@ pub fn run_simulation(config: RunConfig) -> Result<SimulationRun, String> {
             command_id = command_id.checked_add(decision.commands.len().max(1) as u64).ok_or_else(|| "command id exhausted".to_string())?;
             commands.extend(decision.commands);
         }
+        // The Governor answers pending Entropy events for every civilization; then the director opens new ones.
+        for civilization in homes.keys() {
+            let responses = respond_commands(&state, *civilization, &mandate, command_id, commands.len() as u64 + 1);
+            command_id = command_id.saturating_add(responses.len() as u64);
+            commands.extend(responses);
+        }
+        let proposed = director.propose(&state, command_id, commands.len() as u64 + 1);
+        command_id = command_id.saturating_add(proposed.len() as u64);
+        commands.extend(proposed);
         for command in commands.iter().cloned() { log.append(command); }
         let turn = state.turn; let result = step(&state, &commands, state.seed, &snapshot.versions);
         pressure_sum = pressure_sum.checked_add(result.state.civilizations.values().map(|civ| u64::from(civ.crisis_pressure)).sum()).ok_or_else(|| "pressure total exhausted".to_string())?;
@@ -69,7 +78,7 @@ fn initial_world(seed: u64, civilizations: u32) -> Result<(WorldState, Simulatio
     for start in &generated.starting_points { let id = CivId(start.civilization); let mut civilization = CivilizationState::default(); civilization.researched_technologies.insert("tech.foraging".into()); civilization_states.insert(id, civilization); homes.insert(id, start.tile); }
     let tiles = generated.tiles.iter().map(|tile| TileState { terrain: terrain(&tile.biome_id), river: false, yields: yields(&tile.biome_id) }).collect();
     let visibility = homes.iter().map(|(civilization, home)| (*civilization, BTreeMap::from([(*home, Visibility::Visible)]))).collect();
-    let state = WorldState { world_id: WorldId(seed), turn: TurnNumber::ZERO, seed, ruleset: generated.ruleset_ref.clone(), schema_version: 1, map_width: generated.grid.width, tiles, civilizations: civilization_states, cities: BTreeMap::new(), units: BTreeMap::new(), attacks: BTreeMap::new(), control: BTreeMap::new(), visibility, ledger: Vec::new() };
+    let state = WorldState { world_id: WorldId(seed), turn: TurnNumber::ZERO, seed, ruleset: generated.ruleset_ref.clone(), schema_version: 1, map_width: generated.grid.width, tiles, civilizations: civilization_states, cities: BTreeMap::new(), units: BTreeMap::new(), attacks: BTreeMap::new(), control: BTreeMap::new(), visibility, ledger: Vec::new(), entropy: Default::default() };
     Ok((state, SimulationVersions { ruleset: generated.ruleset_ref, resolver_version: 1 }, homes))
 }
 fn rotating_order(seed: u64, turn: TurnNumber, homes: &BTreeMap<CivId, TileIndex>) -> Vec<CivId> { let mut order: Vec<_> = homes.keys().copied().collect(); let mut rng = Rng::derive(seed, "bot-order"); for index in (1..order.len()).rev() { order.swap(index, rng.below(index as u32 + 1) as usize); } if !order.is_empty() { let offset = turn.0 as usize % order.len(); order.rotate_left(offset); } order }
@@ -112,9 +121,74 @@ fn yields(biome: &str) -> TileYields { match biome { "forest" => TileYields { fo
         assert!(metrics.cities >= 16, "expected at least 16 cities, got {}", metrics.cities);
         assert!(metrics.population >= 40, "expected at least 40 population, got {}", metrics.population);
         assert!(metrics.collapses <= 2, "expected at most two collapses, got {}", metrics.collapses);
-        // Upper bound only in phase 2: with no Entropy events, war or climate modifiers yet, a fed and
-        // calm world legitimately has P = 0 under the GDD 12 formula. The lower bound (tension exists)
-        // returns in phase 3 together with the Entropy director. See engine/DIAGNOSTICO-P7.md.
-        assert!(metrics.average_pressure <= 80, "expected average pressure at most 80, got {}", metrics.average_pressure);
+        assert!(metrics.events >= 10, "expected the Entropy director to open events, got {}", metrics.events);
+        // Upper bound only: the pressure floor of 10 is unreachable under the GDD 08 fairness rules and the
+        // GDD 12 formula (the cohesion term alone subtracts 10). See engine/DIAGNOSTICO-P7.md, "P12".
+        assert!(metrics.average_pressure <= 80, "expected average pressure at most 80, got {} (events {}, crises {})", metrics.average_pressure, metrics.events, metrics.crises);
+    }
+
+    fn entropy_commands(run: &SimulationRun) -> Vec<pw_engine::world::AcceptedCommand> {
+        run.stored.log.commands.iter().filter(|command| command.origin == CommandOrigin::Entropy).cloned().collect()
+    }
+
+    #[test] fn same_seed_gives_the_same_entropy_events() {
+        let config = RunConfig { seed: 20_261_001, civilizations: 8, turns: 120 };
+        let first = run_simulation(config).unwrap();
+        let second = run_simulation(config).unwrap();
+        assert!(!entropy_commands(&first).is_empty());
+        assert_eq!(entropy_commands(&first), entropy_commands(&second));
+        assert_eq!(first.final_hash(), second.final_hash());
+        assert_eq!(replay_log(&first.stored).unwrap(), first.final_hash());
+    }
+
+    #[test] fn different_seeds_give_different_entropy_events() {
+        let first = run_simulation(RunConfig { seed: 11, civilizations: 8, turns: 120 }).unwrap();
+        let second = run_simulation(RunConfig { seed: 12, civilizations: 8, turns: 120 }).unwrap();
+        assert_ne!(entropy_commands(&first), entropy_commands(&second));
+    }
+
+    #[test] fn entropy_respects_cooldowns_budgets_and_the_engine_accepts_every_event() {
+        use pw_engine::{entropy::{BASE_WORLD_BUDGET, BUDGET_PER_LIVING_CIVILIZATION, ERA_TURNS, RESERVE_MAX}, world::CommandPayload};
+        let run = run_simulation(RunConfig { seed: 20_261_001, civilizations: 8, turns: 150 }).unwrap();
+        let events = entropy_commands(&run);
+        assert!(events.len() >= 10);
+        let mut last_turn: BTreeMap<String, u32> = BTreeMap::new();
+        let mut world_spent: BTreeMap<u32, u32> = BTreeMap::new();
+        let mut civ_spent: BTreeMap<(u32, u32), u32> = BTreeMap::new();
+        for command in &events {
+            let CommandPayload::ApplyEvent { template_id, cost, cooldown, .. } = &command.payload else { panic!("entropy emits only events"); };
+            if let Some(previous) = last_turn.insert(template_id.clone(), command.turn.0) { assert!(command.turn.0 >= previous + cooldown, "{template_id} repeated after {} turns, cooldown {cooldown}", command.turn.0 - previous); }
+            let era = command.turn.0 / ERA_TURNS;
+            *world_spent.entry(era).or_default() += u32::from(*cost);
+            *civ_spent.entry((era, command.actor_id.0)).or_default() += u32::from(*cost);
+        }
+        assert!(world_spent.values().all(|spent| *spent <= BASE_WORLD_BUDGET + BUDGET_PER_LIVING_CIVILIZATION * 8), "world budget exceeded: {world_spent:?}");
+        assert!(civ_spent.values().all(|spent| *spent <= RESERVE_MAX), "reserve exceeded: {civ_spent:?}");
+        let mut state = run.stored.snapshot.state.clone();
+        for turn in run.stored.log.turn_hashes.keys() {
+            let commands: Vec<_> = run.stored.log.commands.iter().filter(|command| command.turn == *turn).cloned().collect();
+            let result = step(&state, &commands, state.seed, &run.stored.snapshot.versions);
+            for command in commands.iter().filter(|command| command.origin == CommandOrigin::Entropy) {
+                assert!(!result.events.iter().any(|event| matches!(event, DomainEvent::CommandRejected { command_id, .. } if *command_id == command.command_id)), "engine rejected entropy command {command:?}");
+            }
+            state = result.state;
+        }
+    }
+
+    #[test] fn no_entropy_event_eliminates_or_freezes_its_target() {
+        let run = run_simulation(RunConfig { seed: 20_261_001, civilizations: 8, turns: 150 }).unwrap();
+        let mut state = run.stored.snapshot.state.clone();
+        for turn in run.stored.log.turn_hashes.keys() {
+            let commands: Vec<_> = run.stored.log.commands.iter().filter(|command| command.turn == *turn).cloned().collect();
+            let result = step(&state, &commands, state.seed, &run.stored.snapshot.versions);
+            for command in commands.iter().filter(|command| command.origin == CommandOrigin::Entropy) {
+                let actor = command.actor_id;
+                let before = state.cities.values().filter(|city| city.owner == actor).count();
+                let after = result.state.cities.values().filter(|city| city.owner == actor).count();
+                assert!(after >= before, "an event removed a city of civilization {}", actor.0);
+                if !state.civilizations[&actor].frozen { assert!(!result.state.civilizations[&actor].frozen, "an event froze civilization {} at turn {}", actor.0, turn.0); }
+            }
+            state = result.state;
+        }
     }
 }
