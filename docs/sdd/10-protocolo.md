@@ -57,9 +57,9 @@ codificação binária posterior só é compatível se preservar exatamente os c
 
 ```text
 Envelope {
-  protocolVersion: "1.0",
+  protocol_version: "1.0",
   type: MessageType,
-  messageId: UUID,
+  request_id: UUID,
   correlationId: UUID?,
   worldId: WorldId?,
   sessionId: SessionId?,
@@ -68,10 +68,10 @@ Envelope {
 }
 ```
 
-- `protocolVersion` usa compatibilidade semântica: uma versão maior incompatível exige atualização;
+- `protocol_version` usa compatibilidade semântica: uma versão maior incompatível exige atualização;
   campos opcionais desconhecidos são ignorados; remover ou alterar semântica de campo exige versão
   maior incompatível.
-- `messageId` permite deduplicação por sessão. Repetir o mesmo pedido idempotente retorna o mesmo
+- `request_id` permite deduplicação por sessão. Repetir o mesmo pedido idempotente retorna o mesmo
   resultado lógico, em vez de aplicar um comando duas vezes.
 - `correlationId` liga resposta, erro ou confirmação ao pedido. Ele não substitui o identificador
   estável do comando no log.
@@ -245,7 +245,7 @@ payload de chave ou prompt.
 
 | Situação | Comportamento proposto |
 |---|---|
-| pacote repetido | deduplicar por `messageId`/`clientCommandId`; devolver confirmação anterior |
+| pacote repetido | deduplicar por `request_id`/`clientCommandId`; devolver confirmação anterior |
 | conexão cai após envio | cliente consulta resultado pela correlação ou recupera pelo cursor; não reenvia cegamente |
 | versão incompatível | bloquear entrada de domínio e pedir atualização compatível |
 | token expirado | recusar autenticação, permitir renovação; não perder comandos já aceitos |
@@ -253,7 +253,7 @@ payload de chave ou prompt.
 | IA do Governador falha | outro subsistema aplica T0 e registra o comando resultante; transporte só publica efeito |
 | limite excedido | rejeitar sem gravar comando nem cobrar custo mecânico |
 
-O log auditável deve registrar: versão negociada, `messageId`, correlação, `worldId`, identificador
+O log auditável deve registrar: versão negociada, `request_id`, correlação, `worldId`, identificador
 de usuário/civilização pseudonimizado quando possível, tipo, tamanho, resultado, código de rejeição,
 `commandId`, sequência aceita, turno, cursor e latências. O log de comandos, em particular, registra
 o comando validado e sua ordem; replays não chamam a rede ou IA novamente.
