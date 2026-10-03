@@ -4,23 +4,28 @@
 
 ## Agora
 
-Agente ativo: build loop agendado (Codex) em `feat/ai/phase3-core`, área `engine/` — começa 2026-10-03 02:20
+Agente ativo: fila do Codex agendada para 2026-10-03 02:20 (P13 → P12b) em `feat/ai/phase3-core`, área `engine/`
 
-- **Fase**: **3 — Alfa** (Fase 2 concluída e mergeada em `develop` em 2026-10-02: 1.000 turnos, 8 bots,
-  replay idêntico, mesmo hash em Linux/Windows/macOS na CI). Tag `v0.1.0-indev.1` **aguarda o usuário**.
-- **Fase 3 em `feat/ai/phase3-core`**: P9 (intenções e portas de IA) pronto e commitado. P10 (Governador)
-  escrito, mas o Governador escolhia **um comando por turno** e o teste de saúde caiu para 8 cidades;
-  o supervisor corrigiu um teste desatualizado e abriu o **P10b** (conjunto de comandos por turno).
-  Árvore de trabalho com P10 **não commitado** (testes do motor ok; teste de saúde falha) até o P10b passar.
-- **Fila agendada (02:20)**: P10b → P11 (diplomacia) → P12 (Entropia, devolve o piso de pressão) →
-  P13 (Crônica e memória). Para na primeira falha ou se a cota do Codex acabar; cada tarefa aprovada é
-  commitada e o quadro é atualizado.
-- **Incidentes de 2026-10-02 22:50**: cota de 5 h do Codex esgotada (volta 02:12) e IP do PC bloqueado
-  no SSH da VPS por rajada de conexões (`ufw limit`/fail2ban). Corrigido: o ciclo para na cota do Codex
-  e o espelho do quadro sincroniza no máximo 1×/min.
-- **Quadro**: `https://<hostname da VPS>/board.html` (HTTP Basic, senha rotacionada por sprint) ou
-  `.agent-runs/board.html` local.
-- **Para o usuário**: aprovar a tag `v0.1.0-indev.1`; revisar `feat/ai/phase3-core` antes do merge.
+- **Fase**: **3 — Alfa**. Fase 2 mergeada em `develop` (tag `v0.1.0-indev.1` aguarda o usuário).
+- **`feat/ai/phase3-core`** (98 testes na VPS: 81 motor, 11 harness, 6 servidor), feito em 2026-10-02 com
+  subagentes Sonnet 5.5 em paralelo (worktrees) e Codex:
+  - P9 intenções e portas de IA (T0/T1/T2, fixtures, texto de jogador não confiável);
+  - P10/P10b Governador e Mandato (conjunto de comandos por turno, regra de ausência, presets);
+  - P11 diplomacia (8 estados, Ledger Cf/R/Dv, traição sem decaimento, aceitação A, guerra com
+    objetivo, auditoria por ação de bot — o harness falha se alguma ação não tiver grounding);
+  - P12 Entropia (interpretador fechado da DSL, orçamento de tensão, personalidade, cooldowns,
+    resposta útil, ~419 eventos em 300 turnos);
+  - P14 servidor axum + WebSocket (create/join/ready, Governador pelo ausente, log reproduzível);
+  - P15 cliente Godot (Pauta e Mapa sobre fixture JSON; 242 verificações headless).
+- **Decisão do usuário (2026-10-02)**: pressão de crise com coesão **centrada em 50** (GDD 12). Com a
+  fórmula antiga a pressão média ficava 0 mesmo com a Entropia; P12b implementa e devolve o piso ≥ 10.
+- **Parcial (registrar antes do merge em develop)**: contrapropostas, agregação do Ledger por era,
+  liquidação de comércio/ajuda, vassalagem/cessão/troca de tecnologia; templates de interferência e de
+  colapso nunca são autoescolhidos; era fixa de 8 turnos na Entropia; `turn_diff` do servidor é visão
+  completa (não delta); sem autenticação real nem PostgreSQL no servidor; cliente não fala com o servidor
+  ainda (só fixture); sem `Cargo.lock` versionado.
+- **Para o usuário**: aprovar a tag `v0.1.0-indev.1`; revisar `feat/ai/phase3-core` antes do merge em `develop`.
+- **Quadro**: `https://<hostname da VPS>/board.html` (HTTP Basic).
 
 ## Turno da noite (2026-10-01 22:30 → 23:10)
 
