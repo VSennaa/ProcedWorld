@@ -1,0 +1,27 @@
+[package]
+name = "pw-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "pw_server"
+path = "src/lib.rs"
+
+[[bin]]
+name = "pw-server"
+path = "src/main.rs"
+
+[dependencies]
+pw-engine = { path = "../pw-engine" }
+# initial world construction (map generation, starting points) and rotating turn order
+pw-harness = { path = "../pw-harness" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+axum = { version = "0.7", features = ["ws"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "signal"] }
+
+[dev-dependencies]
+# WebSocket test client and its stream/sink helpers
+tokio-tungstenite = "0.24"
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }

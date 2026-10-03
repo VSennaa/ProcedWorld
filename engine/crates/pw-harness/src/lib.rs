@@ -62,7 +62,7 @@ pub fn write_run(directory: &Path, run: &SimulationRun) -> Result<(), String> {
 pub fn load_log(path: impl AsRef<Path>) -> Result<StoredRun, String> { serde_json::from_str(&fs::read_to_string(path).map_err(|error| error.to_string())?).map_err(|error| error.to_string()) }
 fn write_json(path: impl AsRef<Path>, value: &impl Serialize) -> Result<(), String> { fs::write(path, serde_json::to_string_pretty(value).map_err(|error| error.to_string())?).map_err(|error| error.to_string()) }
 
-fn initial_world(seed: u64, civilizations: u32) -> Result<(WorldState, SimulationVersions, BTreeMap<CivId, TileIndex>), String> {
+pub fn initial_world(seed: u64, civilizations: u32) -> Result<(WorldState, SimulationVersions, BTreeMap<CivId, TileIndex>), String> {
     let catalog = Catalog::load(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../data/catalogs")).map_err(|error| format!("catalog load failed: {error:?}"))?;
     let generated = generate(WorldParams::for_civilizations(civilizations), seed, &catalog).map_err(|error| format!("map generation failed: {error:?}"))?;
     let mut civilization_states = BTreeMap::new(); let mut homes = BTreeMap::new();
@@ -72,7 +72,7 @@ fn initial_world(seed: u64, civilizations: u32) -> Result<(WorldState, Simulatio
     let state = WorldState { world_id: WorldId(seed), turn: TurnNumber::ZERO, seed, ruleset: generated.ruleset_ref.clone(), schema_version: 1, map_width: generated.grid.width, tiles, civilizations: civilization_states, cities: BTreeMap::new(), units: BTreeMap::new(), attacks: BTreeMap::new(), control: BTreeMap::new(), visibility, ledger: Vec::new() };
     Ok((state, SimulationVersions { ruleset: generated.ruleset_ref, resolver_version: 1 }, homes))
 }
-fn rotating_order(seed: u64, turn: TurnNumber, homes: &BTreeMap<CivId, TileIndex>) -> Vec<CivId> { let mut order: Vec<_> = homes.keys().copied().collect(); let mut rng = Rng::derive(seed, "bot-order"); for index in (1..order.len()).rev() { order.swap(index, rng.below(index as u32 + 1) as usize); } if !order.is_empty() { let offset = turn.0 as usize % order.len(); order.rotate_left(offset); } order }
+pub fn rotating_order(seed: u64, turn: TurnNumber, homes: &BTreeMap<CivId, TileIndex>) -> Vec<CivId> { let mut order: Vec<_> = homes.keys().copied().collect(); let mut rng = Rng::derive(seed, "bot-order"); for index in (1..order.len()).rev() { order.swap(index, rng.below(index as u32 + 1) as usize); } if !order.is_empty() { let offset = turn.0 as usize % order.len(); order.rotate_left(offset); } order }
 fn terrain(biome: &str) -> u8 { match biome { "forest" => TERRAIN_FOREST, "jungle" => TERRAIN_JUNGLE, "swamp" => TERRAIN_SWAMP, "desert" => TERRAIN_DESERT, "steppe" | "savanna" | "tundra" => TERRAIN_STEPPE, "coast" => TERRAIN_COAST, "ocean" => TERRAIN_OCEAN, _ => TERRAIN_PLAINS } }
 fn yields(biome: &str) -> TileYields { match biome { "forest" => TileYields { food: 2, production: 2, wealth: 0, knowledge: 1, culture: 0 }, "jungle" | "swamp" => TileYields { food: 3, production: 1, wealth: 0, knowledge: 0, culture: 0 }, "desert" => TileYields { food: 0, production: 1, wealth: 1, knowledge: 0, culture: 0 }, "steppe" | "savanna" | "tundra" => TileYields { food: 1, production: 1, wealth: 1, knowledge: 0, culture: 0 }, "coast" => TileYields { food: 2, production: 0, wealth: 1, knowledge: 0, culture: 0 }, "ocean" => TileYields { food: 1, production: 0, wealth: 0, knowledge: 0, culture: 0 }, _ => TileYields { food: 2, production: 1, wealth: 1, knowledge: 0, culture: 0 } } }
 
