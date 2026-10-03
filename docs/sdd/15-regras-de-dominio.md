@@ -179,6 +179,17 @@ aplicável. `W` e `E` são provisórios e não devem ser tratados como balanceam
 
 Correção de alinhamento com a fórmula compartilhada do GDD 12, aplicada em 2026-10-01.
 
+### 4.2.1 Fila de produção (decidido em 2026-10-03)
+
+- Comandos: `QueueUnit { city_id, unit_type }` (fim da fila), `RemoveQueuedUnit { city_id, index }` e
+  `MoveQueuedUnit { city_id, from, to }`; índices fora da fila ⇒ rejeição. Remover o primeiro item
+  mantém a produção acumulada (`unit_production`) para o próximo item, sem reembolso de comida.
+- Unidade concluída nasce no tile da cidade; se ele estiver ocupado, no primeiro tile vizinho de terra
+  livre em ordem estável de índice; sem tile livre, a produção espera completa (antes, qualquer
+  unidade parada na cidade travava a fila para sempre).
+- O jogador escolhe o foco da cidade (`SetCityFocus`) no cliente: Abastecimento, Construção ou
+  Diversificar.
+
 ### 4.3 Ordens de unidade (decidido em 2026-10-03)
 
 Cada unidade guarda uma **ordem persistente** e o turno em que foi pulada:

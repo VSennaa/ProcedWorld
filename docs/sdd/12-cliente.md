@@ -79,7 +79,9 @@ permanecem provisórios até validação no harness.
   fundar. Com decisões restantes, tocar leva à próxima (centraliza a unidade, abre o evento ou o cartão
   da capital), como o "próxima unidade" do *Civilization*; com zero, vira **Pronto** (ícone de
   confirmação) e envia `ready`. O botão grande da Pauta continua igual.
-- **Árvore de pesquisa**: tela só leitura a partir do `catalog`, com pré-requisitos em colunas,
+- **Painel da cidade** (pedido do usuário em 2026-10-03): fila de produção gerenciável — remover item,
+  subir/descer — com produção por turno e turnos estimados por item; seletor de foco da cidade.
+ tela só leitura a partir do `catalog`, com pré-requisitos em colunas,
   tecnologias dominadas, pesquisa atual e progresso. Escolher pesquisa fica para depois.
 - **Conexão**: tela inicial com URL do servidor, criar mundo (seed, civilizações) ou entrar
   (mundo, civilização); a fixture continua como modo demonstração e nos testes headless.
