@@ -95,6 +95,9 @@ func _run() -> void:
 
 
 func _finish() -> void:
+	# Do not leave the test server's tunnel URL as the player's last session.
+	if _main != null:
+		_main.SessionStore.save_last(_main.NetClient.DEFAULT_URL, 0, 0)
 	print("%d e2e checks, %d failures" % [_checks, _failures])
 	quit(1 if _failures > 0 else 0)
 

@@ -4,6 +4,8 @@ extends Node
 
 const Protocol := preload("res://scripts/protocol.gd")
 const DEFAULT_URL := "ws://127.0.0.1:8100/ws"
+## A socket still connecting after this long is given up (e.g. nothing listening behind a tunnel).
+const CONNECT_TIMEOUT_MS := 10000
 
 signal envelope_received(envelope: Dictionary)
 signal protocol_error(message: String)
@@ -16,6 +18,7 @@ var _was_open := false
 var _ever_open := false
 var _active := false
 var _counter := 0
+var _connect_deadline := 0
 
 
 func connect_to_server(url: String = DEFAULT_URL) -> Error:
@@ -23,6 +26,7 @@ func connect_to_server(url: String = DEFAULT_URL) -> Error:
 	_was_open = false
 	_ever_open = false
 	_active = true
+	_connect_deadline = Time.get_ticks_msec() + CONNECT_TIMEOUT_MS
 	return _peer.connect_to_url(url)
 
 
@@ -62,6 +66,11 @@ func _process(_delta: float) -> void:
 		connection_changed.emit(open)
 	if open:
 		_ever_open = true
+	if not _ever_open and _peer.get_ready_state() == WebSocketPeer.STATE_CONNECTING and Time.get_ticks_msec() > _connect_deadline:
+		_peer.close()
+		_active = false
+		connection_lost.emit(false)
+		return
 	if _peer.get_ready_state() == WebSocketPeer.STATE_CLOSED:
 		_active = false
 		connection_lost.emit(_ever_open)
