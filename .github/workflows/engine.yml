@@ -1,0 +1,94 @@
+name: Engine
+
+on:
+  push:
+    branches: [develop, main, "feat/**"]
+    paths:
+      - "engine/**"
+      - "data/**"
+      - ".github/workflows/engine.yml"
+  pull_request:
+    branches: [develop, main, "feat/**"]
+    paths:
+      - "engine/**"
+      - "data/**"
+      - ".github/workflows/engine.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore Cargo cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            engine/target
+          key: engine-${{ runner.os }}-cargo-${{ hashFiles('engine/Cargo.lock') }}
+          restore-keys: engine-${{ runner.os }}-cargo-
+      - name: Run workspace tests
+        working-directory: engine
+        run: cargo test --workspace
+
+  determinism:
+    name: Determinism (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore Cargo cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            engine/target
+          key: engine-${{ runner.os }}-cargo-${{ hashFiles('engine/Cargo.lock') }}
+          restore-keys: engine-${{ runner.os }}-cargo-
+      - name: Build and run harness
+        shell: pwsh
+        working-directory: engine
+        run: |
+          cargo build --release --package pw-harness
+          $binary = if ($IsWindows) { "target/release/pw-harness.exe" } else { "target/release/pw-harness" }
+          $output = & $binary run --seed 20261001 --civs 8 --turns 1000 2>&1 | ForEach-Object { "$_" }
+          $output | ForEach-Object { Write-Host $_ }
+          if ($LASTEXITCODE -ne 0) { throw "pw-harness failed with exit code $LASTEXITCODE" }
+          $final = @($output | Where-Object { $_ -match '^FINAL [0-9]+$' } | Select-Object -Last 1)
+          if ($final.Count -ne 1) { throw "pw-harness did not produce exactly one FINAL hash" }
+          $final | Set-Content -Encoding utf8 -NoNewline "final-$env:RUNNER_OS.txt"
+      - name: Upload final hash
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-${{ runner.os }}
+          path: engine/final-${{ runner.os }}.txt
+          if-no-files-found: error
+
+  compare:
+    needs: determinism
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download final hashes
+        uses: actions/download-artifact@v4
+        with:
+          pattern: final-*
+          path: finals
+      - name: Compare final hashes
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem -Path finals -Recurse -Filter 'final-*.txt')
+          if ($files.Count -ne 3) { throw "expected three FINAL artifacts, found $($files.Count)" }
+          $results = @($files | Sort-Object Name | ForEach-Object {
+            $final = (Get-Content -Raw $_.FullName).Trim()
+            if ($final -notmatch '^FINAL [0-9]+$') { throw "invalid FINAL artifact: $($_.FullName)" }
+            [PSCustomObject]@{ Platform = $_.BaseName; Hash = $final }
+          })
+          $results | ForEach-Object { Write-Host "$($_.Platform): $($_.Hash)" }
+          if (@($results.Hash | Select-Object -Unique).Count -ne 1) {
+            throw "FINAL hashes differ between platforms"
+          }
