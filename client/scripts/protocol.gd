@@ -64,9 +64,19 @@ static func build_envelope(type: String, payload: Dictionary, request_id: String
 
 # --- Command payloads for `submit_command` (serde adjacent tagging: {"type": snake_case, "data": {...}}) ---
 
-## UnitOrder values as serialized by the engine (externally tagged enum).
-static func order_move_to(tile_index: int) -> Variant:
-	return {"MoveTo": {"target": tile_index}}
+## UnitOrder on the wire (engine serde adjacent tagging): {"type": "fortify"} or
+## {"type": "move_to", "data": {"target": N}}. `kind` is the client name ("Idle", "MoveTo", ...).
+const ORDER_WIRE := {"Idle": "idle", "Fortify": "fortify", "Explore": "explore", "MoveTo": "move_to"}
+
+
+static func order_wire(kind: String, tile_index: int = -1) -> Dictionary:
+	if kind == "MoveTo":
+		return {"type": "move_to", "data": {"target": tile_index}}
+	return {"type": ORDER_WIRE.get(kind, "idle")}
+
+
+static func order_move_to(tile_index: int) -> Dictionary:
+	return order_wire("MoveTo", tile_index)
 
 
 static func command_set_unit_order(unit_id: int, order: Variant) -> Dictionary:

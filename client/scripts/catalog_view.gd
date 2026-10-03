@@ -19,7 +19,9 @@ var _depth: Dictionary = {}
 ## Returns {ok, error, catalog}. Rejects duplicate ids and prerequisite cycles.
 static func from_payload(payload: Dictionary) -> Dictionary:
 	var catalog := new()
-	catalog.version = int(payload.get("catalog_version", payload.get("version", 0)))
+	var versions: Variant = payload.get("versions", {})
+	var tree_version: Variant = versions.get("tech_tree", 0) if typeof(versions) == TYPE_DICTIONARY else 0
+	catalog.version = int(payload.get("catalog_version", payload.get("version", tree_version)))
 	catalog.hash_text = String(payload.get("catalog_hash", payload.get("hash", "")))
 	var tech_list: Variant = payload.get("technologies", payload.get("tech_tree", []))
 	if typeof(tech_list) == TYPE_DICTIONARY:

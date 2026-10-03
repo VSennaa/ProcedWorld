@@ -180,10 +180,10 @@ func test_push_envelopes() -> void:
 
 
 func test_commands() -> void:
-	var set_order := Protocol.command_set_unit_order(3, "Fortify")
-	check(set_order == {"command": {"type": "set_unit_order", "data": {"unit_id": 3, "order": "Fortify"}}}, "SetUnitOrder payload shape (serde adjacent tagging)")
+	var set_order := Protocol.command_set_unit_order(3, Protocol.order_wire("Fortify"))
+	check(set_order == {"command": {"type": "set_unit_order", "data": {"unit_id": 3, "order": {"type": "fortify"}}}}, "SetUnitOrder payload shape (serde adjacent tagging)")
 	var move := Protocol.command_set_unit_order(3, Protocol.order_move_to(99))
-	check(move["command"]["data"]["order"] == {"MoveTo": {"target": 99}}, "MoveTo order is externally tagged")
+	check(move["command"]["data"]["order"] == {"type": "move_to", "data": {"target": 99}}, "MoveTo order is adjacently tagged")
 	check(Protocol.command_skip_unit(5) == {"command": {"type": "skip_unit", "data": {"unit_id": 5}}}, "SkipUnit payload shape")
 	check(Protocol.command_respond_to_event(7, "ration")["command"]["data"] == {"event_id": 7, "choice_id": "ration"}, "RespondToEvent payload shape")
 	var framed := Protocol.parse_envelope(Protocol.build_envelope("submit_command", Protocol.command_skip_unit(5), "c-9"))

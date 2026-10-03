@@ -670,9 +670,8 @@ func _on_target_chosen(cell: Vector2i) -> void:
 
 
 func _issue_order(unit_id: int, kind: String, target: Vector2i) -> void:
-	var order: Variant = kind
-	if kind == "MoveTo":
-		order = Protocol.order_move_to(Hex.index_of_cell(target, world.map_width))
+	var index := Hex.index_of_cell(target, world.map_width) if kind == "MoveTo" else -1
+	var order := Protocol.order_wire(kind, index)
 	_issue({"kind": "order", "unit_id": unit_id, "order_kind": kind, "order_target": target}, Protocol.command_set_unit_order(unit_id, order))
 
 

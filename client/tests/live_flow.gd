@@ -54,7 +54,7 @@ func _run() -> void:
 	_main._on_unit_action("fortify")
 	await _wait(func() -> bool: return _main.world.idle_units == [5])
 	var command: Dictionary = _received.back()
-	check(command["type"] == "submit_command" and command["payload"]["command"]["type"] == "set_unit_order" and int(command["payload"]["command"]["data"]["unit_id"]) == 3 and command["payload"]["command"]["data"]["order"] == "Fortify", "Fortificar sends SetUnitOrder")
+	check(command["type"] == "submit_command" and command["payload"]["command"]["type"] == "set_unit_order" and int(command["payload"]["command"]["data"]["unit_id"]) == 3 and command["payload"]["command"]["data"]["order"] == {"type": "fortify"}, "Fortificar sends SetUnitOrder")
 	check(_main.world.unit_by_id(3)["order"] == "Fortify", "accepted order is shown locally")
 
 	_main._select_unit(5)
@@ -63,7 +63,7 @@ func _run() -> void:
 	_main._on_target_chosen(Vector2i(9, 8))
 	await _wait(func() -> bool: return _main.world.idle_units.is_empty())
 	var move: Dictionary = _received.back()
-	check(int(move["payload"]["command"]["data"]["order"]["MoveTo"]["target"]) == 8 * 24 + 9, "destination is sent as a tile index")
+	check(int(move["payload"]["command"]["data"]["order"]["data"]["target"]) == 8 * 24 + 9, "destination is sent as a tile index")
 	check(not _main._move_mode and not _main._map.target_mode, "target mode ends after choosing")
 	check(_main.world.unit_by_id(5)["order_target"] == Vector2i(9, 8), "MoveTo is reflected on the unit")
 

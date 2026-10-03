@@ -31,10 +31,19 @@ static func humanize(id: String) -> String:
 	return text.substr(0, 1).to_upper() + text.substr(1)
 
 
-## Parses the serialized `UnitOrder` enum: "Idle" | "Fortify" | "Explore" | {"MoveTo": {"target": N}}.
+## Parses the serialized `UnitOrder`: {"type": "idle"|"fortify"|"explore"} or
+## {"type": "move_to", "data": {"target": N}} (engine serde). The older externally tagged
+## form ("Idle" | {"MoveTo": {...}}) is still accepted.
 ## Returns {kind, target}; kind is "" when the field is absent or unrecognized.
 static func parse_order(raw: Variant, width: int) -> Dictionary:
 	var none := Vector2i(-1, -1)
+	if typeof(raw) == TYPE_DICTIONARY and typeof(raw.get("type")) == TYPE_STRING:
+		var tag: String = raw["type"]
+		if tag == "move_to":
+			var data: Variant = raw.get("data", {})
+			raw = {"MoveTo": data if typeof(data) == TYPE_DICTIONARY else {}}
+		else:
+			raw = {"idle": "Idle", "fortify": "Fortify", "explore": "Explore"}.get(tag, "")
 	if typeof(raw) == TYPE_STRING and KNOWN_ORDERS.has(raw) and raw != "MoveTo":
 		return {"kind": raw, "target": none}
 	if typeof(raw) == TYPE_DICTIONARY and raw.has("MoveTo") and typeof(raw["MoveTo"]) == TYPE_DICTIONARY:
