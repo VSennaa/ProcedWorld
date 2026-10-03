@@ -1509,7 +1509,7 @@ fn resolve_society(state: &mut WorldState, seed: u64, events: &mut Vec<DomainEve
         civ.zero_cohesion_turns = if civ.cohesion == 0 { civ.zero_cohesion_turns.saturating_add(1) } else { 0 };
         drop(cities);
         for city in state.cities.values_mut().filter(|city| city.owner == *civ_id) {
-            city.crisis_pressure = (2 * i32::from(city.deprivation) + 2 * i32::from(city.group_tension) + i32::from(city.war_threat) + i32::from(city.environmental_exposure) + (100 - i32::from(city.stability)) / 10 - i32::from(civ.cohesion) / 5).clamp(0, 100) as u8;
+            city.crisis_pressure = (2 * i32::from(city.deprivation) + 2 * i32::from(city.group_tension) + i32::from(city.war_threat) + i32::from(city.environmental_exposure) + (100 - i32::from(city.stability)) / 10 - (i32::from(civ.cohesion) - 50) / 5).clamp(0, 100) as u8;
             city.crisis_turns = if city.crisis_pressure >= 70 { city.crisis_turns.saturating_add(1) } else { 0 };
         }
         civ.crisis_pressure = if population == 0 { 0 } else { (state.cities.values().filter(|city| city.owner == *civ_id).map(|city| city.population * u32::from(city.crisis_pressure)).sum::<u32>() / population).min(100) as u8 };
@@ -1714,14 +1714,14 @@ mod tests {
         let local = &initial.cities[&CityId(1)];
         assert_eq!(local.stability, 35);
         assert_eq!(local.group_tension, 20);
-        // 2*5 + 2*20 + 7 + 3 + 65/10 - 49/5 = 57.
-        assert_eq!(local.crisis_pressure, 57);
+        // 2*5 + 2*20 + 7 + 3 + 65/10 - (49-50)/5 = 66 (integer division truncates toward zero).
+        assert_eq!(local.crisis_pressure, 66);
         assert_eq!(initial.cities[&CityId(2)].crisis_pressure, 0);
-        assert_eq!(civ.crisis_pressure, 14);
+        assert_eq!(civ.crisis_pressure, 16);
     }
 
     #[test]
-    fn low_cohesion_alone_does_not_create_pressure() {
+    fn low_cohesion_contributes_pressure() {
         let mut initial = state();
         initial.civilizations.get_mut(&CivId(1)).unwrap().cohesion = 26;
         let mut healthy = city(CivId(1), 0, 4);
@@ -1730,7 +1730,7 @@ mod tests {
         initial.cities.insert(CityId(1), healthy);
         resolve_society(&mut initial, 99, &mut Vec::new());
         assert_eq!(initial.civilizations[&CivId(1)].cohesion, 26);
-        assert_eq!(initial.civilizations[&CivId(1)].crisis_pressure, 0);
+        assert_eq!(initial.civilizations[&CivId(1)].crisis_pressure, 4);
     }
 
     #[test]

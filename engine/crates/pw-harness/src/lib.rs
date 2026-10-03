@@ -155,8 +155,12 @@ fn yields(biome: &str) -> TileYields { match biome { "forest" => TileYields { fo
         assert!(metrics.population >= 40, "expected at least 40 population, got {}", metrics.population);
         assert!(metrics.collapses <= 2, "expected at most two collapses, got {}", metrics.collapses);
         assert!(metrics.events >= 10, "expected the Entropy director to open events, got {}", metrics.events);
-        // Upper bound only: the pressure floor of 10 is unreachable under the GDD 08 fairness rules and the
-        // GDD 12 formula (the cohesion term alone subtracts 10). See engine/DIAGNOSTICO-P7.md, "P12".
+        // Upper bound only. The floor of 10 is a balance goal not reached yet (cohesion term centered on 50,
+        // user decision 2026-10-02): reported as a warning, not a red test (docs/process/agentes-e-cotas.md §4).
+        // See engine/DIAGNOSTICO-P7.md, "P12b".
+        if metrics.average_pressure < 10 {
+            eprintln!("warning: average pressure {} below the balance goal of 10 (events {}, crises {})", metrics.average_pressure, metrics.events, metrics.crises);
+        }
         assert!(metrics.average_pressure <= 80, "expected average pressure at most 80, got {} (events {}, crises {})", metrics.average_pressure, metrics.events, metrics.crises);
     }
 
