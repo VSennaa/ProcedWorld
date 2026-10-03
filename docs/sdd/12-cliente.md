@@ -81,8 +81,12 @@ permanecem provisórios até validação no harness.
   confirmação) e envia `ready`. O botão grande da Pauta continua igual.
 - **Painel da cidade** (pedido do usuário em 2026-10-03): fila de produção gerenciável — remover item,
   subir/descer — com produção por turno e turnos estimados por item; seletor de foco da cidade.
- tela só leitura a partir do `catalog`, com pré-requisitos em colunas,
-  tecnologias dominadas, pesquisa atual e progresso. Escolher pesquisa fica para depois.
+- **Alfa mini (2026-10-03)**: escolher pesquisa na árvore (`SetResearch`); tela Sociedade só leitura
+  com `C`, `L`, `S`, `D`, `G`, `W`, `E`, `P` e fatores; tela de eventos com nome, texto e escolhas
+  legíveis vindos do `catalog`; ações **Atacar** (unidade estrangeira visível e alcançável) e
+  **Construir melhoria** (trabalhador, opções legais do catálogo).
+- **Árvore de pesquisa**: tela a partir do `catalog`, com pré-requisitos em colunas,
+  tecnologias dominadas, pesquisa atual e progresso; a escolha de pesquisa entra no alfa mini.
 - **Conexão**: tela inicial com URL do servidor, criar mundo (seed, civilizações) ou entrar
   (mundo, civilização); a fixture continua como modo demonstração e nos testes headless.
 
