@@ -40,7 +40,7 @@ async fn next_frame(ws: &mut Ws) -> Value {
 /// Sends a request and returns the first frame that echoes its request id.
 async fn request(ws: &mut Ws, kind: &str, payload: Value) -> Value {
     let rid = format!("r-{kind}");
-    let frame = json!({ "protocol_version": 1, "request_id": rid, "type": kind, "payload": payload });
+    let frame = json!({ "protocol_version": "1.0", "request_id": rid, "type": kind, "payload": payload });
     ws.send(Message::Text(frame.to_string())).await.unwrap();
     loop {
         let reply = next_frame(ws).await;
@@ -160,7 +160,7 @@ async fn invalid_command_is_rejected_without_state_change() {
 async fn protocol_version_mismatch_is_rejected() {
     let (addr, _) = start(Duration::from_secs(60)).await;
     let mut ws = connect(addr).await;
-    let bad = json!({ "protocol_version": 99, "request_id": "x1", "type": "create_world", "payload": { "seed": 1, "civs": 2 } });
+    let bad = json!({ "protocol_version": "99.0", "request_id": "x1", "type": "create_world", "payload": { "seed": 1, "civs": 2 } });
     ws.send(Message::Text(bad.to_string())).await.unwrap();
     let reply = next_frame(&mut ws).await;
     assert_eq!(reply["type"], "error");
@@ -186,4 +186,49 @@ async fn a_claimed_civilization_needs_its_session_token() {
     assert_eq!(forged["payload"]["reason"], "invalid_session_token");
     let resumed = request(&mut b, "join", json!({ "world_id": 5, "civ": 0, "session_token": token })).await;
     assert_eq!(resumed["type"], "joined");
+}
+
+#[tokio::test]
+async fn join_sends_the_catalog_and_same_major_versions_are_accepted() {
+    let (addr, _) = start(Duration::from_secs(60)).await;
+    let mut ws = connect(addr).await;
+    create(&mut ws, 21, 2).await;
+    join(&mut ws, 21, 0).await;
+    let frame = loop {
+        let frame = next_frame(&mut ws).await;
+        if frame["type"] == "catalog" {
+            break frame;
+        }
+    };
+    assert_eq!(frame["protocol_version"], "1.0");
+    assert!(frame["request_id"].is_null());
+    let catalog = &frame["payload"];
+    assert_eq!(catalog["hash"].as_str().unwrap().len(), 16);
+    let foraging = catalog["technologies"].as_array().unwrap().iter().find(|t| t["id"] == "tech.foraging").unwrap();
+    assert_eq!(foraging["cost"], 12);
+    assert!(foraging["prerequisites"].as_array().unwrap().is_empty());
+    assert!(foraging["name"].as_str().is_some_and(|name| !name.is_empty()));
+    let scout = catalog["units"].as_array().unwrap().iter().find(|u| u["id"] == "unit.scout").unwrap();
+    assert_eq!((scout["role"].as_str(), scout["movement"].as_u64(), scout["strength"].as_u64()), (Some("exploration"), Some(3), Some(1)));
+
+    // A newer minor of major 1 is fine; a numeric or foreign-major version is not.
+    let minor = json!({ "protocol_version": "1.7", "request_id": "m1", "type": "get_snapshot", "payload": {} });
+    ws.send(Message::Text(minor.to_string())).await.unwrap();
+    loop {
+        let reply = next_frame(&mut ws).await;
+        if reply["request_id"] == "m1" {
+            assert_eq!(reply["type"], "state_snapshot");
+            assert_eq!(reply["payload"]["idle_units"], json!([]));
+            break;
+        }
+    }
+    for bad in [json!(1), json!("2.0")] {
+        let frame = json!({ "protocol_version": bad, "request_id": "m2", "type": "get_snapshot", "payload": {} });
+        ws.send(Message::Text(frame.to_string())).await.unwrap();
+        let reply = loop {
+            let reply = next_frame(&mut ws).await;
+            if reply["type"] == "error" { break reply; }
+        };
+        assert_eq!(reply["payload"]["reason"], "protocol_version_mismatch");
+    }
 }

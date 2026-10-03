@@ -12,22 +12,29 @@ civilizations without a present human (bots, absent humans) are played by their 
 
 ## Protocol v1
 
-Frame: `{"protocol_version":1,"request_id":"..","type":"..","payload":{..}}`. Replies echo
-`request_id`; pushes use `null`. A wrong version yields `error/protocol_version_mismatch`.
+Frame: `{"protocol_version":"1.0","request_id":"..","type":"..","payload":{..}}`. The version is text
+(`"major.minor"`); any `1.x` is accepted, a number or another major yields
+`error/protocol_version_mismatch`. Replies echo `request_id`; pushes use `null`.
 
 Client to server: `create_world {seed, civs}`, `join {world_id, civ, session_token?}`,
 `get_snapshot`, `submit_command {command}` (engine `CommandPayload` JSON), `ready`, `unready`.
-Server to client: `world_created`, `joined` (returns `session_token`), `state_snapshot`,
+Server to client: `world_created`, `joined` (returns `session_token`), `catalog` (push right after
+`joined`: `{hash, versions, technologies[{id,name,branch,cost,prerequisites}], units[{id,name,role,movement,strength,requires_technology}]}`),
+`state_snapshot`,
 `command_accepted {command_id, accepted_sequence, turn}`, `ready_state {turn, present, ready}`,
 `turn_diff`, `error {reason, detail, engine_reason}`.
 
 Error reasons: `protocol_version_mismatch`, `malformed_message`, `unknown_message_type`,
 `world_not_found`, `world_exists`, `too_many_worlds`, `invalid_world_params`, `not_joined`,
 `already_joined`, `civ_not_found`, `civ_taken`, `invalid_session_token`, `already_ready`,
+`units_awaiting_orders` (`ready` refused: `detail` is the comma-separated idle unit ids, `unit_ids` the same as numbers),
 `command_rejected` (with the engine `RejectionReason` in `engine_reason`), `internal`.
 
 A command is validated by a dry-run of the open turn in the engine; rejected commands change
-nothing. Accepted ones get the next `accepted_sequence`, go to the command log, and are applied by
+nothing. Unit orders are ordinary commands: `{"type":"set_unit_order","data":{"unit_id":3,"order":{"type":"move_to","data":{"target":42}}}}`
+(orders `idle`, `fortify`, `explore`, `move_to`) and `{"type":"skip_unit","data":{"unit_id":3}}`. The view carries `idle_units`
+and, per own unit, `order` and `skipped_turn` (pending orders of the open turn included); foreign units never show them.
+Accepted ones get the next `accepted_sequence`, go to the command log, and are applied by
 `step` when the turn resolves. After `ready`, orders are locked until `unready`.
 
 ## Dependencies (ADR-0007)
