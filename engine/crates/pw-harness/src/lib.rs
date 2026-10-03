@@ -8,7 +8,7 @@ pub const SNAPSHOT_INTERVAL: u32 = 100;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)] pub struct RunConfig { pub seed: u64, pub civilizations: u32, pub turns: u32 }
 impl Default for RunConfig { fn default() -> Self { Self { seed: 1, civilizations: 8, turns: 1_000 } } }
 #[derive(Clone, Debug, Serialize, Deserialize)] pub struct StoredRun { pub snapshot: WorldSnapshot, pub log: CommandLog, pub home_tiles: BTreeMap<CivId, TileIndex> }
-#[derive(Clone, Debug)] pub struct SimulationRun { pub stored: StoredRun, pub final_state: WorldState, pub final_events: Vec<DomainEvent> }
+#[derive(Clone, Debug)] pub struct SimulationRun { pub stored: StoredRun, pub final_state: WorldState, pub final_events: Vec<DomainEvent>, pressure_sum: u64, pressure_samples: u64 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)] pub struct Metrics { pub cities: u32, pub population: u32, pub average_pressure: u8, pub crises: u32, pub collapses: u32 }
 
 impl SimulationRun {
@@ -16,8 +16,8 @@ impl SimulationRun {
     pub fn metrics(&self) -> Metrics {
         let cities = self.final_state.cities.len() as u32;
         let population = self.final_state.cities.values().map(|city| city.population).sum();
-        let pressure: u32 = self.final_state.civilizations.values().map(|civ| u32::from(civ.crisis_pressure)).sum();
-        Metrics { cities, population, average_pressure: if self.final_state.civilizations.is_empty() { 0 } else { (pressure / self.final_state.civilizations.len() as u32) as u8 }, crises: self.final_state.cities.values().filter(|city| city.crisis_turns >= 2).count() as u32, collapses: self.final_state.civilizations.values().filter(|civ| civ.frozen).count() as u32 }
+        let average_pressure = if self.pressure_samples == 0 { 0 } else { (self.pressure_sum / self.pressure_samples).min(100) as u8 };
+        Metrics { cities, population, average_pressure, crises: self.final_state.cities.values().filter(|city| city.crisis_turns >= 2).count() as u32, collapses: self.final_state.civilizations.values().filter(|civ| civ.frozen).count() as u32 }
     }
 }
 
@@ -25,7 +25,7 @@ pub fn run_simulation(config: RunConfig) -> Result<SimulationRun, String> {
     if config.civilizations == 0 || config.turns == 0 { return Err("civilizations and turns must be greater than zero".into()); }
     let (mut state, versions, homes) = initial_world(config.seed, config.civilizations)?;
     let snapshot = WorldSnapshot::new(state.clone(), versions);
-    let mut log = CommandLog::default(); let bot = BotT0; let mut command_id = 1_u64; let mut final_events = Vec::new();
+    let mut log = CommandLog::default(); let bot = BotT0; let mut command_id = 1_u64; let mut final_events = Vec::new(); let mut pressure_sum = 0_u64; let mut pressure_samples = 0_u64;
     for _ in 0..config.turns {
         let mut commands = Vec::new();
         for civilization in rotating_order(config.seed, state.turn, &homes) {
@@ -36,9 +36,11 @@ pub fn run_simulation(config: RunConfig) -> Result<SimulationRun, String> {
         }
         for command in commands.iter().cloned() { log.append(command); }
         let turn = state.turn; let result = step(&state, &commands, state.seed, &snapshot.versions);
+        pressure_sum = pressure_sum.checked_add(result.state.civilizations.values().map(|civ| u64::from(civ.crisis_pressure)).sum()).ok_or_else(|| "pressure total exhausted".to_string())?;
+        pressure_samples = pressure_samples.checked_add(result.state.civilizations.len() as u64).ok_or_else(|| "pressure sample count exhausted".to_string())?;
         log.record_turn(turn, result.state_hash); final_events = result.events; state = result.state;
     }
-    Ok(SimulationRun { stored: StoredRun { snapshot, log, home_tiles: homes }, final_state: state, final_events })
+    Ok(SimulationRun { stored: StoredRun { snapshot, log, home_tiles: homes }, final_state: state, final_events, pressure_sum, pressure_samples })
 }
 
 pub fn replay_log(stored: &StoredRun) -> Result<StateHash, String> { replay(&stored.snapshot, &stored.log).map(|result| result.state.state_hash()).map_err(|error| format!("replay failed: {error:?}")) }
@@ -86,7 +88,25 @@ fn yields(biome: &str) -> TileYields { match biome { "forest" => TileYields { fo
         assert_eq!(replay_log(&run.stored).unwrap(), run.final_hash());
     }
 
+    #[test] fn pressure_metric_covers_each_resolved_turn() {
+        let run = run_simulation(RunConfig { seed: 84, civilizations: 8, turns: 2 }).unwrap();
+        assert_eq!(run.pressure_samples, 16);
+        assert_eq!(run.metrics().average_pressure, (run.pressure_sum / run.pressure_samples) as u8);
+    }
+
     #[test] fn one_thousand_bot_turns_complete_without_a_panic() {
         assert_eq!(run_simulation(RunConfig { seed: 84, civilizations: 8, turns: 1_000 }).unwrap().stored.log.turn_hashes.len(), 1_000);
+    }
+
+    #[test] fn health_simulation_expands_grows_and_avoids_systemic_collapse() {
+        let run = run_simulation(RunConfig { seed: 20_261_001, civilizations: 8, turns: 300 }).unwrap();
+        let metrics = run.metrics();
+        assert!(metrics.cities >= 16, "expected at least 16 cities, got {}", metrics.cities);
+        assert!(metrics.population >= 40, "expected at least 40 population, got {}", metrics.population);
+        assert!(metrics.collapses <= 2, "expected at most two collapses, got {}", metrics.collapses);
+        // Upper bound only in phase 2: with no Entropy events, war or climate modifiers yet, a fed and
+        // calm world legitimately has P = 0 under the GDD 12 formula. The lower bound (tension exists)
+        // returns in phase 3 together with the Entropy director. See engine/DIAGNOSTICO-P7.md.
+        assert!(metrics.average_pressure <= 80, "expected average pressure at most 80, got {}", metrics.average_pressure);
     }
 }

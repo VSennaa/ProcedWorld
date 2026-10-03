@@ -53,6 +53,17 @@ const RESEARCH_PERCENTAGES: [u8; 3] = [0, 10, 20];
 const RESEARCH_PER_TURN_CAP: u32 = 10;
 const ACTIVE_PRACTICE_LIMIT: usize = 3;
 const VISIBILITY_RADIUS: u32 = 2;
+/// Initial reserve funds the mandatory upkeep while a new settlement grows a
+/// second worker able to collect wealth.
+pub const INITIAL_TREASURY_WEALTH: u32 = 12;
+/// Starter housing is an initial balance value. No housing construction slice
+/// exists yet, so a lower value would make the health simulation impossible.
+pub const INITIAL_CITY_HOUSING: u32 = 4;
+/// A founding city starts with the one-turn food reserve required for growth.
+/// This lets a one-food opening support its second worker instead of trapping
+/// the civilization before it can allocate production or wealth.
+pub const INITIAL_CITY_FOOD_STOCK: u32 = 1;
+pub(crate) const SETTLER_CITY_ID_BASE: u32 = 1_000_000;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -103,7 +114,7 @@ pub struct CivilizationState {
 
 impl Default for CivilizationState {
     fn default() -> Self {
-        Self { research: None, research_investment: 0, researched_technologies: BTreeSet::new(), research_progress: BTreeMap::new(), active_practices: BTreeSet::new(), treasury_wealth: 0, cohesion: 50, legitimacy: 50, knowledge: 0, culture: 0, deprivation: 0, group_tension: 0, war_threat: 0, environmental_exposure: 0, crisis_pressure: 0, zero_cohesion_turns: 0, frozen: false }
+        Self { research: None, research_investment: 0, researched_technologies: BTreeSet::new(), research_progress: BTreeMap::new(), active_practices: BTreeSet::new(), treasury_wealth: INITIAL_TREASURY_WEALTH, cohesion: 50, legitimacy: 50, knowledge: 0, culture: 0, deprivation: 0, group_tension: 0, war_threat: 0, environmental_exposure: 0, crisis_pressure: 0, zero_cohesion_turns: 0, frozen: false }
     }
 }
 
@@ -489,6 +500,7 @@ pub enum RejectionReason {
     UnknownUnitType,
     UnitTechnologyNotResearched,
     UnitAlreadyReserved,
+    MissingSettler,
     AttackNotHostile,
     AttackOutOfRange,
     UnitIdExhausted,
@@ -677,11 +689,18 @@ fn apply_command(state: &mut WorldState, command: &AcceptedCommand) -> Result<()
             if state.cities.values().any(|city| city.tile == *target) {
                 return Err(RejectionReason::CityTileOccupied);
             }
+            let founding_with_settler = state.cities.values().any(|city| city.owner == command.actor_id);
+            if founding_with_settler {
+                let settler_id = state.units.iter()
+                    .find_map(|(unit_id, unit)| (unit.owner == command.actor_id && unit.tile == *target && unit.unit_type == "unit.settler").then_some(*unit_id))
+                    .ok_or(RejectionReason::MissingSettler)?;
+                state.units.remove(&settler_id);
+            }
             state.cities.insert(
                 *city_id,
                 CityState {
                     owner: command.actor_id, tile: *target, focus: CityFocus::Supply,
-                    population: 1, housing: 2, food_stock: 0, growth_progress: 0,
+                    population: 1, housing: INITIAL_CITY_HOUSING, food_stock: INITIAL_CITY_FOOD_STOCK, growth_progress: 0,
                     consecutive_food_shortages: 0, stability: 50,
                     groups: vec![CityGroup::new(GroupFunction::Cultivators, 1), CityGroup::new(GroupFunction::Crafts, 0), CityGroup::new(GroupFunction::Merchants, 0)],
                     workplaces: Vec::new(), last_yields: TileYields::default(), deprivation: 0,
@@ -776,7 +795,7 @@ fn hex_distance(state: &WorldState, from: TileIndex, to: TileIndex) -> Result<u3
     grid.distance(grid.cell(from).map_err(|_| RejectionReason::InvalidTile)?, grid.cell(to).map_err(|_| RejectionReason::InvalidTile)?).map_err(|_| RejectionReason::InvalidTile)
 }
 
-fn movement_cost(state: &WorldState, from: TileIndex, to: TileIndex) -> Result<u32, RejectionReason> {
+pub(crate) fn movement_cost(state: &WorldState, from: TileIndex, to: TileIndex) -> Result<u32, RejectionReason> {
     let grid = grid_for(state)?;
     let path = grid.line(grid.cell(from).map_err(|_| RejectionReason::InvalidTile)?, grid.cell(to).map_err(|_| RejectionReason::InvalidTile)?).map_err(|_| RejectionReason::InvalidTile)?;
     Ok(path.into_iter().skip(1).map(|cell| {
@@ -787,6 +806,15 @@ fn movement_cost(state: &WorldState, from: TileIndex, to: TileIndex) -> Result<u
 
 const fn terrain_movement_cost(terrain: u8) -> u32 {
     match terrain { TERRAIN_FOREST | TERRAIN_JUNGLE | TERRAIN_SWAMP => 2, TERRAIN_OCEAN => 3, _ => 1 }
+}
+
+pub(crate) fn unit_movement(unit_type: &str) -> u8 {
+    unit_definition(unit_type).map_or(1, |definition| definition.movement)
+}
+
+pub(crate) fn queued_food_cost(city: &CityState) -> u32 {
+    city.unit_queue.first().and_then(|id| unit_definition(id))
+        .and_then(|definition| definition.cost.get("food").copied()).unwrap_or(0)
 }
 
 // These phase seams intentionally have no mechanics yet. Each derives an independent
@@ -877,17 +905,21 @@ fn resolve_economy(state: &mut WorldState, seed: u64) {
         city_yields.insert(*city_id, (workplaces, total));
     }
     let mut wealth_by_civ: BTreeMap<CivId, u32> = BTreeMap::new();
+    for (city_id, (_, yields)) in &city_yields {
+        *wealth_by_civ.entry(state.cities[city_id].owner).or_default() += u32::from(yields.wealth);
+    }
+    let mut available_wealth: BTreeMap<_, _> = state.civilizations.iter().map(|(id, civ)| {
+        (*id, civ.treasury_wealth.saturating_add(wealth_by_civ.get(id).copied().unwrap_or(0)))
+    }).collect();
     for (city_id, city) in &mut state.cities {
         let (workplaces, yields) = city_yields.remove(city_id).expect("all cities were allocated");
         city.workplaces = workplaces;
         city.last_yields = yields;
         city.food_stock = city.food_stock.saturating_add(u32::from(yields.food));
-        *wealth_by_civ.entry(city.owner).or_default() += u32::from(yields.wealth);
         let maintenance = 1 + (city.population + 3) / 4;
-        city.essential_maintenance_unpaid = false;
-        let available = state.civilizations.get(&city.owner).map_or(0, |c| c.treasury_wealth)
-            .saturating_add(*wealth_by_civ.get(&city.owner).unwrap_or(&0));
-        if available < maintenance { city.essential_maintenance_unpaid = true; }
+        let available = available_wealth.entry(city.owner).or_default();
+        city.essential_maintenance_unpaid = *available < maintenance;
+        *available = available.saturating_sub(maintenance);
         let demand = city.population;
         let consumed = city.food_stock.min(demand);
         city.food_stock -= consumed;
@@ -920,8 +952,11 @@ fn resolve_research_and_practices(state: &mut WorldState) {
             (civ.research.clone(), civ.research_investment)
         };
         let Some(research) = research else { continue; };
-        let allocated = available.saturating_mul(u32::from(investment)) / 100;
-        let points = (allocated / 2).min(RESEARCH_PER_TURN_CAP);
+        // Research uses half of the allocated production. Round the resulting
+        // point up so the supported 10/20% investments can progress from a
+        // one-production founding city instead of remaining permanently zero.
+        let points = ((available.saturating_mul(u32::from(investment)) + 199) / 200)
+            .min(RESEARCH_PER_TURN_CAP);
         let Some(definition) = technology(&research) else { continue; };
         let civ = state.civilizations.get_mut(&civ_id).expect("civilization id was collected from state");
         let progress = civ.research_progress.entry(research.clone()).or_default();
@@ -940,19 +975,26 @@ fn resolve_unit_production(state: &mut WorldState) {
         let Some(unit_type) = city.unit_queue.first().cloned() else { continue; };
         let Some(definition) = unit_definition(&unit_type) else { continue; };
         let cost = definition.cost.get("production").copied().unwrap_or(0);
+        let food_cost = definition.cost.get("food").copied().unwrap_or(0);
         let produced = u32::from(city.last_yields.production);
         let tile = city.tile;
         let owner = city.owner;
-        let complete = city.unit_production.saturating_add(produced) >= cost;
+        let complete = city.unit_production.saturating_add(produced) >= cost && city.food_stock >= food_cost;
+        // Settled unit ids remain reserved by their city, even after consumption.
+        let highest_id = state.units.keys().map(|id| id.0)
+            .chain(state.cities.keys().filter_map(|id| id.0.checked_sub(SETTLER_CITY_ID_BASE))).max();
+        let next_id = match highest_id { Some(id) => id.checked_add(1), None => Some(0) };
+        let can_spawn = next_id.is_some_and(|id| id <= u32::MAX - SETTLER_CITY_ID_BASE)
+            && !state.units.values().any(|unit| unit.tile == tile);
         {
             let city = state.cities.get_mut(&city_id).expect("city id was collected from state");
             city.unit_production = city.unit_production.saturating_add(produced);
-            if !complete { continue; }
+            if !complete || !can_spawn { continue; }
             city.unit_production -= cost;
+            city.food_stock -= food_cost;
             city.unit_queue.remove(0);
         }
-        let next_id = state.units.keys().next_back().and_then(|id| id.0.checked_add(1)).unwrap_or(0);
-        if state.units.contains_key(&UnitId(next_id)) || state.units.values().any(|unit| unit.tile == tile) { continue; }
+        let next_id = next_id.expect("spawn id was checked before spending resources");
         state.units.insert(UnitId(next_id), UnitState { owner, tile, unit_type, hit_points: 100, movement_left: definition.movement, explored: false });
     }
 }
@@ -987,6 +1029,18 @@ fn allocate_workplaces(state: &WorldState, city: &CityState, claimed: &BTreeSet<
         selected.push(tile);
     }
     let mut remaining: Vec<_> = candidates.into_iter().filter(|tile| !selected.contains(tile)).collect();
+    // Essential upkeep precedes the discretionary focus (GDD 04).
+    let maintenance = 1 + (city.population + 3) / 4;
+    let mut wealth: u32 = selected.iter().map(|tile| u32::from(state.tiles[tile.0 as usize].yields.capped().wealth)).sum();
+    remaining.sort_unstable_by_key(|tile| (std::cmp::Reverse(state.tiles[tile.0 as usize].yields.capped().wealth), tile.0));
+    for tile in &remaining {
+        if wealth >= maintenance || selected.len() >= city.population as usize { break; }
+        let output = u32::from(state.tiles[tile.0 as usize].yields.capped().wealth);
+        if output == 0 { break; }
+        wealth += output;
+        selected.push(*tile);
+    }
+    remaining.retain(|tile| !selected.contains(tile));
     remaining.sort_unstable_by_key(|tile| {
         let yields = state.tiles[tile.0 as usize].yields.capped();
         let primary = match city.focus { CityFocus::Supply => yields.food, CityFocus::Build => yields.production, CityFocus::Diversify => yields.food.saturating_add(yields.production).saturating_add(yields.wealth).saturating_add(yields.knowledge).saturating_add(yields.culture) };
@@ -1076,7 +1130,7 @@ fn resolve_society(state: &mut WorldState, seed: u64, events: &mut Vec<DomainEve
         civ.zero_cohesion_turns = if civ.cohesion == 0 { civ.zero_cohesion_turns.saturating_add(1) } else { 0 };
         drop(cities);
         for city in state.cities.values_mut().filter(|city| city.owner == *civ_id) {
-            city.crisis_pressure = (2 * i32::from(city.deprivation) + 2 * i32::from(city.group_tension) + i32::from(city.war_threat) + i32::from(city.environmental_exposure) + (100 - i32::from(city.stability) + 9) / 10 - i32::from(civ.cohesion) / 5).clamp(0, 100) as u8;
+            city.crisis_pressure = (2 * i32::from(city.deprivation) + 2 * i32::from(city.group_tension) + i32::from(city.war_threat) + i32::from(city.environmental_exposure) + (100 - i32::from(city.stability)) / 10 - i32::from(civ.cohesion) / 5).clamp(0, 100) as u8;
             city.crisis_turns = if city.crisis_pressure >= 70 { city.crisis_turns.saturating_add(1) } else { 0 };
         }
         civ.crisis_pressure = if population == 0 { 0 } else { (state.cities.values().filter(|city| city.owner == *civ_id).map(|city| city.population * u32::from(city.crisis_pressure)).sum::<u32>() / population).min(100) as u8 };
@@ -1226,6 +1280,94 @@ mod tests {
     }
 
     #[test]
+    fn maintenance_spends_shared_income_once_before_computing_deprivation() {
+        let mut initial = state();
+        initial.units.clear();
+        initial.civilizations.get_mut(&CivId(1)).unwrap().treasury_wealth = 0;
+        for tile in &mut initial.tiles { tile.yields = TileYields { food: 2, wealth: 1, ..TileYields::default() }; }
+        initial.cities.insert(CityId(1), city(CivId(1), 0, 1));
+        initial.cities.insert(CityId(2), city(CivId(1), 1, 1));
+        resolve_economy(&mut initial, 99);
+        assert_eq!(initial.civilizations[&CivId(1)].treasury_wealth, 0);
+        assert_eq!(initial.cities[&CityId(1)].deprivation, 0);
+        assert_eq!(initial.cities[&CityId(2)].deprivation, 5);
+        assert!(!initial.cities[&CityId(1)].essential_maintenance_unpaid);
+        assert!(initial.cities[&CityId(2)].essential_maintenance_unpaid);
+    }
+
+    #[test]
+    fn pressure_uses_all_gdd_terms_and_population_weighting() {
+        let mut initial = state();
+        let mut deprived = city(CivId(1), 0, 1);
+        deprived.deprivation = 5;
+        deprived.groups[0].satisfaction = 40;
+        deprived.war_threat = 7;
+        deprived.environmental_exposure = 3;
+        let mut healthy = city(CivId(1), 1, 3);
+        healthy.groups[0].satisfaction = 95;
+        healthy.last_yields.food = 6;
+        initial.cities.insert(CityId(1), deprived);
+        initial.cities.insert(CityId(2), healthy);
+        resolve_society(&mut initial, 99, &mut Vec::new());
+        let civ = &initial.civilizations[&CivId(1)];
+        assert_eq!(civ.cohesion, 49);
+        assert_eq!(civ.deprivation, 2);
+        assert_eq!(civ.group_tension, 5);
+        let local = &initial.cities[&CityId(1)];
+        assert_eq!(local.stability, 35);
+        assert_eq!(local.group_tension, 20);
+        // 2*5 + 2*20 + 7 + 3 + 65/10 - 49/5 = 57.
+        assert_eq!(local.crisis_pressure, 57);
+        assert_eq!(initial.cities[&CityId(2)].crisis_pressure, 0);
+        assert_eq!(civ.crisis_pressure, 14);
+    }
+
+    #[test]
+    fn low_cohesion_alone_does_not_create_pressure() {
+        let mut initial = state();
+        initial.civilizations.get_mut(&CivId(1)).unwrap().cohesion = 26;
+        let mut healthy = city(CivId(1), 0, 4);
+        healthy.groups[0].satisfaction = 100;
+        healthy.last_yields.food = 4;
+        initial.cities.insert(CityId(1), healthy);
+        resolve_society(&mut initial, 99, &mut Vec::new());
+        assert_eq!(initial.civilizations[&CivId(1)].cohesion, 26);
+        assert_eq!(initial.civilizations[&CivId(1)].crisis_pressure, 0);
+    }
+
+    #[test]
+    fn blocked_production_preserves_queue_food_and_completed_work() {
+        let mut initial = state();
+        let mut producer = city(CivId(1), 0, 4);
+        producer.unit_queue.push("unit.settler".into());
+        producer.food_stock = 12;
+        producer.unit_production = 22;
+        initial.cities.insert(CityId(1), producer);
+        resolve_unit_production(&mut initial);
+        let blocked = &initial.cities[&CityId(1)];
+        assert_eq!(blocked.unit_queue, vec!["unit.settler"]);
+        assert_eq!(blocked.unit_production, 22);
+        assert_eq!(blocked.food_stock, 12);
+        initial.units.clear();
+        initial.cities.insert(CityId(SETTLER_CITY_ID_BASE + 9), city(CivId(2), 3, 1));
+        resolve_unit_production(&mut initial);
+        assert!(initial.cities[&CityId(1)].unit_queue.is_empty());
+        assert_eq!(initial.cities[&CityId(1)].food_stock, 2);
+        assert_eq!(initial.units[&UnitId(10)].unit_type, "unit.settler");
+    }
+
+    #[test]
+    fn workplace_allocation_covers_essential_upkeep_before_build_focus() {
+        let mut initial = state();
+        let mut producer = city(CivId(1), 0, 2);
+        producer.focus = CityFocus::Build;
+        initial.tiles[0].yields.food = 2;
+        initial.tiles[1].yields.production = 6;
+        initial.tiles[2].yields.wealth = 2;
+        assert_eq!(allocate_workplaces(&initial, &producer, &BTreeSet::new()), vec![TileIndex(0), TileIndex(2)]);
+    }
+
+    #[test]
     fn replay_reproduces_each_recorded_turn_hash() {
         let initial = state();
         let snapshot = WorldSnapshot::new(initial.clone(), versions());
@@ -1372,7 +1514,7 @@ mod tests {
             command(2, 2, CivId(1), CommandPayload::SetResearchInvestment { percent: 20 }),
         ];
         let result = step(&initial, &commands, 99, &versions());
-        assert_eq!(result.state.civilizations[&CivId(1)].research_progress["tech.foraging"], 1);
+        assert_eq!(result.state.civilizations[&CivId(1)].research_progress["tech.foraging"], 2);
     }
 
     #[test]

@@ -24,6 +24,11 @@ fn execute(arguments: Vec<String>) -> Result<(), String> {
             let metrics = run.metrics();
             println!("FINAL {}", run.final_hash().0);
             println!("cities {} population {} average_pressure {} crises {} collapses {} ms/turn {:.3}", metrics.cities, metrics.population, metrics.average_pressure, metrics.crises, metrics.collapses, elapsed_ms / f64::from(config.turns));
+            for (civilization, state) in &run.final_state.civilizations {
+                let cities = run.final_state.cities.values().filter(|city| city.owner == *civilization).count();
+                let population: u32 = run.final_state.cities.values().filter(|city| city.owner == *civilization).map(|city| city.population).sum();
+                println!("civ {} cities {} population {} cohesion {} collapsed {}", civilization.0, cities, population, state.cohesion, state.frozen);
+            }
             write_run(&PathBuf::from("out").join(config.seed.to_string()), &run)?;
             Ok(())
         }
