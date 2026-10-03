@@ -13,6 +13,7 @@ const UnitPanel := preload("res://scripts/unit_panel.gd")
 const CityPanel := preload("res://scripts/city_panel.gd")
 const TechView := preload("res://scripts/tech_view.gd")
 const ConnectView := preload("res://scripts/connect_view.gd")
+const ReadyFab := preload("res://scripts/ready_fab.gd")
 
 const SERVER_VIEW := "res://fixtures/server_view.json"
 const SERVER_CATALOG := "res://fixtures/server_catalog.json"
@@ -45,6 +46,7 @@ func _init() -> void:
 	test_catalog_rejects_bad_input()
 	test_session_store()
 	test_views_build()
+	test_decisions_and_fab()
 	print("%d checks, %d failures" % [_checks, _failures])
 	if _failures == 0:
 		print("ALL TESTS PASSED")
@@ -547,3 +549,36 @@ func test_city_panel() -> void:
 	panel.clear()
 	check(not panel.visible, "panel hides on clear")
 	panel.queue_free()
+
+
+func test_decisions_and_fab() -> void:
+	var view := _adapt(_load_view_payload(), _load_catalog())
+	var list: Array = view.decisions()
+	check(list == [{"kind": "event", "id": "event-7"}, {"kind": "unit", "id": 3}, {"kind": "unit", "id": 5}], "decisions: events first, then idle units by id")
+	check(view.decisions(["event-7"]).size() == 2, "an answered event stops counting")
+	view.apply_local_order(3, "Fortify")
+	check(view.decisions(["event-7"]) == [{"kind": "unit", "id": 5}], "an ordered unit leaves the list")
+	view.home_cell = Vector2i(10, 7)
+	view.cities = []
+	check(view.decisions(["event-7"])[0] == {"kind": "capital"} and view.decisions(["event-7"]).size() == 2, "the capital card comes first")
+	view.apply_local_found(Vector2i(10, 7))
+	check(view.decisions(["event-7"]) == [{"kind": "unit", "id": 5}], "a founding already ordered no longer counts")
+	var fab := ReadyFab.new()
+	root.add_child(fab)
+	var taps: Array = []
+	fab.next_requested.connect(func() -> void: taps.append("next"))
+	fab.ready_requested.connect(func() -> void: taps.append("ready"))
+	check(fab.custom_minimum_size.x >= 44 and fab.custom_minimum_size.y >= 44, "the compact button is at least 44 px")
+	fab.set_state(3, false)
+	check(fab._badge.visible and fab._badge_label.text == "3" and fab._icon.texture == ReadyFab.ICON_NEXT, "with decisions: next icon and badge")
+	fab.pressed.emit()
+	check(taps == ["next"], "tap with decisions asks for the next one")
+	fab.set_state(0, false)
+	check(not fab._badge.visible and fab._icon.texture == ReadyFab.ICON_READY, "no decisions: ready icon, no badge")
+	fab.pressed.emit()
+	check(taps == ["next", "ready"], "tap with no decisions sends Pronto")
+	fab.set_state(0, true)
+	check(fab.disabled and fab._icon.texture == ReadyFab.ICON_WAIT, "after Pronto: waiting state")
+	fab._on_pressed()
+	check(taps.size() == 2, "a waiting button never fires")
+	fab.queue_free()

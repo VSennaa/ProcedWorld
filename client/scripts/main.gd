@@ -5,7 +5,8 @@ extends Control
 ##
 ## Startup arguments (after `--`): --demo=pauta|servidor  --server=<ws url>  --screen=<id>
 ## --select-capital  --select-unit=<id>  --no-city (servidor demo: world without cities)
-## --select-city=<id> (servidor demo: open the city card)
+## --select-city=<id> (servidor demo: open the city card)  --no-decisions (servidor demo: no idle
+## units or pending events, so the compact button shows Pronto)
 
 const WorldView := preload("res://scripts/world_view.gd")
 const ServerView := preload("res://scripts/server_view.gd")
@@ -20,6 +21,7 @@ const UnitPanel := preload("res://scripts/unit_panel.gd")
 const CityPanel := preload("res://scripts/city_panel.gd")
 const ConnectView := preload("res://scripts/connect_view.gd")
 const NetClient := preload("res://scripts/net_client.gd")
+const ReadyFab := preload("res://scripts/ready_fab.gd")
 
 const FIXTURE_PATH := "res://fixtures/state_snapshot.json"
 const SERVER_VIEW_PATH := "res://fixtures/server_view.json"
@@ -98,6 +100,10 @@ var _map
 var _tech
 var _unit_panel
 var _city_panel
+var _content: Control
+var _fab
+var _ready_inflight := false  # Pronto was sent and the server has not answered yet
+var _current_screen := ""
 
 
 func _ready() -> void:
@@ -172,6 +178,7 @@ func _build_shell() -> void:
 	var content := Control.new()
 	content.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	root.add_child(content)
+	_content = content
 
 	_connect = ConnectView.new()
 	_connect.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -187,6 +194,7 @@ func _build_shell() -> void:
 	_agenda.unit_focus_requested.connect(_on_unit_focus_requested)
 	_agenda.capital_focus_requested.connect(_on_capital_focus_requested)
 	_agenda.found_capital_requested.connect(_on_found_capital_requested)
+	_agenda.state_changed.connect(_refresh_fab)
 	content.add_child(_agenda)
 	_screens["pauta"] = _agenda
 
@@ -255,6 +263,16 @@ func _build_shell() -> void:
 	_nav_bar = bar
 	root.add_child(bar)
 
+	_fab = ReadyFab.new()
+	_fab.visible = false
+	_fab.next_requested.connect(_on_fab_next)
+	_fab.ready_requested.connect(_on_fab_ready)
+	content.add_child(_fab)
+	content.resized.connect(_layout_fab)
+	for panel in [_unit_panel, _city_panel]:
+		panel.resized.connect(_layout_fab)
+		panel.visibility_changed.connect(_layout_fab)
+
 
 func _build_placeholder(key: String) -> Control:
 	var center := CenterContainer.new()
@@ -285,10 +303,12 @@ func _screen_title(key: String) -> String:
 
 
 func show_screen(key: String) -> void:
+	_current_screen = key
 	for id in _screens:
 		_screens[id].visible = (id == key)
 	for id in _nav_buttons:
 		_nav_buttons[id].button_pressed = (id == key)
+	_refresh_fab()
 
 
 func _show_connect() -> void:
@@ -299,6 +319,7 @@ func _show_connect() -> void:
 	_catalog = null
 	_top.visible = false
 	_nav_bar.visible = false
+	_ready_inflight = false
 	show_screen("conectar")
 
 
@@ -443,6 +464,7 @@ func _apply_view(payload: Dictionary, new_turn: bool) -> void:
 	_last_payload = payload
 	world = parsed["view"]
 	if new_turn or _overrides_turn != world.turn:
+		_ready_inflight = false
 		_overrides.clear()
 		_overrides_turn = world.turn
 	for entry in _overrides:  # accepted this turn but maybe not yet reflected in the server view
@@ -466,6 +488,7 @@ func _apply_ready_state(payload: Dictionary) -> void:
 	if ready.has(world.civ_id):
 		_agenda.mark_ready(true)
 	else:
+		_ready_inflight = false
 		_agenda.reset_ready()
 	_agenda.set_status("Prontos: %d de %d." % [ready.size(), present.size()])
 
@@ -501,7 +524,9 @@ func _on_error(request_id: String, payload: Dictionary) -> void:
 		net.send_request("get_snapshot", {})  # resync the idle list the gate is based on
 	_report(text, true)
 	if meta.get("kind", "") == "ready":
+		_ready_inflight = false
 		_agenda.reset_ready()
+		_refresh_fab()
 
 
 # ---------------------------------------------------------------- demonstrations
@@ -523,6 +548,9 @@ func _start_demo(kind: String) -> void:
 			data.erase("cities")
 			data["home_tile"] = 178
 			data["idle_units"] = []
+		if "--no-decisions" in OS.get_cmdline_user_args():
+			data["idle_units"] = []
+			data["pending_events"] = []
 		_last_payload = data
 		parsed = ServerView.from_payload(data, _catalog)
 	else:
@@ -573,6 +601,7 @@ func _populate(first: bool) -> void:
 		_selected_unit = -1
 		_unit_panel.clear()
 	_refresh_panels()
+	_refresh_fab()
 
 
 func _chips() -> Array:
@@ -609,6 +638,7 @@ func _refresh_units() -> void:
 	_map.set_view(world, false)
 	_map.set_selected_unit(_selected_unit)
 	_refresh_panels()
+	_refresh_fab()
 
 
 func _refresh_capital_card() -> void:
@@ -834,10 +864,64 @@ func _on_ready_pressed(choices: Dictionary) -> void:
 				net.send_request("submit_command", Protocol.command_respond_to_event(card["event_id"], choices[card["id"]]))
 		var request_id: String = net.send_request("ready", {})
 		_inflight[request_id] = {"kind": "ready"}
+		_ready_inflight = true
+		_refresh_fab()
 		_agenda.set_status("Pronto enviado; aguardando o servidor.")
 	else:
 		_agenda.mark_ready(false)
 		_agenda.set_status("Demonstração: nada foi enviado. Escolhas ficaram apenas neste rascunho local.")
+
+
+# ---------------------------------------------------------------- compact Pronto button
+
+## Remaining decisions, in the order the compact button walks them (see WorldView.decisions).
+func _decisions() -> Array:
+	if world == null:
+		return []
+	return world.decisions(_agenda.choices.keys())
+
+
+func _refresh_fab() -> void:
+	if _fab == null:
+		return
+	var in_game := mode != Mode.CONNECT and world != null and _current_screen != "" and _current_screen != "conectar" and _current_screen != "pauta"
+	_fab.visible = in_game
+	if world != null:
+		_fab.set_state(_decisions().size(), _ready_inflight or _agenda.is_sent())
+	_layout_fab()
+
+
+## Bottom-right of the content area, above the map's hint line and above any open bottom card.
+func _layout_fab() -> void:
+	if _fab == null or not _fab.visible:
+		return
+	var bottom: float = _content.size.y - 12.0
+	if _current_screen == "mapa":
+		bottom -= 52.0  # the tile hint line
+		for panel in [_unit_panel, _city_panel]:
+			if panel.visible:
+				bottom = minf(bottom, panel.position.y - 10.0)
+	_fab.position = Vector2(_content.size.x - _fab.size.x - 16.0, bottom - _fab.size.y)
+
+
+func _on_fab_next() -> void:
+	var list := _decisions()
+	if list.is_empty():
+		return
+	var next: Dictionary = list[0]
+	match next["kind"]:
+		"capital":
+			_on_capital_focus_requested(world.home_cell)
+		"event":
+			show_screen("pauta")
+		"unit":
+			_on_unit_focus_requested(next["id"])
+
+
+func _on_fab_ready() -> void:
+	if not _decisions().is_empty():
+		return
+	_on_ready_pressed(_agenda.choices.duplicate())
 
 
 func _flat(color: Color, margin: int) -> StyleBoxFlat:
