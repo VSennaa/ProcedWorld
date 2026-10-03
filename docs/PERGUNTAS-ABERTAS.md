@@ -14,6 +14,17 @@ Prioridade ordenada pelo que impede fechar contratos ou aprovar a especificaçã
 
 ## Design de jogo
 
+### Meta de pressão de crise no teste de saúde (2026-10-03)
+
+- **Pergunta:** Como atingir pressão média ≥ 10 no cenário de saúde (8 civilizações, 300 turnos), ou a meta muda?
+- **Origens:** GDD 12; `engine/DIAGNOSTICO-P7.md` (P12, P12b); teste `health_simulation_*`.
+- **Por que importa:** Com a coesão centrada em 50 (decidido), a média medida é 4: coesão ~26 soma +4, e
+  privação, tensão, guerra e exposição ficam perto de zero. Sem pressão o mundo não tem crises.
+- **Opções:** (1) Entropia com mais eventos de pressão (seca, tensão de grupo, exposição); (2) guerra e
+  ameaça (`W`) vindas da diplomacia entrando na pressão; (3) baixar a meta para 5; (4) combinar 1 e 2.
+- **Recomendação:** (4), medido no harness antes de mexer em pesos. Até lá a meta é aviso, não teste vermelho.
+- **Bloqueia:** critério de saída da Fase 3 (partida longa com crises plausíveis).
+
 ### Árvore de pesquisa no cliente (levantado pelo usuário em 2026-10-03)
 
 - **Pergunta:** A tela de tecnologia entra já no cliente mínimo, mesmo só para visualização?
