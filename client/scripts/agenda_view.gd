@@ -3,6 +3,9 @@ extends MarginContainer
 ## Choices are a local draft; nothing is sent unless main.gd has an open server connection.
 
 signal ready_pressed(choices: Dictionary)
+signal unit_focus_requested(unit_id: int)
+
+const WorldView := preload("res://scripts/world_view.gd")
 
 const CRITICAL_COLOR := Color("d55e00")
 const IMPORTANT_COLOR := Color("e69f00")
@@ -16,6 +19,10 @@ var _option_buttons: Dictionary = {}  # card id -> {option id: Button}
 var _ready_button: Button
 var _status: Label
 var _pending_label: Label
+var _idle_box: VBoxContainer
+var _blocked_count := 0
+var _sent := false
+var _sent_text := ""
 
 
 func build(agenda: Array, turn: int) -> void:
@@ -49,6 +56,12 @@ func build(agenda: Array, turn: int) -> void:
 	for card in agenda:
 		column.add_child(_build_card(card))
 
+	_idle_box = VBoxContainer.new()
+	_idle_box.add_theme_constant_override("separation", 8)
+	column.add_child(_idle_box)
+	_sent = false
+	_blocked_count = 0
+
 	_pending_label = Label.new()
 	_pending_label.add_theme_color_override("font_color", MUTED_COLOR)
 	_pending_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -72,8 +85,53 @@ func set_status(text: String) -> void:
 
 
 func mark_ready(sent: bool) -> void:
-	_ready_button.disabled = true
-	_ready_button.text = "Pronto (enviado)" if sent else "Pronto (rascunho local)"
+	_sent = true
+	_sent_text = "Pronto (enviado)" if sent else "Pronto (rascunho local)"
+	_refresh_ready()
+
+
+## Back to editable (the server reopened the turn, or a new turn began).
+func reset_ready() -> void:
+	_sent = false
+	_refresh_ready()
+
+
+## Lists own idle units that block "Pronto". `entries`: Array of {id, label}. Tapping one emits
+## `unit_focus_requested`. An empty list removes the block.
+func set_idle_units(entries: Array) -> void:
+	if _idle_box == null:
+		return
+	for child in _idle_box.get_children():
+		child.queue_free()
+	_blocked_count = entries.size()
+	if not entries.is_empty():
+		var heading := Label.new()
+		heading.text = "Unidades aguardando ordem"
+		heading.add_theme_font_size_override("font_size", 24)
+		_idle_box.add_child(heading)
+		for entry in entries:
+			var button := Button.new()
+			button.text = entry["label"]
+			button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			button.custom_minimum_size = Vector2(0, 56)
+			button.add_theme_font_size_override("font_size", 20)
+			button.pressed.connect(func() -> void: unit_focus_requested.emit(entry["id"]))
+			_idle_box.add_child(button)
+	_refresh_ready()
+
+
+func _refresh_ready() -> void:
+	if _ready_button == null:
+		return
+	if _sent:
+		_ready_button.disabled = true
+		_ready_button.text = _sent_text
+	elif _blocked_count > 0:
+		_ready_button.disabled = true
+		_ready_button.text = WorldView.gate_text(_blocked_count)
+	else:
+		_ready_button.disabled = false
+		_ready_button.text = "Pronto"
 
 
 func _build_card(card: Dictionary) -> Control:
@@ -104,6 +162,8 @@ func _build_card(card: Dictionary) -> Control:
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(title)
 	for pair in [["Causa", "cause"], ["Efeito imediato", "effect"], ["Risco futuro", "risk"]]:
+		if String(card.get(pair[1], "")).is_empty():
+			continue  # live events only carry what the server sent
 		var line := Label.new()
 		line.text = "%s: %s" % [pair[0], card[pair[1]]]
 		line.add_theme_font_size_override("font_size", 19)
@@ -115,7 +175,7 @@ func _build_card(card: Dictionary) -> Control:
 	for option in card["options"]:
 		var button := Button.new()
 		button.toggle_mode = true
-		button.text = "%s — %s" % [option["label"], option["sacrifice"]]
+		button.text = "%s — %s" % [option["label"], option["sacrifice"]] if not String(option["sacrifice"]).is_empty() else option["label"]
 		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		button.custom_minimum_size = Vector2(0, 64)

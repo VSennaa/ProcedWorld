@@ -10,6 +10,20 @@ const _EVEN_ROW: Array[Vector2i] = [Vector2i(0, -1), Vector2i(1, 0), Vector2i(0,
 const _ODD_ROW: Array[Vector2i] = [Vector2i(1, -1), Vector2i(1, 0), Vector2i(1, 1), Vector2i(0, 1), Vector2i(-1, 0), Vector2i(0, -1)]
 
 
+## Neighbor offsets in EDGES order for a row (odd rows are shifted half a hex).
+static func edge_offsets(row: int) -> Array[Vector2i]:
+	return _ODD_ROW if (row & 1) == 1 else _EVEN_ROW
+
+
+## Dense row-major tile index (the server's `TileIndex`) <-> odd-r offset cell.
+static func cell_of_index(index: int, width: int) -> Vector2i:
+	return Vector2i(index % width, index / width)
+
+
+static func index_of_cell(cell: Vector2i, width: int) -> int:
+	return cell.y * width + cell.x
+
+
 static func wrap_col(col: int, width: int) -> int:
 	return posmod(col, width)
 

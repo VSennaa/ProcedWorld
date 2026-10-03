@@ -19,13 +19,20 @@ static func validate_envelope(data: Variant) -> Dictionary:
 	if typeof(data) != TYPE_DICTIONARY:
 		return _fail("envelope nao e um objeto")
 	var version: Variant = data.get("protocol_version")
+	# Servers older than the "1.0" text version sent the bare integer 1.
+	if typeof(version) == TYPE_INT or (typeof(version) == TYPE_FLOAT and version == floorf(version)):
+		version = "%d.0" % int(version)
 	if typeof(version) != TYPE_STRING:
 		return _fail("protocol_version ausente")
 	if not is_version_compatible(version):
 		return _fail("versao incompativel: %s (suportada: %s)" % [version, PROTOCOL_VERSION])
-	for field in ["request_id", "type"]:
-		if typeof(data.get(field)) != TYPE_STRING or String(data[field]).is_empty():
-			return _fail("campo obrigatorio ausente: %s" % field)
+	if typeof(data.get("type")) != TYPE_STRING or String(data["type"]).is_empty():
+		return _fail("campo obrigatorio ausente: type")
+	# Unsolicited pushes (turn_diff, catalog, ...) carry request_id null; the key must still exist.
+	if not data.has("request_id") or (typeof(data["request_id"]) != TYPE_STRING and data["request_id"] != null):
+		return _fail("campo obrigatorio ausente: request_id")
+	if typeof(data["request_id"]) == TYPE_STRING and String(data["request_id"]).is_empty():
+		return _fail("campo obrigatorio ausente: request_id")
 	if typeof(data.get("payload")) != TYPE_DICTIONARY:
 		return _fail("payload ausente ou nao e um objeto")
 	return {
@@ -33,7 +40,7 @@ static func validate_envelope(data: Variant) -> Dictionary:
 		"error": "",
 		"envelope": {
 			"protocol_version": version,
-			"request_id": data["request_id"],
+			"request_id": "" if data["request_id"] == null else data["request_id"],
 			"type": data["type"],
 			"payload": data["payload"],
 		},
@@ -53,6 +60,25 @@ static func build_envelope(type: String, payload: Dictionary, request_id: String
 		"type": type,
 		"payload": payload,
 	})
+
+
+# --- Command payloads for `submit_command` (serde adjacent tagging: {"type": snake_case, "data": {...}}) ---
+
+## UnitOrder values as serialized by the engine (externally tagged enum).
+static func order_move_to(tile_index: int) -> Variant:
+	return {"MoveTo": {"target": tile_index}}
+
+
+static func command_set_unit_order(unit_id: int, order: Variant) -> Dictionary:
+	return {"command": {"type": "set_unit_order", "data": {"unit_id": unit_id, "order": order}}}
+
+
+static func command_skip_unit(unit_id: int) -> Dictionary:
+	return {"command": {"type": "skip_unit", "data": {"unit_id": unit_id}}}
+
+
+static func command_respond_to_event(event_id: int, choice_id: String) -> Dictionary:
+	return {"command": {"type": "respond_to_event", "data": {"event_id": event_id, "choice_id": choice_id}}}
 
 
 static func _fail(message: String) -> Dictionary:

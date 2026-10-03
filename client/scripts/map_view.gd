@@ -4,6 +4,14 @@ extends Control
 const Hex := preload("res://scripts/hex.gd")
 
 signal cell_selected(cell: Vector2i)
+## Emitted instead of `cell_selected` while in target mode (choosing a destination).
+signal target_chosen(cell: Vector2i)
+
+const UNIT_DISC := Color("f4f0da")
+const ROLE_ICONS := {
+	"exploration": "unit-scout", "defense": "unit-militia", "attack": "unit-raider",
+	"settler": "unit-settler", "worker": "unit-worker", "trade": "unit-caravan",
+}
 
 const RADIUS := 64.0
 const ZOOM_MIN := 0.3
@@ -17,6 +25,11 @@ var view: RefCounted
 var camera := Vector2.ZERO
 var zoom := 0.6
 var selected := Vector2i(-1, -1)
+var selected_unit := -1
+var target_mode := false
+
+var _units_by_cell: Dictionary = {}
+var _unit_icons: Dictionary = {}
 
 var _tiles: Dictionary = {}
 var _overlays: Dictionary = {}
@@ -43,10 +56,87 @@ func _ready() -> void:
 	_city = load("res://assets/entities/cidade-media-normal.svg")
 
 
-func set_view(world_view: RefCounted) -> void:
+## Installs a new world view. `recenter` false keeps the camera (used when a turn refreshes the view).
+func set_view(world_view: RefCounted, recenter: bool = true) -> void:
 	view = world_view
-	camera = Hex.center(view.capital, RADIUS)
+	_units_by_cell.clear()
+	for unit in view.units:
+		if not _units_by_cell.has(unit["cell"]):
+			_units_by_cell[unit["cell"]] = []
+		_units_by_cell[unit["cell"]].append(unit)
+	if recenter:
+		camera = Hex.center(view.capital, RADIUS)
 	queue_redraw()
+
+
+## Centers the camera on a cell (used by the idle-unit queue).
+func focus_cell(cell: Vector2i) -> void:
+	if view == null or cell.x < 0:
+		return
+	camera = Hex.center(cell, RADIUS)
+	_clamp_camera()
+	queue_redraw()
+
+
+func set_selected_unit(unit_id: int) -> void:
+	selected_unit = unit_id
+	queue_redraw()
+
+
+## While true the next tap is reported with `target_chosen` instead of selecting.
+func set_target_mode(on: bool) -> void:
+	target_mode = on
+
+
+func _unit_texture(unit: Dictionary) -> Texture2D:
+	var type: String = unit["type"]
+	if not _unit_icons.has(type):
+		var path := "res://assets/entities/unidades/%s.svg" % type.replace("unit.", "unit-").replace("_", "-")
+		if not ResourceLoader.exists(path):
+			path = "res://assets/entities/unidades/%s.svg" % ROLE_ICONS.get(unit["role"], "unit-militia")
+		_unit_icons[type] = load(path)
+	return _unit_icons[type]
+
+
+func _draw_units(screen: Vector2, cell: Vector2i, has_city: bool) -> void:
+	if not _units_by_cell.has(cell):
+		return
+	var stack: Array = _units_by_cell[cell]
+	var unit: Dictionary = stack[0]
+	for candidate in stack:
+		if candidate["id"] == selected_unit:
+			unit = candidate
+			break
+		if candidate["own"] and not unit["own"]:
+			unit = candidate
+	var center := screen + (Vector2(RADIUS * 0.5, RADIUS * 0.4) * zoom if has_city else Vector2.ZERO)
+	var radius := 23.0 * zoom
+	var color: Color = view.civ_colors.get(unit["owner"], Color("b9c1c8"))
+	draw_circle(center, radius + 3.0 * zoom, color)
+	draw_circle(center, radius, UNIT_DISC)
+	var icon_size := Vector2(36, 36) * zoom
+	draw_texture_rect(_unit_texture(unit), Rect2(center - icon_size * 0.5, icon_size), false)
+	if unit["own"] and view.idle_units.has(unit["id"]):
+		draw_circle(center + Vector2(radius * 0.75, -radius * 0.75), 7.0 * zoom, SELECT_COLOR)
+	if stack.size() > 1:
+		var font := ThemeDB.fallback_font
+		draw_string(font, center + Vector2(-radius, radius + 11.0 * zoom), "x%d" % stack.size(), HORIZONTAL_ALIGNMENT_LEFT, -1, int(16 * zoom + 4), CITY_COLOR)
+	if unit["id"] == selected_unit:
+		draw_arc(center, radius + 7.0 * zoom, 0.0, TAU, 24, SELECT_COLOR, 4.0)
+		if unit["order"] == "MoveTo" and unit["order_target"].x >= 0:
+			_draw_target_marker(unit["order_target"])
+
+
+func _draw_target_marker(cell: Vector2i) -> void:
+	var base := Hex.center(cell, RADIUS)
+	var world_width: float = RADIUS * Hex.SQRT3 * view.map_width
+	var best := base
+	for wrap in [-1, 0, 1]:  # draw the copy nearest to the camera across the cylinder seam
+		var candidate := base + Vector2(wrap * world_width, 0.0)
+		if absf(candidate.x - camera.x) < absf(best.x - camera.x):
+			best = candidate
+	var screen := (best - camera) * zoom + size * 0.5
+	draw_arc(screen, RADIUS * 0.5 * zoom, 0.0, TAU, 4, SELECT_COLOR, 3.0)
 
 
 func _draw() -> void:
@@ -87,6 +177,7 @@ func _draw_tile(screen: Vector2, tile_size: Vector2, tile: Dictionary, cell: Vec
 		draw_texture_rect(_city, Rect2(screen - city_size * 0.5, city_size), false)
 	if fog == "remembered":
 		draw_texture_rect(_overlays["remembered"], rect, false)
+	_draw_units(screen, cell, tile.has("city"))
 	if cell == selected:
 		draw_arc(screen, RADIUS * 0.84 * zoom, 0.0, TAU, 24, SELECT_COLOR, 4.0)
 
@@ -156,6 +247,10 @@ func select_at(screen_position: Vector2) -> void:
 
 
 func select_cell(cell: Vector2i) -> void:
+	if target_mode:
+		if cell.x >= 0:
+			target_chosen.emit(cell)
+		return
 	selected = cell
 	queue_redraw()
 	cell_selected.emit(cell)

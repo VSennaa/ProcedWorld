@@ -20,6 +20,83 @@ var map_height := 0
 var capital := Vector2i.ZERO
 var tiles: Array = []  # tiles[row][col] -> Dictionary
 
+# Live-server fields (filled by server_view.gd; empty for the hand-written fixture).
+var live := false
+var world_id := 0
+var civ_id := 0
+## Resource chips shown in the header: Array of {icon, value, label}. Empty = use `resources`.
+var header_chips: Array = []
+## Units visible to this civilization. Each: {id, owner, own, cell, type, role, hp, movement_left,
+## order ("Idle"|"Fortify"|"Explore"|"MoveTo"|"" when the server did not say), order_target, skipped_turn}.
+var units: Array = []
+## Ids of own units awaiting an order (server list, adjusted by local optimistic orders).
+var idle_units: Array = []
+## Entropy events waiting for a response: Array of {id, template_id, choices}.
+var pending_events: Array = []
+## Research state of the own civilization: {current: String, done: Array, progress: Dictionary}.
+var research: Dictionary = {"current": "", "done": [], "progress": {}}
+var civ_colors: Dictionary = {}  # civ id -> Color
+
+
+## "N unidades aguardam ordem" copy shared by the Pauta and the tests.
+static func gate_text(count: int) -> String:
+	if count == 1:
+		return "1 unidade aguarda ordem"
+	return "%d unidades aguardam ordem" % count
+
+
+func awaiting_count() -> int:
+	return idle_units.size()
+
+
+## True while at least one own idle unit blocks the "Pronto" button (docs/sdd/10-protocolo.md §5.1).
+func ready_blocked() -> bool:
+	return not idle_units.is_empty()
+
+
+func unit_by_id(unit_id: int) -> Dictionary:
+	for unit in units:
+		if unit["id"] == unit_id:
+			return unit
+	return {}
+
+
+## Units standing on `cell`, own first, in id order.
+func units_at(cell: Vector2i) -> Array:
+	var result: Array = []
+	for unit in units:
+		if unit["cell"] == cell:
+			result.append(unit)
+	result.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		if a["own"] != b["own"]:
+			return a["own"]
+		return a["id"] < b["id"])
+	return result
+
+
+## Optimistic local update after the server accepted a command for the open turn.
+## The authoritative `idle_units` list replaces this on the next snapshot.
+func apply_local_order(unit_id: int, order_kind: String, order_target: Vector2i = Vector2i(-1, -1)) -> void:
+	var unit := unit_by_id(unit_id)
+	if unit.is_empty():
+		return
+	unit["order"] = order_kind
+	unit["order_target"] = order_target
+	if order_kind == "Idle":
+		if unit["movement_left"] > 0 and not idle_units.has(unit_id):
+			idle_units.append(unit_id)
+			idle_units.sort()
+	else:
+		idle_units.erase(unit_id)
+
+
+func apply_local_skip(unit_id: int) -> void:
+	var unit := unit_by_id(unit_id)
+	if unit.is_empty():
+		return
+	unit["skipped_turn"] = turn
+	idle_units.erase(unit_id)
+
 
 ## Builds a WorldView from an envelope Dictionary (output of Protocol.parse_envelope).
 ## Returns {ok, error, view}.
