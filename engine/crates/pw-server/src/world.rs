@@ -126,7 +126,7 @@ impl LiveWorld {
     }
 
     pub fn snapshot_for(&self, civ: CivId) -> Value {
-        view_for(&self.state, civ, &self.pending)
+        view_for(&self.state, civ, self.homes.get(&civ).copied(), &self.pending)
     }
 
     /// Idle units that block `ready` (SDD 03 / SDD 15 section 4.3): only for a present human seat,
@@ -309,7 +309,7 @@ impl LiveWorld {
                 "state_hash": state_hash_string(&self.state),
                 "commands": own,
                 "events": events_for(&self.state, *civ, &turn_commands, &result.events),
-                "view": view_for(&self.state, *civ, &[]),
+                "view": view_for(&self.state, *civ, self.homes.get(civ).copied(), &[]),
             });
             let _ = conn.tx.try_send(frame(None, "turn_diff", payload));
         }
@@ -363,6 +363,35 @@ mod tests {
         assert!(live.submit(CivId(0), CommandPayload::SetUnitOrder { unit_id: UnitId(900), order: UnitOrder::Fortify }).is_ok());
         assert!(live.idle_blocking(CivId(0)).is_empty());
         assert_eq!(unit_json(&live)["order"], json!({ "type": "fortify" }));
+    }
+
+    #[test]
+    fn home_tile_is_published_only_until_the_first_city_exists() {
+        let mut live = live_with_idle_unit();
+        let home = live.homes[&CivId(0)];
+        live.join(CivId(0), None, conn(1)).unwrap();
+        assert_eq!(live.snapshot_for(CivId(0))["home_tile"], json!(home));
+        assert!(live.snapshot_for(CivId(1))["home_tile"].is_number(), "every civilization without a city gets its starting tile");
+        // The first city needs no settler: the capital id is the civilization id (bots do the same).
+        assert!(live.submit(CivId(0), CommandPayload::FoundCity { city_id: pw_engine::ids::CityId(0), target: home }).is_ok());
+        // A second FoundCity with the same id is a clean rejection, not a state change.
+        let duplicate = live.submit(CivId(0), CommandPayload::FoundCity { city_id: pw_engine::ids::CityId(0), target: home });
+        assert!(matches!(duplicate, Err(SubmitError { reason: ErrorReason::CommandRejected, .. })));
+        assert!(live.submit(CivId(0), CommandPayload::SkipUnit { unit_id: UnitId(900) }).is_ok());
+        live.set_ready(CivId(0), true).unwrap();
+        assert!(live.try_advance().unwrap());
+        let view = live.snapshot_for(CivId(0));
+        assert_eq!(view["home_tile"], Value::Null);
+        assert_eq!(view["cities"].as_array().unwrap().iter().filter(|c| c["city"]["owner"] == 0).count(), 1);
+        // A settler about to found a city no longer blocks Ready (it is consumed at resolution).
+        let site = TileIndex(home.0 + 2);
+        live.state.units.insert(UnitId(901), UnitState {
+            owner: CivId(0), tile: site, unit_type: "unit.settler".into(), hit_points: 100,
+            movement_left: 3, explored: false, order: UnitOrder::Idle, skipped_turn: None,
+        });
+        assert!(live.idle_blocking(CivId(0)).contains(&UnitId(901)));
+        assert!(live.submit(CivId(0), CommandPayload::FoundCity { city_id: pw_engine::ids::CityId(1_000_901), target: site }).is_ok());
+        assert!(!live.idle_blocking(CivId(0)).contains(&UnitId(901)));
     }
 
     #[test]

@@ -4,7 +4,7 @@
 //! relations ledger are never sent.
 
 use pw_engine::{
-    ids::CivId,
+    ids::{CivId, TileIndex},
     world::{effective_unit_orders, idle_units_with, AcceptedCommand, DomainEvent, Visibility, WorldState},
 };
 use serde_json::{json, Value};
@@ -14,8 +14,10 @@ pub fn state_hash_string(state: &WorldState) -> String {
 }
 
 /// `pending` are the open turn's accepted commands: own units show the order they will have once
-/// the turn resolves, and `idle_units` already accounts for them.
-pub fn view_for(state: &WorldState, civ: CivId, pending: &[AcceptedCommand]) -> Value {
+/// the turn resolves, and `idle_units` already accounts for them. `home` is the civilization's
+/// starting tile; it is only published while the civilization has no city (`home_tile`), because
+/// that is where the first city is founded without a settler.
+pub fn view_for(state: &WorldState, civ: CivId, home: Option<TileIndex>, pending: &[AcceptedCommand]) -> Value {
     let effective = effective_unit_orders(state, civ, pending);
     let vis = state.visibility.get(&civ);
     let seen = |tile| vis.and_then(|map| map.get(&tile)).copied().unwrap_or(Visibility::Unknown);
@@ -56,6 +58,7 @@ pub fn view_for(state: &WorldState, civ: CivId, pending: &[AcceptedCommand]) -> 
             json!({ "id": id, "unit": unit })
         })
         .collect();
+    let has_city = state.cities.values().any(|c| c.owner == civ);
     json!({
         "world_id": state.world_id,
         "turn": state.turn,
@@ -63,6 +66,7 @@ pub fn view_for(state: &WorldState, civ: CivId, pending: &[AcceptedCommand]) -> 
         "map_width": state.map_width,
         "civ": civ,
         "civilization": state.civilizations.get(&civ),
+        "home_tile": if has_city { None } else { home },
         "tiles": tiles,
         "cities": cities,
         "units": units,
