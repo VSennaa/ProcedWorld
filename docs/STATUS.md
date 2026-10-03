@@ -4,19 +4,23 @@
 
 ## Agora
 
-Agente ativo: Claude + build loop (Codex) em `feat/engine/core`, área `engine/` e `.github/`
+Agente ativo: build loop agendado (Codex) em `feat/ai/phase3-core`, área `engine/` — começa 2026-10-03 02:20
 
-- **Fase**: **2 — Indev**. GDD aprovado em 2026-10-01; **SDD aprovado em 2026-10-02** (recomendações do
-  `docs/sdd/GUIA-DE-REVISAO.md` valem como escolhas aprovadas, revisáveis por ADR).
-- **Motor** (`engine/`, branch `feat/engine/core`): P1–P6 prontos e testados na VPS (33 testes): PRNG,
-  hash, hex em cilindro, estado/`step`/replay, mapa procedural, cidades/economia/pressão, tecnologia,
-  unidades, combate, bots T0, harness. 1.000 turnos com 8 bots sem crash e replay idêntico
-  (`FINAL 4045166529647992208`, ~0,8 ms/turno), **mas a simulação estava degenerada** (nenhuma expansão,
-  8 colapsos) — P7 corrige com teste de saúde; P8 cria a CI de determinismo em 3 plataformas.
-- **Como compilar**: no PC o Smart App Control bloqueia binários recém-compilados; usar
-  `VPS_SSH=deploy@<VPS_HOST> tools/dev/vps-test.sh` (Docker na VPS) ou a CI.
-- **Próximo passo**: após P7/P8 verdes, mergear `feat/engine/core` em `develop`; depois Fase 3 (portas de IA,
-  Governador, Entropia, diplomacia, servidor, cliente mínimo).
+- **Fase**: **3 — Alfa** (Fase 2 concluída e mergeada em `develop` em 2026-10-02: 1.000 turnos, 8 bots,
+  replay idêntico, mesmo hash em Linux/Windows/macOS na CI). Tag `v0.1.0-indev.1` **aguarda o usuário**.
+- **Fase 3 em `feat/ai/phase3-core`**: P9 (intenções e portas de IA) pronto e commitado. P10 (Governador)
+  escrito, mas o Governador escolhia **um comando por turno** e o teste de saúde caiu para 8 cidades;
+  o supervisor corrigiu um teste desatualizado e abriu o **P10b** (conjunto de comandos por turno).
+  Árvore de trabalho com P10 **não commitado** (testes do motor ok; teste de saúde falha) até o P10b passar.
+- **Fila agendada (02:20)**: P10b → P11 (diplomacia) → P12 (Entropia, devolve o piso de pressão) →
+  P13 (Crônica e memória). Para na primeira falha ou se a cota do Codex acabar; cada tarefa aprovada é
+  commitada e o quadro é atualizado.
+- **Incidentes de 2026-10-02 22:50**: cota de 5 h do Codex esgotada (volta 02:12) e IP do PC bloqueado
+  no SSH da VPS por rajada de conexões (`ufw limit`/fail2ban). Corrigido: o ciclo para na cota do Codex
+  e o espelho do quadro sincroniza no máximo 1×/min.
+- **Quadro**: `https://<hostname da VPS>/board.html` (HTTP Basic, senha rotacionada por sprint) ou
+  `.agent-runs/board.html` local.
+- **Para o usuário**: aprovar a tag `v0.1.0-indev.1`; revisar `feat/ai/phase3-core` antes do merge.
 
 ## Turno da noite (2026-10-01 22:30 → 23:10)
 
