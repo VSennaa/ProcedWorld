@@ -10,12 +10,18 @@ queue=${1:?queue file}
 root=$(git rev-parse --show-toplevel)
 runs="$root/.agent-runs"; mkdir -p "$runs"
 log="$runs/build-$(basename "$queue" .txt).log"
+board() { python "$root/tools/board/update.py" "$@" >/dev/null 2>&1 || true; }
+title_of() { head -1 "$root/$1" | sed 's/^# *//; s/^Brief *//'; }
+model_of() { grep "\"task\": \"$1\"" "$runs/decisions.jsonl" 2>/dev/null | tail -1 | sed -n 's/.*"model": "\([^"]*\)".*/codex · /p'; }
+seed_board() { while IFS='|' read -r n b _rest; do [ -z "$n" ] || [ "${n:0:1}" = "#" ] && continue; board "$n" todo --title "$(title_of "$b")"; done < "$queue"; }
 echo "START $(date '+%F %T')" >> "$log"
+seed_board
 
 while IFS='|' read -r name brief dir attempts; do
   [ -z "$name" ] || [ "${name:0:1}" = "#" ] && continue
   attempts=${attempts:-3}
   start=$(date '+%T')
+  board "$name" doing --branch "$(cd "$dir" && git branch --show-current)" --note "Codex escrevendo"
   (cd "$dir" && "$root/tools/agents/jev-codex.sh" "$name" "$root/$brief" workspace-write < /dev/null > /dev/null 2>&1)
   status="FAIL"
   for n in $(seq 0 "$attempts"); do
@@ -23,6 +29,7 @@ while IFS='|' read -r name brief dir attempts; do
     "$root/tools/dev/vps-test.sh" "$dir" > "$out" 2>&1
     if grep -q "VPS_EXIT=0" "$out"; then status="PASS(fixes=$n)"; break; fi
     [ "$n" -ge "$attempts" ] && break
+    board "$name" fix --agent "$(model_of "$name")" --note "testes falharam na VPS; correção $((n+1)) de $attempts"
     fix="$runs/$name.fix-$((n+1)).md"
     {
       echo "# Correção automática $((n+1)) da tarefa $name"
@@ -47,6 +54,7 @@ Brief: $brief
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" && git push -q) >/dev/null 2>&1
   fi
+  if [[ "$status" == PASS* ]]; then board "$name" done --agent "$(model_of "$name")" --note "$status · cargo test ok na VPS"; else board "$name" failed --agent "$(model_of "$name")" --note "não passou após $attempts correções"; fi
   echo "$name | $start-$(date '+%T') | $status | $summary" >> "$log"
 done < "$queue"
 echo "DONE $(date '+%F %T')" >> "$log"

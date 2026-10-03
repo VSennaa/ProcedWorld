@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="15">
+<title>Quadro dos agentes</title>
+<style>
+  :root { --bg:#f6f7f9; --col:#eceef2; --card:#fff; --text:#1d2330; --muted:#667085; --line:#d7dbe3;
+          --todo:#8a94a6; --doing:#2f6fde; --fix:#d98a00; --done:#2e8b57; --failed:#c0392b; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14171c; --col:#1c2027; --card:#232832; --text:#e6e9ef; --muted:#9aa3b2; --line:#323846; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:16px; background:var(--bg); color:var(--text);
+         font:14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap; }
+  h1 { font-size:18px; margin:0 0 12px; }
+  .meta { color:var(--muted); font-size:12px; }
+  .board { display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); gap:12px; }
+  @media (max-width: 900px) { .board { grid-template-columns:1fr; } }
+  .col { background:var(--col); border-radius:8px; padding:10px; min-height:80px; }
+  .col h2 { font-size:13px; margin:0 0 8px; display:flex; justify-content:space-between; }
+  .card { background:var(--card); border:1px solid var(--line); border-left:4px solid var(--c);
+          border-radius:6px; padding:8px; margin-bottom:8px; overflow-wrap:anywhere; }
+  .card b { display:block; }
+  .card small { color:var(--muted); display:block; }
+  .empty { color:var(--muted); font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Quadro dos agentes — ProcedWorld</h1>
+  <span class="meta" id="meta">sem dados</span>
+</header>
+<div class="board" id="board"></div>
+<script src="board-data.js"></script>
+<script>
+  const COLS = [["todo","Fila"],["doing","Rodando"],["fix","Corrigindo"],["done","Pronto"],["failed","Falhou"]];
+  const data = window.BOARD || { cards: {} };
+  const cards = Object.values(data.cards);
+  document.getElementById("meta").textContent = data.updated ? "atualizado " + data.updated + " · recarrega a cada 15 s" : "sem dados";
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  document.getElementById("board").innerHTML = COLS.map(([key, label]) => {
+    const list = cards.filter(c => c.status === key).sort((a, b) => (b.changed || "").localeCompare(a.changed || ""));
+    const body = list.length ? list.map(c => `
+      <div class="card" style="--c:var(--${key})">
+        <b>${esc(c.id)} · ${esc(c.title)}</b>
+        ${c.agent ? `<small>agente: ${esc(c.agent)}</small>` : ""}
+        ${c.branch ? `<small>branch: ${esc(c.branch)}</small>` : ""}
+        <small>${c.started ? "início " + esc(c.started) : "criado " + esc(c.created)}${c.ended ? " · fim " + esc(c.ended) : ""}</small>
+        ${c.note ? `<small>${esc(c.note)}</small>` : ""}
+      </div>`).join("") : '<div class="empty">—</div>';
+    return `<section class="col"><h2>${label}<span>${list.length}</span></h2>${body}</section>`;
+  }).join("");
+</script>
+</body>
+</html>
