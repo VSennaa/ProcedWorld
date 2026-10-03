@@ -32,3 +32,6 @@ android/build/
 
 # Subagent runs (prompts, logs, Jev decisions)
 /.agent-runs/
+
+# Client exports
+/build/
