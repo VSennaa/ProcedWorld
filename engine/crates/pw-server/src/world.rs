@@ -14,6 +14,7 @@ use std::{
 use pw_engine::{
     governor::{Governor, Mandate, MandatePreset},
     ids::{CivId, TileIndex},
+    entropy::{bundled_catalog, respond_commands, EntropyDirector},
     world::{step, AcceptedCommand, CommandKind, CommandOrigin, CommandPayload, DomainEvent, RejectionReason, SimulationVersions, WorldState},
 };
 use serde_json::{json, Value};
@@ -95,6 +96,8 @@ fn kind_of(payload: &CommandPayload) -> CommandKind {
         CommandPayload::ProposeDiplomacy { .. } => CommandKind::ProposeDiplomacy,
         CommandPayload::BreakTreaty { .. } => CommandKind::BreakTreaty,
         CommandPayload::DeclareWar { .. } => CommandKind::DeclareWar,
+        CommandPayload::ApplyEvent { .. } => CommandKind::ApplyEvent,
+        CommandPayload::RespondToEvent { .. } => CommandKind::RespondToEvent,
     }
 }
 
@@ -260,7 +263,19 @@ impl LiveWorld {
             next_id = next_id.saturating_add(decision.commands.len().max(1) as u64);
             governor_commands.extend(decision.commands.iter().cloned());
             turn_commands.extend(decision.commands);
+            // The Governor also answers pending Entropy events of the civilizations it plays.
+            let responses = respond_commands(&self.state, civ, &self.mandate, next_id, turn_commands.len() as u64 + 1);
+            next_id = next_id.saturating_add(responses.len() as u64);
+            governor_commands.extend(responses.iter().cloned());
+            turn_commands.extend(responses);
         }
+        // World-scoped Entropy director: events are commands with origin Entropy, validated by the engine.
+        let catalog = bundled_catalog();
+        let director = EntropyDirector { catalog: &catalog, decision_port: None };
+        let proposed = director.propose(&self.state, next_id, turn_commands.len() as u64 + 1);
+        next_id = next_id.saturating_add(proposed.len() as u64);
+        governor_commands.extend(proposed.iter().cloned());
+        turn_commands.extend(proposed);
         let sealed = self.state.turn;
         let result = step(&self.state, &turn_commands, self.state.seed, &self.versions);
         self.store

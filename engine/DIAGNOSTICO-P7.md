@@ -276,3 +276,31 @@ grupos, sem guerra e sem eventos climáticos tem `P = 0` legitimamente — e na 
 Entropia nem a guerra entre bots, que são as fontes de `W` e `E` e de choques de `D`. A exigência de
 pressão mínima 10 no teste de saúde foi um erro do brief, não do motor. O teste passa a exigir só o teto
 (≤ 80); o piso volta na Fase 3 junto com o diretor de eventos.
+
+## P12 — piso de pressão média com o diretor de eventos (2026-10-02)
+
+Com a Entropia implementada (`pw-engine/src/entropy.rs`, `dsl.rs`), o cenário de saúde (seed `20261001`,
+8 civilizações, 300 turnos) passou a registrar cerca de 419 eventos, sem colapsos extras e com os demais
+limites do teste mantidos (cidades >= 16, população >= 40, colapsos <= 2). A pressão média continua **0**.
+O piso `>= 10` foi restaurado no teste, medido e **não é alcançável** sob as regras de justiça; por isso o
+teste mantém só o teto (`<= 80`) e uma nova asserção exige que a Entropia realmente abra eventos.
+
+Por que é inalcançável, sem inventar regra:
+
+1. A fórmula canônica (GDD 12) subtrai `C/5`. Com a coesão inicial `C = 50`, o termo vale `-10`: qualquer
+   `P_c` com soma de causas abaixo de 10 é limitado a 0. Para uma média de 10 seria preciso uma soma de
+   causas média próxima de 20 em cada turno de cada civilização.
+2. O orçamento de tensão (GDD 08) é `B = 12 + 2 x civs vivas` por era de 8 turnos, ou seja, 28 pontos para
+   8 civilizações: cerca de 0,44 ponto por civilização por turno. Cada evento custa 1 a 3 pontos, dura
+   1 a 3 turnos e a regra de resposta útil faz o Governador responder já no turno seguinte. A exposição `E`
+   de um evento ativo é o seu custo (GDD 12: modificadores climáticos negativos / 5), portanto um evento
+   soma 2 a 3 a uma única cidade por um turno. A média ponderada por população e por 2.400 amostras fica
+   muito abaixo de 10, e depois do `-10` de coesão resulta em 0.
+3. Aumentar a magnitude dos eventos, fazê-los durar mais, ignorar a resposta do Governador ou adicionar um
+   piso de pressão violaria a justiça (GDD 08: perda previsível, respondível, sem repetir o golpe; nenhum
+   evento causa colapso) ou a fórmula de 12. Nada disso foi feito.
+
+O que ainda permitiria pressão média >= 10 de forma legítima são fontes que o GDD prevê e que não existem
+no motor: guerra entre civilizações (`W`), carga administrativa e crises sistêmicas que reduzam a coesão.
+O critério deve ser reavaliado quando elas existirem (Fase 3, diplomacia e guerra), ou redefinido pelo
+usuário para um cenário com conflito.

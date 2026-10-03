@@ -10,6 +10,8 @@ use crate::{
     hash::{StateHash, StateHasher},
     ids::{CivId, CityId, TileIndex, TurnNumber, UnitId},
     rng::Rng,
+    dsl::EntityRef,
+    entropy::EntropyState,
 };
 
 /// Stable identity of a world. It has no ordering semantics beyond its numeric value.
@@ -211,6 +213,9 @@ pub struct WorldState {
     /// Pair states, directional Ledger and betrayal marks (see `diplomacy`).
     #[serde(default)]
     pub diplomacy: DiplomacyState,
+    /// Budgets, cooldowns, protections, pending events and tags of the Entropy director.
+    #[serde(default)]
+    pub entropy: EntropyState,
 }
 
 impl WorldState {
@@ -316,6 +321,7 @@ impl WorldState {
         }
 
         self.diplomacy.hash_into(&mut hasher);
+        self.entropy.write_hash(&mut hasher);
         hasher.finish()
     }
 }
@@ -434,6 +440,8 @@ pub enum CommandKind {
     ProposeDiplomacy,
     BreakTreaty,
     DeclareWar,
+    ApplyEvent,
+    RespondToEvent,
 }
 
 /// Typed payloads whose variant must agree with `AcceptedCommand::kind`.
@@ -457,6 +465,20 @@ pub enum CommandPayload {
     BreakTreaty { counterpart: CivId },
     /// `objective` is a catalog id (`objective.*`); `cause` is the Ledger entry that justifies the war.
     DeclareWar { target: CivId, objective: String, cause: u64 },
+    /// An Entropy event: a materialized template (effects and choices already bound to one target).
+    ApplyEvent {
+        template_id: String,
+        catalog_hash: u64,
+        category: String,
+        cost: u8,
+        duration: u8,
+        cooldown: u32,
+        target: EntityRef,
+        related: Option<CivId>,
+        ops: Vec<crate::dsl::EffectOp>,
+        choices: Vec<crate::dsl::EventChoice>,
+    },
+    RespondToEvent { event_id: u64, choice_id: String },
 }
 
 impl CommandPayload {
@@ -477,6 +499,8 @@ impl CommandPayload {
             Self::ProposeDiplomacy { .. } => CommandKind::ProposeDiplomacy,
             Self::BreakTreaty { .. } => CommandKind::BreakTreaty,
             Self::DeclareWar { .. } => CommandKind::DeclareWar,
+            Self::ApplyEvent { .. } => CommandKind::ApplyEvent,
+            Self::RespondToEvent { .. } => CommandKind::RespondToEvent,
         }
     }
 
@@ -548,6 +572,17 @@ pub enum RejectionReason {
     RepeatedProposalBlocked,
     UngroundedDiplomacy,
     SelfDiplomacy,
+    EventForbidden,
+    EventInvalid,
+    EventOnCooldown,
+    EventOverBudget,
+    EventProtected,
+    EventBusy,
+    EventUnsafeTarget,
+    EventNoUsefulResponse,
+    EventUnknown,
+    EventChoiceInvalid,
+    EventUnaffordable,
 }
 
 #[derive(Deserialize)]
@@ -720,6 +755,8 @@ fn apply_command(state: &mut WorldState, command: &AcceptedCommand, events: &mut
 
     match &command.payload {
         CommandPayload::EndTurn | CommandPayload::KeepPlan => Ok(()),
+        CommandPayload::ApplyEvent { .. } => crate::entropy::apply_event(state, command),
+        CommandPayload::RespondToEvent { .. } => crate::entropy::respond_to_event(state, command),
         CommandPayload::MoveUnit { unit_id, target } => {
             ensure_tile(state, *target)?;
             let unit = state.units.get(unit_id).ok_or(RejectionReason::UnknownUnit)?;
@@ -1236,7 +1273,7 @@ fn resolve_society(state: &mut WorldState, seed: u64, events: &mut Vec<DomainEve
         if civ.zero_cohesion_turns >= 2 && !civ.frozen { civ.frozen = true; events.push(DomainEvent::CollapseTriggered { civilization: *civ_id }); }
     }
 }
-fn resolve_entropy(_state: &mut WorldState, seed: u64) { let _rng = Rng::derive(seed, "entropy"); }
+fn resolve_entropy(state: &mut WorldState, seed: u64) { crate::entropy::resolve(state, seed); }
 fn resolve_diplomacy(state: &mut WorldState, seed: u64) {
     let _rng = Rng::derive(seed, "diplomacy");
     // Contact: a civilization that currently sees a foreign city or unit has met its owner.
@@ -1361,6 +1398,7 @@ mod tests {
             control: BTreeMap::new(),
             visibility: BTreeMap::new(),
             diplomacy: DiplomacyState::default(),
+            entropy: EntropyState::default(),
         }
     }
 
@@ -1525,6 +1563,8 @@ mod tests {
         let mut expected = initial.clone();
         reset_unit_movement(&mut expected);
         resolve_visibility(&mut expected);
+        // Entropy bookkeeping (era budgets) is a resolution phase, not a command effect.
+        resolve_entropy(&mut expected, 99);
         resolve_diplomacy(&mut expected, 99);
         expected.turn = TurnNumber(1);
         assert_eq!(result.state, expected);

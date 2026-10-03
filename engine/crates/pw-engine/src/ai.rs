@@ -293,7 +293,7 @@ mod tests {
         known.insert(TileIndex(0), Visibility::Visible);
         let mut visibility = BTreeMap::new();
         visibility.insert(CivId(0), known);
-        WorldState { world_id: WorldId(1), turn: TurnNumber::ZERO, seed: 1, ruleset: RulesetRef { id: "test".into(), version: "1".into(), content_hash: 7 }, schema_version: 1, map_width: 1, tiles: vec![TileState::default()], civilizations, cities: BTreeMap::new(), units: BTreeMap::new(), attacks: BTreeMap::new(), control: BTreeMap::new(), visibility, diplomacy: Default::default() }
+        WorldState { world_id: WorldId(1), turn: TurnNumber::ZERO, seed: 1, ruleset: RulesetRef { id: "test".into(), version: "1".into(), content_hash: 7 }, schema_version: 1, map_width: 1, tiles: vec![TileState::default()], civilizations, cities: BTreeMap::new(), units: BTreeMap::new(), attacks: BTreeMap::new(), control: BTreeMap::new(), visibility, diplomacy: Default::default(), entropy: Default::default() }
     }
 
     fn intent(state: &WorldState, grounding: Vec<GroundingRef>) -> ActionIntent {

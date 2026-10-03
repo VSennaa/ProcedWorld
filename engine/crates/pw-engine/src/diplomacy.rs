@@ -320,6 +320,12 @@ impl DiplomacyState {
         created
     }
 
+    /// An Entropy event with a counterparty leaves an incident in the Ledger (holder = affected civilization).
+    pub(crate) fn record_incident(&mut self, turn: TurnNumber, holder: CivId, subject: CivId, duration: u32) -> u64 {
+        let intensity = duration.clamp(1, 10) as u8;
+        self.push(turn, EntryDraft::new(holder, subject, LedgerCategory::Incident, intensity).deltas(0, 2, 0))
+    }
+
     /// First contact: `unknown -> contact`, with one border fact per direction.
     pub(crate) fn establish_contact(&mut self, turn: TurnNumber, a: CivId, b: CivId) -> bool {
         if a == b || self.state(a, b) != RelationState::Unknown { return false; }
@@ -679,7 +685,7 @@ mod tests {
             schema_version: 1, map_width: 5, tiles: vec![TileState::default(); 25],
             civilizations: BTreeMap::from([(A, CivilizationState::default()), (B, CivilizationState::default())]),
             cities: BTreeMap::new(), units: BTreeMap::new(), attacks: BTreeMap::new(), control: BTreeMap::new(),
-            visibility: BTreeMap::new(), diplomacy: DiplomacyState::default(),
+            visibility: BTreeMap::new(), diplomacy: DiplomacyState::default(), entropy: Default::default(),
         }
     }
 

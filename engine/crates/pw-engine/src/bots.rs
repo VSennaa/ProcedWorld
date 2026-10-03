@@ -3,7 +3,7 @@
 use crate::{
     hex::Grid,
     ids::{CivId, CityId, TileIndex},
-    world::{movement_cost, next_technology, queued_food_cost, unit_movement, AcceptedCommand, CityFocus, CommandKind, CommandOrigin, CommandPayload, GroundingRef, WorldState, SETTLER_CITY_ID_BASE, TERRAIN_OCEAN},
+    world::{movement_cost, next_technology, queued_food_cost, unit_movement, AcceptedCommand, CityFocus, CommandOrigin, CommandPayload, GroundingRef, WorldState, SETTLER_CITY_ID_BASE, TERRAIN_OCEAN},
 };
 use std::collections::{BTreeSet, VecDeque};
 
@@ -168,7 +168,7 @@ mod tests {
             } }; 200],
             civilizations: BTreeMap::from([(CivId(0), civ)]), cities: BTreeMap::new(),
             units: BTreeMap::new(), attacks: BTreeMap::new(), control: BTreeMap::new(),
-            visibility: BTreeMap::new(), diplomacy: Default::default(),
+            visibility: BTreeMap::new(), diplomacy: Default::default(), entropy: Default::default(),
         }
     }
 
@@ -282,7 +282,7 @@ mod tests {
     #[test]
     fn first_decision_founds_a_city_with_grounding() {
         let mut civilizations = BTreeMap::new(); civilizations.insert(CivId(0), CivilizationState::default());
-        let state = WorldState { world_id: WorldId(1), turn: TurnNumber::ZERO, seed: 1, ruleset: RulesetRef { id: "test".into(), version: "1".into(), content_hash: 1 }, schema_version: 1, map_width: 2, tiles: vec![TileState::default(); 4], civilizations, cities: BTreeMap::new(), units: BTreeMap::new(), attacks: BTreeMap::new(), control: BTreeMap::new(), visibility: BTreeMap::new(), diplomacy: Default::default() };
+        let state = WorldState { world_id: WorldId(1), turn: TurnNumber::ZERO, seed: 1, ruleset: RulesetRef { id: "test".into(), version: "1".into(), content_hash: 1 }, schema_version: 1, map_width: 2, tiles: vec![TileState::default(); 4], civilizations, cities: BTreeMap::new(), units: BTreeMap::new(), attacks: BTreeMap::new(), control: BTreeMap::new(), visibility: BTreeMap::new(), diplomacy: Default::default(), entropy: Default::default() };
         let proposal = BotT0.decide(&state, CivId(0), TileIndex(3)).pop().unwrap();
         assert!(matches!(proposal.payload, CommandPayload::FoundCity { target: TileIndex(3), .. }));
         assert!(!proposal.grounding.is_empty());

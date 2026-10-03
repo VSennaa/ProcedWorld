@@ -125,6 +125,8 @@ fn slots_for(payload: &CommandPayload) -> Vec<Slot> {
         CommandPayload::EndTurn | CommandPayload::KeepPlan => vec![Slot::Plan],
         // One diplomatic action per civilization and turn, independent of every other slot.
         CommandPayload::ProposeDiplomacy { .. } | CommandPayload::BreakTreaty { .. } | CommandPayload::DeclareWar { .. } => vec![Slot::Diplomacy],
+        // Entropy and event responses are not Governor candidates; they never claim a slot.
+        CommandPayload::ApplyEvent { .. } | CommandPayload::RespondToEvent { .. } => Vec::new(),
     }
 }
 
@@ -212,7 +214,7 @@ fn candidate_from_proposal(index: usize, payload: CommandPayload, mut facts: Vec
         CommandPayload::SetResearchInvestment { .. } | CommandPayload::ActivatePractice { .. } | CommandPayload::DeactivatePractice { .. } => Direction { security: 0, sustenance: 0, development: direction.development, relations: 0 },
         CommandPayload::DeclareAttack { .. } => Direction { security: direction.security, sustenance: 0, development: 0, relations: 0 },
         CommandPayload::MoveUnit { .. } | CommandPayload::Explore { .. } => Direction { security: direction.security, sustenance: 0, development: direction.development, relations: 0 },
-        CommandPayload::EndTurn | CommandPayload::KeepPlan => Direction { security: 0, sustenance: 0, development: 0, relations: 0 },
+        CommandPayload::EndTurn | CommandPayload::KeepPlan | CommandPayload::ApplyEvent { .. } | CommandPayload::RespondToEvent { .. } => Direction { security: 0, sustenance: 0, development: 0, relations: 0 },
         CommandPayload::ProposeDiplomacy { .. } | CommandPayload::BreakTreaty { .. } => Direction { security: 0, sustenance: 0, development: 0, relations: direction.relations },
         CommandPayload::DeclareWar { .. } => Direction { security: direction.security, sustenance: 0, development: 0, relations: direction.relations },
     };
@@ -228,7 +230,7 @@ mod tests {
     use crate::{ids::TurnNumber, world::{CivilizationState, RulesetRef, TileState, WorldId}};
     use std::collections::BTreeMap;
 
-    fn state() -> WorldState { WorldState { world_id: WorldId(1), turn: TurnNumber::ZERO, seed: 1, ruleset: RulesetRef { id: "test".into(), version: "1".into(), content_hash: 1 }, schema_version: 1, map_width: 1, tiles: vec![TileState::default()], civilizations: BTreeMap::from([(CivId(0), CivilizationState::default())]), cities: BTreeMap::new(), units: BTreeMap::new(), attacks: BTreeMap::new(), control: BTreeMap::new(), visibility: BTreeMap::from([(CivId(0), BTreeMap::from([(TileIndex(0), crate::world::Visibility::Visible)]))]), diplomacy: Default::default() } }
+    fn state() -> WorldState { WorldState { world_id: WorldId(1), turn: TurnNumber::ZERO, seed: 1, ruleset: RulesetRef { id: "test".into(), version: "1".into(), content_hash: 1 }, schema_version: 1, map_width: 1, tiles: vec![TileState::default()], civilizations: BTreeMap::from([(CivId(0), CivilizationState::default())]), cities: BTreeMap::new(), units: BTreeMap::new(), attacks: BTreeMap::new(), control: BTreeMap::new(), visibility: BTreeMap::from([(CivId(0), BTreeMap::from([(TileIndex(0), crate::world::Visibility::Visible)]))]), diplomacy: Default::default(), entropy: Default::default() } }
 
     #[test] fn presets_are_valid() { for preset in [MandatePreset::Balanced, MandatePreset::Recover, MandatePreset::GrowCautiously] { assert!(Mandate::preset(preset, 1).valid()); } }
     #[test] fn red_line_blocks_governor_command_in_engine() { let state = state(); let mandate = Mandate::balanced(1); let command = AcceptedCommand { command_id: 1, world_id: state.world_id, turn: state.turn, accepted_sequence: 1, actor_id: CivId(0), origin: CommandOrigin::Governor, kind: crate::world::CommandKind::DeclareAttack, payload: CommandPayload::DeclareAttack { attacker: crate::ids::UnitId(1), target: crate::ids::UnitId(2) }, grounding: Vec::new(), intent_evidence: None, mandate: Some(mandate) }; let versions = crate::world::SimulationVersions { ruleset: state.ruleset.clone(), resolver_version: 1 }; assert!(matches!(crate::world::step(&state, &[command], state.seed, &versions).events.first(), Some(crate::world::DomainEvent::CommandRejected { reason: crate::world::RejectionReason::MandateViolation, .. }))); }

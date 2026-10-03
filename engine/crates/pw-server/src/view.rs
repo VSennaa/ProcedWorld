@@ -50,6 +50,8 @@ pub fn view_for(state: &WorldState, civ: CivId) -> Value {
         "tiles": tiles,
         "cities": cities,
         "units": units,
+        // Entropy events awaiting this civilization's response (other civilizations' are never sent).
+        "pending_events": state.entropy.pending.iter().filter(|(_, event)| event.civilization == civ).map(|(id, event)| json!({ "id": id, "event": event })).collect::<Vec<Value>>(),
     })
 }
 

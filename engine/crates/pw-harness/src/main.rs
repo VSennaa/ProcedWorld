@@ -23,7 +23,7 @@ fn execute(arguments: Vec<String>) -> Result<(), String> {
             let elapsed_ms = started.elapsed().as_secs_f64() * 1_000.0;
             let metrics = run.metrics();
             println!("FINAL {}", run.final_hash().0);
-            println!("cities {} population {} average_pressure {} crises {} collapses {} ms/turn {:.3}", metrics.cities, metrics.population, metrics.average_pressure, metrics.crises, metrics.collapses, elapsed_ms / f64::from(config.turns));
+            println!("cities {} population {} average_pressure {} crises {} collapses {} events {} ms/turn {:.3}", metrics.cities, metrics.population, metrics.average_pressure, metrics.crises, metrics.collapses, metrics.events, elapsed_ms / f64::from(config.turns));
             let accepted = run.audits.iter().filter(|audit| audit.outcome == Some(pw_engine::diplomacy::DiplomaticOutcome::Accepted)).count();
             let rejected = run.audits.iter().filter(|audit| audit.rejection.is_some()).count();
             let ungrounded = run.audits.iter().filter(|audit| !audit.is_grounded(&run.final_state.diplomacy)).count();
