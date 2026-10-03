@@ -3,7 +3,7 @@
 use crate::{
     hex::Grid,
     ids::{CivId, CityId, TileIndex},
-    world::{movement_cost, queued_food_cost, unit_movement, AcceptedCommand, CityFocus, CommandKind, CommandOrigin, CommandPayload, GroundingRef, WorldState, SETTLER_CITY_ID_BASE, TERRAIN_OCEAN},
+    world::{movement_cost, next_technology, queued_food_cost, unit_movement, AcceptedCommand, CityFocus, CommandKind, CommandOrigin, CommandPayload, GroundingRef, WorldState, SETTLER_CITY_ID_BASE, TERRAIN_OCEAN},
 };
 use std::collections::{BTreeSet, VecDeque};
 
@@ -50,11 +50,13 @@ impl BotT0 {
         }
         let civ = &state.civilizations[&civilization];
         if civ.research.is_none() {
-            let technology = if civ.researched_technologies.contains("tech.foraging") { "tech.storage" } else { "tech.foraging" };
-            let mut grounding = base.clone();
-            grounding.push(GroundingRef::Research { technology: technology.into() });
-            proposals.push(BotProposal { payload: CommandPayload::SetResearch { research: technology.into() }, grounding });
-            proposals.push(BotProposal { payload: CommandPayload::SetResearchInvestment { percent: 20 }, grounding: base.clone() });
+            // The next technology in catalog order that is still unknown and whose prerequisites are met.
+            if let Some(technology) = next_technology(&civ.researched_technologies) {
+                let mut grounding = base.clone();
+                grounding.push(GroundingRef::Research { technology: technology.clone() });
+                proposals.push(BotProposal { payload: CommandPayload::SetResearch { research: technology }, grounding });
+                proposals.push(BotProposal { payload: CommandPayload::SetResearchInvestment { percent: 20 }, grounding: base.clone() });
+            }
         }
         // Governors select one command per civilization and turn. Keep proposing
         // the selected investment until it is accepted after research begins.
@@ -80,6 +82,10 @@ impl BotT0 {
             }
             proposals.push(BotProposal { payload: CommandPayload::Explore { unit_id: *unit_id }, grounding });
         }
+        // At most one diplomatic action per turn, always grounded in Ledger entries (diplomacy slot).
+        if let Some((payload, grounding)) = crate::diplomacy::t0_proposal(state, civilization) {
+            proposals.push(BotProposal { payload, grounding });
+        }
         proposals
     }
 }
@@ -90,14 +96,8 @@ pub struct BotProposal { pub payload: CommandPayload, pub grounding: Vec<Groundi
 
 impl BotProposal {
     pub fn accept(self, state: &WorldState, actor_id: CivId, command_id: u64, accepted_sequence: u64) -> AcceptedCommand {
-        let kind = command_kind(&self.payload);
+        let kind = self.payload.kind();
         AcceptedCommand { command_id, world_id: state.world_id, turn: state.turn, accepted_sequence, actor_id, origin: CommandOrigin::Bot, kind, payload: self.payload, grounding: self.grounding, intent_evidence: None, mandate: None }
-    }
-}
-
-fn command_kind(payload: &CommandPayload) -> CommandKind {
-    match payload {
-        CommandPayload::EndTurn => CommandKind::EndTurn, CommandPayload::MoveUnit { .. } => CommandKind::MoveUnit, CommandPayload::FoundCity { .. } => CommandKind::FoundCity, CommandPayload::SetCityFocus { .. } => CommandKind::SetCityFocus, CommandPayload::SetResearch { .. } => CommandKind::SetResearch, CommandPayload::SetResearchInvestment { .. } => CommandKind::SetResearchInvestment, CommandPayload::ActivatePractice { .. } => CommandKind::ActivatePractice, CommandPayload::DeactivatePractice { .. } => CommandKind::DeactivatePractice, CommandPayload::QueueUnit { .. } => CommandKind::QueueUnit, CommandPayload::DeclareAttack { .. } => CommandKind::DeclareAttack, CommandPayload::Explore { .. } => CommandKind::Explore, CommandPayload::KeepPlan => CommandKind::KeepPlan,
     }
 }
 
@@ -168,7 +168,7 @@ mod tests {
             } }; 200],
             civilizations: BTreeMap::from([(CivId(0), civ)]), cities: BTreeMap::new(),
             units: BTreeMap::new(), attacks: BTreeMap::new(), control: BTreeMap::new(),
-            visibility: BTreeMap::new(), ledger: Vec::new(),
+            visibility: BTreeMap::new(), diplomacy: Default::default(),
         }
     }
 
@@ -256,9 +256,33 @@ mod tests {
     }
 
     #[test]
+    fn research_picks_the_next_valid_technology_and_never_repeats_one() {
+        let initial = expansion_world();
+        let versions = crate::world::SimulationVersions { ruleset: initial.ruleset.clone(), resolver_version: 1 };
+        let founding = BotT0.decide(&initial, CivId(0), TileIndex(0)).remove(0).accept(&initial, CivId(0), 1, 1);
+        let mut state = crate::world::step(&initial, &[founding], initial.seed, &versions).state;
+        let research = |state: &WorldState| BotT0.decide(state, CivId(0), TileIndex(0)).into_iter().find_map(|proposal| match proposal.payload {
+            CommandPayload::SetResearch { research } => Some(research),
+            _ => None,
+        });
+        // Foraging and storage are already known; the catalog continues with irrigation.
+        assert_eq!(research(&state).as_deref(), Some("tech.irrigation"));
+        let mut known = std::collections::BTreeSet::new();
+        for _ in 0..40 {
+            let Some(next) = crate::world::next_technology(&known) else { break; };
+            assert!(known.insert(next), "a technology was picked twice");
+        }
+        assert!(crate::world::next_technology(&known).is_none());
+        assert_eq!(known.len(), 17);
+        let civ = state.civilizations.get_mut(&CivId(0)).unwrap();
+        civ.researched_technologies.extend(known);
+        assert_eq!(research(&state), None);
+    }
+
+    #[test]
     fn first_decision_founds_a_city_with_grounding() {
         let mut civilizations = BTreeMap::new(); civilizations.insert(CivId(0), CivilizationState::default());
-        let state = WorldState { world_id: WorldId(1), turn: TurnNumber::ZERO, seed: 1, ruleset: RulesetRef { id: "test".into(), version: "1".into(), content_hash: 1 }, schema_version: 1, map_width: 2, tiles: vec![TileState::default(); 4], civilizations, cities: BTreeMap::new(), units: BTreeMap::new(), attacks: BTreeMap::new(), control: BTreeMap::new(), visibility: BTreeMap::new(), ledger: Vec::new() };
+        let state = WorldState { world_id: WorldId(1), turn: TurnNumber::ZERO, seed: 1, ruleset: RulesetRef { id: "test".into(), version: "1".into(), content_hash: 1 }, schema_version: 1, map_width: 2, tiles: vec![TileState::default(); 4], civilizations, cities: BTreeMap::new(), units: BTreeMap::new(), attacks: BTreeMap::new(), control: BTreeMap::new(), visibility: BTreeMap::new(), diplomacy: Default::default() };
         let proposal = BotT0.decide(&state, CivId(0), TileIndex(3)).pop().unwrap();
         assert!(matches!(proposal.payload, CommandPayload::FoundCity { target: TileIndex(3), .. }));
         assert!(!proposal.grounding.is_empty());

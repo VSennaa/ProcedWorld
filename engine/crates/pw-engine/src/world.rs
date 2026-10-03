@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    diplomacy::{DiplomacyState, DiplomaticAction, DiplomaticResolution, ProposalKind},
     hex::Grid,
     hash::{StateHash, StateHasher},
     ids::{CivId, CityId, TileIndex, TurnNumber, UnitId},
@@ -189,14 +190,6 @@ pub struct AttackReservation {
     pub target_tile: TileIndex,
 }
 
-/// A minimal, ordered diplomatic fact. Later diplomacy work can add typed amounts and decay.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct LedgerEntry {
-    pub from: CivId,
-    pub to: CivId,
-    pub value: i64,
-}
-
 /// Canonical state required by the initial deterministic engine slice.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorldState {
@@ -215,7 +208,9 @@ pub struct WorldState {
     pub attacks: BTreeMap<UnitId, AttackReservation>,
     pub control: BTreeMap<TileIndex, CivId>,
     pub visibility: BTreeMap<CivId, BTreeMap<TileIndex, Visibility>>,
-    pub ledger: Vec<LedgerEntry>,
+    /// Pair states, directional Ledger and betrayal marks (see `diplomacy`).
+    #[serde(default)]
+    pub diplomacy: DiplomacyState,
 }
 
 impl WorldState {
@@ -320,14 +315,7 @@ impl WorldState {
             for (tile, visibility) in tiles { hasher.write_u32(tile.0); hasher.write_u8(visibility_tag(*visibility)); }
         }
 
-        let mut ledger = self.ledger.clone();
-        ledger.sort_unstable_by_key(|entry| (entry.from, entry.to, entry.value));
-        hasher.write_u64(ledger.len() as u64);
-        for entry in ledger {
-            hasher.write_u32(entry.from.0);
-            hasher.write_u32(entry.to.0);
-            hasher.write_i64(entry.value);
-        }
+        self.diplomacy.hash_into(&mut hasher);
         hasher.finish()
     }
 }
@@ -423,6 +411,8 @@ pub enum GroundingRef {
     Tile { tile: TileIndex },
     Turn { turn: TurnNumber },
     Research { technology: String },
+    /// A diplomatic Ledger entry (by index) that involves the acting civilization.
+    Ledger { entry: u64 },
 }
 
 /// Initial set of command kinds. `KeepPlan` is the English name for ManterPlano.
@@ -441,6 +431,9 @@ pub enum CommandKind {
     DeclareAttack,
     Explore,
     KeepPlan,
+    ProposeDiplomacy,
+    BreakTreaty,
+    DeclareWar,
 }
 
 /// Typed payloads whose variant must agree with `AcceptedCommand::kind`.
@@ -459,6 +452,11 @@ pub enum CommandPayload {
     DeclareAttack { attacker: UnitId, target: UnitId },
     Explore { unit_id: UnitId },
     KeepPlan,
+    /// Structured proposal; the engine evaluates the automatic counterpart with `A`.
+    ProposeDiplomacy { recipient: CivId, kind: ProposalKind },
+    BreakTreaty { counterpart: CivId },
+    /// `objective` is a catalog id (`objective.*`); `cause` is the Ledger entry that justifies the war.
+    DeclareWar { target: CivId, objective: String, cause: u64 },
 }
 
 impl CommandPayload {
@@ -476,7 +474,14 @@ impl CommandPayload {
             Self::DeclareAttack { .. } => CommandKind::DeclareAttack,
             Self::Explore { .. } => CommandKind::Explore,
             Self::KeepPlan => CommandKind::KeepPlan,
+            Self::ProposeDiplomacy { .. } => CommandKind::ProposeDiplomacy,
+            Self::BreakTreaty { .. } => CommandKind::BreakTreaty,
+            Self::DeclareWar { .. } => CommandKind::DeclareWar,
         }
+    }
+
+    pub(crate) const fn is_diplomatic(&self) -> bool {
+        matches!(self, Self::ProposeDiplomacy { .. } | Self::BreakTreaty { .. } | Self::DeclareWar { .. })
     }
 }
 
@@ -537,6 +542,12 @@ pub enum RejectionReason {
     TurnOverflow,
     MandateRequired,
     MandateViolation,
+    InvalidDiplomaticTransition,
+    UnknownWarObjective,
+    MissingCasusBelli,
+    RepeatedProposalBlocked,
+    UngroundedDiplomacy,
+    SelfDiplomacy,
 }
 
 #[derive(Deserialize)]
@@ -570,6 +581,13 @@ fn tech_catalog() -> TechCatalog {
         .expect("the bundled technology catalog is valid")
 }
 
+/// The first technology in catalog order that is not researched and whose prerequisites are met.
+pub(crate) fn next_technology(researched: &BTreeSet<String>) -> Option<String> {
+    tech_catalog().technologies.into_iter()
+        .find(|technology| !researched.contains(&technology.id) && technology.prerequisites.iter().all(|required| researched.contains(required)))
+        .map(|technology| technology.id)
+}
+
 fn unit_catalog() -> UnitCatalog {
     serde_json::from_str(include_str!("../../../../data/catalogs/units.json"))
         .expect("the bundled unit catalog is valid")
@@ -597,6 +615,7 @@ pub enum DomainEvent {
     CommandRejected { command_id: u64, reason: RejectionReason },
     PopulationMigrated { from: CityId, to: CityId, group: GroupFunction },
     CollapseTriggered { civilization: CivId },
+    DiplomacyResolved { command_id: u64, actor: CivId, other: CivId, action: DiplomaticAction, resolution: DiplomaticResolution },
 }
 
 /// Result of a pure turn transition.
@@ -642,7 +661,7 @@ pub fn step(
             continue;
         }
 
-        match apply_command(&mut next, command) {
+        match apply_command(&mut next, command, &mut events) {
             Ok(()) => events.push(DomainEvent::CommandApplied { command_id: command.command_id }),
             Err(reason) => events.push(DomainEvent::CommandRejected { command_id: command.command_id, reason }),
         }
@@ -676,7 +695,7 @@ fn ordered_commands(commands: &[AcceptedCommand]) -> Vec<&AcceptedCommand> {
     ordered
 }
 
-fn apply_command(state: &mut WorldState, command: &AcceptedCommand) -> Result<(), RejectionReason> {
+fn apply_command(state: &mut WorldState, command: &AcceptedCommand, events: &mut Vec<DomainEvent>) -> Result<(), RejectionReason> {
     if command.world_id != state.world_id {
         return Err(RejectionReason::WrongWorld);
     }
@@ -803,6 +822,9 @@ fn apply_command(state: &mut WorldState, command: &AcceptedCommand) -> Result<()
             if state.attacks.contains_key(attacker) { return Err(RejectionReason::UnitAlreadyReserved); }
             if hex_distance(state, attacker_state.tile, target_state.tile)? != 1 { return Err(RejectionReason::AttackOutOfRange); }
             state.attacks.insert(*attacker, AttackReservation { attacker: *attacker, target: *target, target_tile: target_state.tile });
+            let (attacker_owner, target_owner) = (attacker_state.owner, target_state.owner);
+            let turn = state.turn;
+            state.diplomacy.record_aggression(turn, command.command_id, attacker_owner, target_owner);
             Ok(())
         }
         CommandPayload::Explore { unit_id } => {
@@ -812,7 +834,39 @@ fn apply_command(state: &mut WorldState, command: &AcceptedCommand) -> Result<()
             unit.explored = true;
             Ok(())
         }
+        CommandPayload::ProposeDiplomacy { recipient, kind } => {
+            ensure_diplomatic_target(state, command, *recipient)?;
+            let turn = state.turn;
+            let resolution = state.diplomacy.propose(turn, command.command_id, command.actor_id, *recipient, *kind)?;
+            events.push(DomainEvent::DiplomacyResolved { command_id: command.command_id, actor: command.actor_id, other: *recipient, action: DiplomaticAction::Propose { kind: *kind }, resolution });
+            Ok(())
+        }
+        CommandPayload::BreakTreaty { counterpart } => {
+            ensure_diplomatic_target(state, command, *counterpart)?;
+            let turn = state.turn;
+            let resolution = state.diplomacy.break_treaty(turn, command.command_id, command.actor_id, *counterpart)?;
+            events.push(DomainEvent::DiplomacyResolved { command_id: command.command_id, actor: command.actor_id, other: *counterpart, action: DiplomaticAction::BreakTreaty, resolution });
+            Ok(())
+        }
+        CommandPayload::DeclareWar { target, objective, cause } => {
+            ensure_diplomatic_target(state, command, *target)?;
+            let turn = state.turn;
+            let resolution = state.diplomacy.declare_war(turn, command.command_id, command.actor_id, *target, objective, *cause)?;
+            events.push(DomainEvent::DiplomacyResolved { command_id: command.command_id, actor: command.actor_id, other: *target, action: DiplomaticAction::DeclareWar { objective: objective.clone() }, resolution });
+            Ok(())
+        }
     }
+}
+
+/// Automated diplomacy must cite a Ledger entry that involves the actor (CLAUDE.md section 2, rule 5).
+fn ensure_diplomatic_target(state: &WorldState, command: &AcceptedCommand, other: CivId) -> Result<(), RejectionReason> {
+    if matches!(command.origin, CommandOrigin::Bot | CommandOrigin::Governor | CommandOrigin::Fallback)
+        && !state.diplomacy.cites_entry(command.actor_id, &command.grounding) {
+        return Err(RejectionReason::UngroundedDiplomacy);
+    }
+    let civilization = state.civilizations.get(&other).ok_or(RejectionReason::UnknownCivilization)?;
+    if civilization.frozen { return Err(RejectionReason::CivilizationFrozen); }
+    Ok(())
 }
 
 fn ensure_tile(state: &WorldState, tile: TileIndex) -> Result<(), RejectionReason> {
@@ -1183,7 +1237,23 @@ fn resolve_society(state: &mut WorldState, seed: u64, events: &mut Vec<DomainEve
     }
 }
 fn resolve_entropy(_state: &mut WorldState, seed: u64) { let _rng = Rng::derive(seed, "entropy"); }
-fn resolve_diplomacy(_state: &mut WorldState, seed: u64) { let _rng = Rng::derive(seed, "diplomacy"); }
+fn resolve_diplomacy(state: &mut WorldState, seed: u64) {
+    let _rng = Rng::derive(seed, "diplomacy");
+    // Contact: a civilization that currently sees a foreign city or unit has met its owner.
+    let mut met = BTreeSet::new();
+    let sightings = state.cities.values().map(|city| (city.owner, city.tile)).chain(state.units.values().map(|unit| (unit.owner, unit.tile)));
+    for (owner, tile) in sightings {
+        for (observer, known) in &state.visibility {
+            if *observer != owner && known.get(&tile) == Some(&Visibility::Visible)
+                && state.civilizations.contains_key(observer) && state.civilizations.contains_key(&owner) {
+                met.insert(if *observer < owner { (*observer, owner) } else { (owner, *observer) });
+            }
+        }
+    }
+    let turn = state.turn;
+    for (low, high) in met { state.diplomacy.establish_contact(turn, low, high); }
+    state.diplomacy.advance(turn);
+}
 fn resolve_synthesis(_state: &mut WorldState, seed: u64) { let _rng = Rng::derive(seed, "synthesis"); }
 
 /// In-memory append-only accepted-command log plus the resulting hash for each resolved turn.
@@ -1290,7 +1360,7 @@ mod tests {
             attacks: BTreeMap::new(),
             control: BTreeMap::new(),
             visibility: BTreeMap::new(),
-            ledger: vec![LedgerEntry { from: CivId(2), to: CivId(1), value: -3 }],
+            diplomacy: DiplomacyState::default(),
         }
     }
 
@@ -1455,6 +1525,7 @@ mod tests {
         let mut expected = initial.clone();
         reset_unit_movement(&mut expected);
         resolve_visibility(&mut expected);
+        resolve_diplomacy(&mut expected, 99);
         expected.turn = TurnNumber(1);
         assert_eq!(result.state, expected);
         assert_eq!(result.events, vec![DomainEvent::CommandRejected {

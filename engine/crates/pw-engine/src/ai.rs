@@ -44,6 +44,7 @@ pub enum IntentRejection {
     UnknownActor,
     KindPayloadMismatch,
     MissingGrounding,
+    MissingLedgerGrounding,
     GroundingDoesNotExist,
     GroundingNotVisible,
     InvalidParameterRange,
@@ -88,6 +89,8 @@ fn validate_intent(state: &WorldState, intent: &ActionIntent, origin: CommandOri
     if !state.civilizations.contains_key(&intent.actor_id) { return Err(IntentRejection::UnknownActor); }
     if intent.kind != intent.parameters.kind() { return Err(IntentRejection::KindPayloadMismatch); }
     if intent.grounding.is_empty() { return Err(IntentRejection::MissingGrounding); }
+    // A diplomatic action must cite at least one Ledger entry that involves the actor.
+    if intent.parameters.is_diplomatic() && !state.diplomacy.cites_entry(intent.actor_id, &intent.grounding) { return Err(IntentRejection::MissingLedgerGrounding); }
     if origin == CommandOrigin::Governor {
         let mandate = mandate.ok_or(IntentRejection::MandateRequired)?;
         if !mandate.allows_payload(&intent.parameters) { return Err(IntentRejection::MandateViolation); }
@@ -124,6 +127,9 @@ fn validate_grounding(state: &WorldState, actor: CivId, reference: &GroundingRef
         }
         GroundingRef::Turn { turn } => {
             if turn.0 > state.turn.0 { return Err(IntentRejection::GroundingDoesNotExist); }
+        }
+        GroundingRef::Ledger { entry } => {
+            if !state.diplomacy.involves(*entry, actor) { return Err(IntentRejection::GroundingDoesNotExist); }
         }
         GroundingRef::Research { technology } => {
             let civilization = state.civilizations.get(&actor).expect("actor was validated");
@@ -287,7 +293,7 @@ mod tests {
         known.insert(TileIndex(0), Visibility::Visible);
         let mut visibility = BTreeMap::new();
         visibility.insert(CivId(0), known);
-        WorldState { world_id: WorldId(1), turn: TurnNumber::ZERO, seed: 1, ruleset: RulesetRef { id: "test".into(), version: "1".into(), content_hash: 7 }, schema_version: 1, map_width: 1, tiles: vec![TileState::default()], civilizations, cities: BTreeMap::new(), units: BTreeMap::new(), attacks: BTreeMap::new(), control: BTreeMap::new(), visibility, ledger: Vec::new() }
+        WorldState { world_id: WorldId(1), turn: TurnNumber::ZERO, seed: 1, ruleset: RulesetRef { id: "test".into(), version: "1".into(), content_hash: 7 }, schema_version: 1, map_width: 1, tiles: vec![TileState::default()], civilizations, cities: BTreeMap::new(), units: BTreeMap::new(), attacks: BTreeMap::new(), control: BTreeMap::new(), visibility, diplomacy: Default::default() }
     }
 
     fn intent(state: &WorldState, grounding: Vec<GroundingRef>) -> ActionIntent {

@@ -9,6 +9,7 @@ pub mod ids;
 pub mod mapgen;
 pub mod rng;
 pub mod bots;
+pub mod diplomacy;
 pub mod ai;
 pub mod governor;
 pub mod world;

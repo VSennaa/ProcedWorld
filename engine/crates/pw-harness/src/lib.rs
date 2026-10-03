@@ -2,13 +2,13 @@
 
 use std::{collections::BTreeMap, fs, path::Path};
 use serde::{Deserialize, Serialize};
-use pw_engine::{governor::{Governor, Mandate, MandatePreset}, hash::StateHash, ids::{CivId, TileIndex, TurnNumber}, mapgen::{generate, Catalog, WorldParams}, rng::Rng, world::{replay, step, CivilizationState, CommandLog, DomainEvent, SimulationVersions, TileState, TileYields, Visibility, WorldId, WorldSnapshot, WorldState, TERRAIN_COAST, TERRAIN_DESERT, TERRAIN_FOREST, TERRAIN_JUNGLE, TERRAIN_OCEAN, TERRAIN_PLAINS, TERRAIN_STEPPE, TERRAIN_SWAMP}};
+use pw_engine::{diplomacy::{audit_records, DiplomaticAudit}, governor::{Governor, Mandate, MandatePreset}, hash::StateHash, ids::{CivId, TileIndex, TurnNumber}, mapgen::{generate, Catalog, WorldParams}, rng::Rng, world::{replay, step, CivilizationState, CommandLog, DomainEvent, SimulationVersions, TileState, TileYields, Visibility, WorldId, WorldSnapshot, WorldState, TERRAIN_COAST, TERRAIN_DESERT, TERRAIN_FOREST, TERRAIN_JUNGLE, TERRAIN_OCEAN, TERRAIN_PLAINS, TERRAIN_STEPPE, TERRAIN_SWAMP}};
 
 pub const SNAPSHOT_INTERVAL: u32 = 100;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)] pub struct RunConfig { pub seed: u64, pub civilizations: u32, pub turns: u32 }
 impl Default for RunConfig { fn default() -> Self { Self { seed: 1, civilizations: 8, turns: 1_000 } } }
 #[derive(Clone, Debug, Serialize, Deserialize)] pub struct StoredRun { pub snapshot: WorldSnapshot, pub log: CommandLog, pub home_tiles: BTreeMap<CivId, TileIndex> }
-#[derive(Clone, Debug)] pub struct SimulationRun { pub stored: StoredRun, pub final_state: WorldState, pub final_events: Vec<DomainEvent>, pressure_sum: u64, pressure_samples: u64 }
+#[derive(Clone, Debug)] pub struct SimulationRun { pub stored: StoredRun, pub final_state: WorldState, pub final_events: Vec<DomainEvent>, pub audits: Vec<DiplomaticAudit>, pressure_sum: u64, pressure_samples: u64 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)] pub struct Metrics { pub cities: u32, pub population: u32, pub average_pressure: u8, pub crises: u32, pub collapses: u32 }
 
 impl SimulationRun {
@@ -25,7 +25,7 @@ pub fn run_simulation(config: RunConfig) -> Result<SimulationRun, String> {
     if config.civilizations == 0 || config.turns == 0 { return Err("civilizations and turns must be greater than zero".into()); }
     let (mut state, versions, homes) = initial_world(config.seed, config.civilizations)?;
     let snapshot = WorldSnapshot::new(state.clone(), versions);
-    let mut log = CommandLog::default(); let mandate = Mandate::preset(MandatePreset::GrowCautiously, 1); let mut command_id = 1_u64; let mut final_events = Vec::new(); let mut pressure_sum = 0_u64; let mut pressure_samples = 0_u64;
+    let mut log = CommandLog::default(); let mandate = Mandate::preset(MandatePreset::GrowCautiously, 1); let mut command_id = 1_u64; let mut final_events = Vec::new(); let mut audits = Vec::new(); let mut pressure_sum = 0_u64; let mut pressure_samples = 0_u64;
     for _ in 0..config.turns {
         let mut commands = Vec::new();
         for civilization in rotating_order(config.seed, state.turn, &homes) {
@@ -38,9 +38,10 @@ pub fn run_simulation(config: RunConfig) -> Result<SimulationRun, String> {
         let turn = state.turn; let result = step(&state, &commands, state.seed, &snapshot.versions);
         pressure_sum = pressure_sum.checked_add(result.state.civilizations.values().map(|civ| u64::from(civ.crisis_pressure)).sum()).ok_or_else(|| "pressure total exhausted".to_string())?;
         pressure_samples = pressure_samples.checked_add(result.state.civilizations.len() as u64).ok_or_else(|| "pressure sample count exhausted".to_string())?;
+        audits.extend(audit_records(&commands, &result.events));
         log.record_turn(turn, result.state_hash); final_events = result.events; state = result.state;
     }
-    Ok(SimulationRun { stored: StoredRun { snapshot, log, home_tiles: homes }, final_state: state, final_events, pressure_sum, pressure_samples })
+    Ok(SimulationRun { stored: StoredRun { snapshot, log, home_tiles: homes }, final_state: state, final_events, audits, pressure_sum, pressure_samples })
 }
 
 pub fn replay_log(stored: &StoredRun) -> Result<StateHash, String> { replay(&stored.snapshot, &stored.log).map(|result| result.state.state_hash()).map_err(|error| format!("replay failed: {error:?}")) }
@@ -69,7 +70,7 @@ fn initial_world(seed: u64, civilizations: u32) -> Result<(WorldState, Simulatio
     for start in &generated.starting_points { let id = CivId(start.civilization); let mut civilization = CivilizationState::default(); civilization.researched_technologies.insert("tech.foraging".into()); civilization_states.insert(id, civilization); homes.insert(id, start.tile); }
     let tiles = generated.tiles.iter().map(|tile| TileState { terrain: terrain(&tile.biome_id), river: false, yields: yields(&tile.biome_id) }).collect();
     let visibility = homes.iter().map(|(civilization, home)| (*civilization, BTreeMap::from([(*home, Visibility::Visible)]))).collect();
-    let state = WorldState { world_id: WorldId(seed), turn: TurnNumber::ZERO, seed, ruleset: generated.ruleset_ref.clone(), schema_version: 1, map_width: generated.grid.width, tiles, civilizations: civilization_states, cities: BTreeMap::new(), units: BTreeMap::new(), attacks: BTreeMap::new(), control: BTreeMap::new(), visibility, ledger: Vec::new() };
+    let state = WorldState { world_id: WorldId(seed), turn: TurnNumber::ZERO, seed, ruleset: generated.ruleset_ref.clone(), schema_version: 1, map_width: generated.grid.width, tiles, civilizations: civilization_states, cities: BTreeMap::new(), units: BTreeMap::new(), attacks: BTreeMap::new(), control: BTreeMap::new(), visibility, diplomacy: Default::default() };
     Ok((state, SimulationVersions { ruleset: generated.ruleset_ref, resolver_version: 1 }, homes))
 }
 fn rotating_order(seed: u64, turn: TurnNumber, homes: &BTreeMap<CivId, TileIndex>) -> Vec<CivId> { let mut order: Vec<_> = homes.keys().copied().collect(); let mut rng = Rng::derive(seed, "bot-order"); for index in (1..order.len()).rev() { order.swap(index, rng.below(index as u32 + 1) as usize); } if !order.is_empty() { let offset = turn.0 as usize % order.len(); order.rotate_left(offset); } order }
@@ -104,6 +105,20 @@ fn yields(biome: &str) -> TileYields { match biome { "forest" => TileYields { fo
 
     #[test] fn one_thousand_bot_turns_complete_without_a_panic() {
         assert_eq!(run_simulation(RunConfig { seed: 84, civilizations: 8, turns: 1_000 }).unwrap().stored.log.turn_hashes.len(), 1_000);
+    }
+
+    #[test] fn every_bot_diplomatic_action_is_audited_with_ledger_grounding() {
+        let run = run_simulation(RunConfig { seed: 20_261_001, civilizations: 8, turns: 300 }).unwrap();
+        let diplomacy = &run.final_state.diplomacy;
+        assert!(!run.audits.is_empty(), "bots never acted diplomatically; contacts: {}", diplomacy.relations.values().map(|row| row.len()).sum::<usize>());
+        for audit in &run.audits {
+            assert!(audit.is_grounded(diplomacy), "ungrounded diplomatic action: {audit:?}");
+            assert!(audit.outcome.is_some() || audit.rejection.is_some(), "action without a recorded decision: {audit:?}");
+            assert_eq!(audit.rules_version, pw_engine::diplomacy::RULES_VERSION);
+        }
+        assert!(run.audits.iter().any(|audit| audit.outcome == Some(pw_engine::diplomacy::DiplomaticOutcome::Accepted)));
+        // Replay reproduces the diplomatic state without any AI call.
+        assert_eq!(replay_log(&run.stored).unwrap(), run.final_hash());
     }
 
     #[test] fn health_simulation_expands_grows_and_avoids_systemic_collapse() {

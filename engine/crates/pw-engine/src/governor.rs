@@ -72,7 +72,9 @@ impl Mandate {
     pub fn scope_mode(&self, scope: Scope) -> ScopeMode { self.scopes[scope as usize] }
     /// This is also used by `IntentValidator`, so direct Governor commands cannot bypass a red line.
     pub fn allows_payload(&self, payload: &CommandPayload) -> bool {
-        !(matches!(payload, CommandPayload::DeclareAttack { .. }) && self.red_lines.contains(&RedLine::NoStartWar))
+        let starts_war = matches!(payload, CommandPayload::DeclareAttack { .. } | CommandPayload::DeclareWar { .. });
+        let breaks_treaty = matches!(payload, CommandPayload::BreakTreaty { .. });
+        !((starts_war && self.red_lines.contains(&RedLine::NoStartWar)) || (breaks_treaty && self.red_lines.contains(&RedLine::NoBreakTreaty)))
     }
 }
 
@@ -107,7 +109,7 @@ pub struct GovernorDecision { pub commands: Vec<AcceptedCommand>, pub report: Go
 /// An exclusive capability (see `docs/sdd/20-matriz-de-conflitos.md`): at most one accepted
 /// command may claim each slot per turn.
 #[derive(Clone, Debug, PartialEq, Eq)]
-enum Slot { Focus(CityId), Queue(CityId), Research, Investment, Unit(UnitId), Destination(TileIndex), Found(CityId), Practice, Plan }
+enum Slot { Focus(CityId), Queue(CityId), Research, Investment, Unit(UnitId), Destination(TileIndex), Found(CityId), Practice, Plan, Diplomacy }
 
 fn slots_for(payload: &CommandPayload) -> Vec<Slot> {
     match payload {
@@ -121,6 +123,8 @@ fn slots_for(payload: &CommandPayload) -> Vec<Slot> {
         CommandPayload::DeclareAttack { attacker, .. } => vec![Slot::Unit(*attacker)],
         CommandPayload::ActivatePractice { .. } | CommandPayload::DeactivatePractice { .. } => vec![Slot::Practice],
         CommandPayload::EndTurn | CommandPayload::KeepPlan => vec![Slot::Plan],
+        // One diplomatic action per civilization and turn, independent of every other slot.
+        CommandPayload::ProposeDiplomacy { .. } | CommandPayload::BreakTreaty { .. } | CommandPayload::DeclareWar { .. } => vec![Slot::Diplomacy],
     }
 }
 
@@ -209,11 +213,13 @@ fn candidate_from_proposal(index: usize, payload: CommandPayload, mut facts: Vec
         CommandPayload::DeclareAttack { .. } => Direction { security: direction.security, sustenance: 0, development: 0, relations: 0 },
         CommandPayload::MoveUnit { .. } | CommandPayload::Explore { .. } => Direction { security: direction.security, sustenance: 0, development: direction.development, relations: 0 },
         CommandPayload::EndTurn | CommandPayload::KeepPlan => Direction { security: 0, sustenance: 0, development: 0, relations: 0 },
+        CommandPayload::ProposeDiplomacy { .. } | CommandPayload::BreakTreaty { .. } => Direction { security: 0, sustenance: 0, development: 0, relations: direction.relations },
+        CommandPayload::DeclareWar { .. } => Direction { security: direction.security, sustenance: 0, development: 0, relations: direction.relations },
     };
-    CandidateAction { id: format!("{:?}-{index}", payload.kind()), scope, payload: payload.clone(), facts, benefits: benefit, opportunity_cost: u8::from(matches!(payload, CommandPayload::Explore { .. })), exposed_risk: 0, irreversible: matches!(payload, CommandPayload::DeclareAttack { .. }) }
+    CandidateAction { id: format!("{:?}-{index}", payload.kind()), scope, payload: payload.clone(), facts, benefits: benefit, opportunity_cost: u8::from(matches!(payload, CommandPayload::Explore { .. })), exposed_risk: 0, irreversible: matches!(payload, CommandPayload::DeclareAttack { .. } | CommandPayload::DeclareWar { .. } | CommandPayload::BreakTreaty { .. }) }
 }
 
-fn scope_for(payload: &CommandPayload) -> Scope { match payload { CommandPayload::SetResearch { .. } | CommandPayload::SetResearchInvestment { .. } | CommandPayload::ActivatePractice { .. } | CommandPayload::DeactivatePractice { .. } => Scope::Technology, CommandPayload::MoveUnit { .. } | CommandPayload::Explore { .. } | CommandPayload::DeclareAttack { .. } => Scope::ExplorationDefense, _ => Scope::CitiesEconomy } }
+fn scope_for(payload: &CommandPayload) -> Scope { match payload { CommandPayload::ProposeDiplomacy { .. } | CommandPayload::BreakTreaty { .. } | CommandPayload::DeclareWar { .. } => Scope::Diplomacy, CommandPayload::SetResearch { .. } | CommandPayload::SetResearchInvestment { .. } | CommandPayload::ActivatePractice { .. } | CommandPayload::DeactivatePractice { .. } => Scope::Technology, CommandPayload::MoveUnit { .. } | CommandPayload::Explore { .. } | CommandPayload::DeclareAttack { .. } => Scope::ExplorationDefense, _ => Scope::CitiesEconomy } }
 fn item(action_id: Option<String>, rule: String, facts: &[GroundingRef]) -> ReportItem { let first = facts.first().cloned().unwrap_or(GroundingRef::Turn { turn: crate::ids::TurnNumber::ZERO }); let second = facts.get(1).cloned().unwrap_or_else(|| first.clone()); ReportItem { action_id, rule, facts: [first, second] } }
 
 #[cfg(test)]
@@ -222,7 +228,7 @@ mod tests {
     use crate::{ids::TurnNumber, world::{CivilizationState, RulesetRef, TileState, WorldId}};
     use std::collections::BTreeMap;
 
-    fn state() -> WorldState { WorldState { world_id: WorldId(1), turn: TurnNumber::ZERO, seed: 1, ruleset: RulesetRef { id: "test".into(), version: "1".into(), content_hash: 1 }, schema_version: 1, map_width: 1, tiles: vec![TileState::default()], civilizations: BTreeMap::from([(CivId(0), CivilizationState::default())]), cities: BTreeMap::new(), units: BTreeMap::new(), attacks: BTreeMap::new(), control: BTreeMap::new(), visibility: BTreeMap::from([(CivId(0), BTreeMap::from([(TileIndex(0), crate::world::Visibility::Visible)]))]), ledger: Vec::new() } }
+    fn state() -> WorldState { WorldState { world_id: WorldId(1), turn: TurnNumber::ZERO, seed: 1, ruleset: RulesetRef { id: "test".into(), version: "1".into(), content_hash: 1 }, schema_version: 1, map_width: 1, tiles: vec![TileState::default()], civilizations: BTreeMap::from([(CivId(0), CivilizationState::default())]), cities: BTreeMap::new(), units: BTreeMap::new(), attacks: BTreeMap::new(), control: BTreeMap::new(), visibility: BTreeMap::from([(CivId(0), BTreeMap::from([(TileIndex(0), crate::world::Visibility::Visible)]))]), diplomacy: Default::default() } }
 
     #[test] fn presets_are_valid() { for preset in [MandatePreset::Balanced, MandatePreset::Recover, MandatePreset::GrowCautiously] { assert!(Mandate::preset(preset, 1).valid()); } }
     #[test] fn red_line_blocks_governor_command_in_engine() { let state = state(); let mandate = Mandate::balanced(1); let command = AcceptedCommand { command_id: 1, world_id: state.world_id, turn: state.turn, accepted_sequence: 1, actor_id: CivId(0), origin: CommandOrigin::Governor, kind: crate::world::CommandKind::DeclareAttack, payload: CommandPayload::DeclareAttack { attacker: crate::ids::UnitId(1), target: crate::ids::UnitId(2) }, grounding: Vec::new(), intent_evidence: None, mandate: Some(mandate) }; let versions = crate::world::SimulationVersions { ruleset: state.ruleset.clone(), resolver_version: 1 }; assert!(matches!(crate::world::step(&state, &[command], state.seed, &versions).events.first(), Some(crate::world::DomainEvent::CommandRejected { reason: crate::world::RejectionReason::MandateViolation, .. }))); }

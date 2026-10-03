@@ -24,6 +24,11 @@ fn execute(arguments: Vec<String>) -> Result<(), String> {
             let metrics = run.metrics();
             println!("FINAL {}", run.final_hash().0);
             println!("cities {} population {} average_pressure {} crises {} collapses {} ms/turn {:.3}", metrics.cities, metrics.population, metrics.average_pressure, metrics.crises, metrics.collapses, elapsed_ms / f64::from(config.turns));
+            let accepted = run.audits.iter().filter(|audit| audit.outcome == Some(pw_engine::diplomacy::DiplomaticOutcome::Accepted)).count();
+            let rejected = run.audits.iter().filter(|audit| audit.rejection.is_some()).count();
+            let ungrounded = run.audits.iter().filter(|audit| !audit.is_grounded(&run.final_state.diplomacy)).count();
+            println!("diplomacy audits {} accepted {} rejected {} ungrounded {} ledger_entries {} betrayal_marks {}", run.audits.len(), accepted, rejected, ungrounded, run.final_state.diplomacy.entries.len(), run.final_state.diplomacy.marks.len());
+            if ungrounded > 0 { return Err("diplomatic actions without verifiable grounding".into()); }
             for (civilization, state) in &run.final_state.civilizations {
                 let cities = run.final_state.cities.values().filter(|city| city.owner == *civilization).count();
                 let population: u32 = run.final_state.cities.values().filter(|city| city.owner == *civilization).map(|city| city.population).sum();
