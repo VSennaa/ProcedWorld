@@ -32,10 +32,12 @@ func _run() -> void:
 	_main = load("res://scenes/main.tscn").instantiate()
 	root.add_child(_main)
 	await _frames(2)
+	_main.SessionStore.forget_token(20261003, 0)  # a token kept from an earlier run belongs to another server
 	_main._on_create_requested(url, 20261003, 4)
 	var live := await _wait(func() -> bool: return _main.mode == _main.Mode.LIVE and _main.world != null and _main.world.live and _main._catalog != null)
 	check(live, "create + join reach the live view with a catalog")
 	if not live:
+		print("mode %d, status: %s" % [_main.mode, _main._connect._status.text])
 		_finish()
 		return
 	check(_main._catalog.techs.size() == 17, "catalog has the 17 technologies")
