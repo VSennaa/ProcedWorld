@@ -179,6 +179,28 @@ aplicável. `W` e `E` são provisórios e não devem ser tratados como balanceam
 
 Correção de alinhamento com a fórmula compartilhada do GDD 12, aplicada em 2026-10-01.
 
+### 4.3 Ordens de unidade (decidido em 2026-10-03)
+
+Cada unidade guarda uma **ordem persistente** e o turno em que foi pulada:
+
+```text
+UnitState { ..., order: UnitOrder, skipped_turn: Option<Turn> }
+UnitOrder = Idle | Fortify | Explore | MoveTo { target: TileIndex }
+```
+
+- Unidade recém-produzida nasce `Idle`. `MoveTo` avança pelo caminho a cada turno (mesma regra de
+  movimento de `MoveUnit`) e volta a `Idle` ao chegar ou se o destino ficar inalcançável.
+  `Explore` volta a `Idle` quando não há tile desconhecido alcançável. `Fortify` só termina por nova
+  ordem. Ordens de construção/melhoria entram quando o motor tiver melhorias (catálogo existente).
+- Comandos: `SetUnitOrder { unit_id, order }` (substitui a ordem) e `SkipUnit { unit_id }`
+  (`skipped_turn = turno atual`, sem efeito mecânico). `MoveUnit` continua sendo o movimento de
+  um turno e não muda a ordem. Ambos validam dono, unidade viva e alvo legal.
+- **Unidade ociosa** = `order == Idle` e `movement_left > 0` e `skipped_turn != turno atual`.
+  Função pura `idle_units(state, civ) -> Vec<UnitId>` em ordem de ID; usada pelo servidor para o
+  bloqueio de `Pronto` e pelo cliente para a fila de atenção.
+- `order` e `skipped_turn` entram no hash de estado. O Governador e os bots T0 emitem
+  `SetUnitOrder` para as próprias unidades como qualquer comando; nenhuma regra os bloqueia.
+
 ## 5. Invariantes verificáveis
 
 - Estoques, população, progresso, capacidade de rota e contadores de turno nunca são negativos.

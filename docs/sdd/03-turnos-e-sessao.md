@@ -28,6 +28,9 @@ agenda, valida o envelope e grava o resultado aceito ou seu fallback.
   em fase própria (GDD 01).
 - Janela técnica de reconexão de 60 s; a lista de humanos presentes é registrada na abertura do
   turno. A janela não é relógio de jogo (decidido em 2026-10-01).
+- **Unidade ociosa bloqueia `Pronto`** (decidido em 2026-10-03, GDD 01): `ReadySet(true)` é
+  recusado com `units_awaiting_orders` enquanto a civilização tiver unidade ociosa (regra em
+  SDD 15 §4.3). Só vale para humanos presentes; bots, Governadores e ausentes nunca são bloqueados.
 
 ## Conceitos e ciclo de vida da sessão
 

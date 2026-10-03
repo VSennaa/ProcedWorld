@@ -64,6 +64,19 @@ Indicadores usam nomes e escalas canônicos: `C`, `L`, `S`, `D`, `G`, `W`, `E` e
 de `docs/gdd/12-variaveis-e-formulas.md`. `P` mostra fatores, não barra opaca; `W` e `E`
 permanecem provisórios até validação no harness.
 
+### Unidades, Pronto e árvore de pesquisa (decidido em 2026-10-03)
+
+- **Unidades no mapa**: toda unidade visível aparece no tile com ícone por papel (`assets/entities`)
+  e cor da civilização; a seleção mostra tipo, movimento restante, vida e ordem atual, com as ações
+  legais **Mover** (toque no destino: `MoveTo`), **Explorar**, **Fortificar** e **Pular**.
+- **Fila de atenção**: a Pauta lista as unidades ociosas (`idle_units`); tocar centraliza o mapa
+  nela. O botão **Pronto** fica desabilitado com o contador "N unidades aguardam ordem"; o servidor
+  é quem garante a regra (`units_awaiting_orders`).
+- **Árvore de pesquisa**: tela só leitura a partir do `catalog`, com pré-requisitos em colunas,
+  tecnologias dominadas, pesquisa atual e progresso. Escolher pesquisa fica para depois.
+- **Conexão**: tela inicial com URL do servidor, criar mundo (seed, civilizações) ou entrar
+  (mundo, civilização); a fixture continua como modo demonstração e nos testes headless.
+
 ## Mapa e interação espacial
 
 O mapa renderiza hexágonos pointy-top em mundo cilíndrico: cruzar borda horizontal faz wrap visual;

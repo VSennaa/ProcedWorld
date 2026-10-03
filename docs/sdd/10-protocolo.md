@@ -138,6 +138,23 @@ Quando todos os humanos presentes estão prontos e as civilizações automatizad
 intenções, o servidor inicia o fechamento. A transição é única e idempotente: duas conexões do
 mesmo usuário não podem fechar o turno duas vezes.
 
+### 5.1 Unidades ociosas e `Pronto` (decidido em 2026-10-03)
+
+`ready` de um humano com unidades ociosas (SDD 15 §4.3) é recusado com o erro
+`units_awaiting_orders` e `detail` listando os IDs. A visão de estado inclui `idle_units` (IDs) e,
+por unidade própria, `order` e `skipped_turn`, para o cliente montar a fila de atenção e desabilitar
+o botão Pronto sem perguntar ao servidor. Novos comandos: `set_unit_order` e `skip_unit` via
+`submit_command` (payload do motor `SetUnitOrder`/`SkipUnit`).
+
+### 5.2 Catálogo para o cliente
+
+Depois de `join`, o servidor envia `catalog` (sem `request_id`) com a árvore de tecnologia
+(`id`, nome, custo, pré-requisitos), os tipos de unidade (`id`, nome, papel, movimento, força) e a
+versão/hash do catálogo. O estado de pesquisa da própria civilização já vem em `civilization`.
+O cliente nunca lê `data/` diretamente.
+
+Correção de implementação: o envelope usa `protocol_version: "1.0"` (texto, §3) em ambos os lados.
+
 ## 6. Comandos, confirmação e resolução
 
 O cliente envia intenção de ação em uma forma que o servidor valida contra estado autoritativo.
