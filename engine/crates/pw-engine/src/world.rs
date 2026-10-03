@@ -1111,7 +1111,9 @@ pub fn idle_units(state: &WorldState, civ: CivId) -> Vec<UnitId> {
 pub fn idle_units_with(state: &WorldState, civ: CivId, pending: &[AcceptedCommand]) -> Vec<UnitId> {
     let effective = effective_unit_orders(state, civ, pending);
     state.units.iter()
-        .filter(|(_, unit)| unit.owner == civ && unit.movement_left > 0)
+        // `movement_left` is not consulted: during the open turn it still holds the previous turn's
+        // leftover, because commands only spend movement when the turn resolves.
+        .filter(|(_, unit)| unit.owner == civ)
         .filter(|(id, unit)| {
             let (order, skipped) = effective.get(*id).copied().unwrap_or((unit.order, unit.skipped_turn));
             order == UnitOrder::Idle && skipped != Some(state.turn.0)
@@ -1130,6 +1132,12 @@ pub fn effective_unit_orders(state: &WorldState, civ: CivId, pending: &[Accepted
                 effective.entry(*unit_id).or_insert((unit.order, unit.skipped_turn)).0 = *order;
             }
             CommandPayload::SkipUnit { unit_id } => {
+                let Some(unit) = state.units.get(unit_id).filter(|unit| unit.owner == civ) else { continue };
+                effective.entry(*unit_id).or_insert((unit.order, unit.skipped_turn)).1 = Some(state.turn.0);
+            }
+            // A one-turn action already accepted for this unit counts as its order for the turn.
+            CommandPayload::MoveUnit { unit_id, .. } | CommandPayload::Explore { unit_id }
+            | CommandPayload::DeclareAttack { attacker: unit_id, .. } => {
                 let Some(unit) = state.units.get(unit_id).filter(|unit| unit.owner == civ) else { continue };
                 effective.entry(*unit_id).or_insert((unit.order, unit.skipped_turn)).1 = Some(state.turn.0);
             }
@@ -2016,6 +2024,18 @@ mod tests {
         assert_eq!(idle_units(&result.state, CivId(1)), vec![UnitId(1)]);
         let fortify = at_turn(command(2, 1, CivId(1), CommandPayload::SetUnitOrder { unit_id: UnitId(1), order: UnitOrder::Fortify }), 1);
         assert!(idle_units_with(&result.state, CivId(1), &[fortify]).is_empty());
+    }
+
+    #[test]
+    fn a_unit_that_spent_all_movement_is_idle_again_next_turn() {
+        let initial = order_world();
+        let walk = command(1, 1, CivId(1), CommandPayload::MoveUnit { unit_id: UnitId(1), target: TileIndex(3) });
+        // An accepted one-turn action counts as the unit's order for the open turn.
+        assert!(idle_units_with(&initial, CivId(1), &[walk.clone()]).is_empty());
+        let result = step(&initial, &[walk], 99, &versions());
+        assert_eq!(rejection_of(&result, 1), None);
+        assert_eq!(result.state.units[&UnitId(1)].movement_left, 0);
+        assert_eq!(idle_units(&result.state, CivId(1)), vec![UnitId(1)]);
     }
 
     #[test]

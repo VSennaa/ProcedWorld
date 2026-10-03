@@ -195,7 +195,9 @@ UnitOrder = Idle | Fortify | Explore | MoveTo { target: TileIndex }
 - Comandos: `SetUnitOrder { unit_id, order }` (substitui a ordem) e `SkipUnit { unit_id }`
   (`skipped_turn = turno atual`, sem efeito mecânico). `MoveUnit` continua sendo o movimento de
   um turno e não muda a ordem. Ambos validam dono, unidade viva e alvo legal.
-- **Unidade ociosa** = `order == Idle` e `movement_left > 0` e `skipped_turn != turno atual`.
+- **Unidade ociosa** = `order == Idle`, `skipped_turn != turno atual` e nenhuma ação de um turno
+  (`MoveUnit`, `Explore`, `DeclareAttack`) já aceita para ela no turno aberto. `movement_left` não
+  entra: no turno aberto ele ainda guarda a sobra do turno anterior.
   Função pura `idle_units(state, civ) -> Vec<UnitId>` em ordem de ID; usada pelo servidor para o
   bloqueio de `Pronto` e pelo cliente para a fila de atenção.
 - `order` e `skipped_turn` entram no hash de estado. O Governador e os bots T0 emitem
