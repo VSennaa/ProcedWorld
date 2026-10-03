@@ -2,6 +2,7 @@
 members = [
     "crates/pw-engine",
     "crates/pw-harness",
+    "crates/pw-server",
 ]
 resolver = "2"
 
