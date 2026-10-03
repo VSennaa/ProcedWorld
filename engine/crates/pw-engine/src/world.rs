@@ -391,6 +391,28 @@ pub enum CommandOrigin {
     System,
 }
 
+/// The layer that supplied an audit record. It has no role in turn resolution.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AiLayer { T0, T1, T2 }
+
+/// Recorded external-call status. These values are audit data, not simulation input.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AiStatus { Ok, Timeout, Unavailable, InvalidOutput }
+
+/// Audit-only provenance recorded with an accepted command. Replay never consults it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IntentEvidence {
+    pub request_id: u64,
+    pub schema_version: u32,
+    pub ruleset_ref: RulesetRef,
+    pub layer: AiLayer,
+    pub status: AiStatus,
+    pub fixture_id: Option<String>,
+    pub fallback_from: Option<AiStatus>,
+}
+
 /// A stable reference to a state fact used to justify an automated decision.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "type", content = "data")]
@@ -440,7 +462,7 @@ pub enum CommandPayload {
 }
 
 impl CommandPayload {
-    const fn kind(&self) -> CommandKind {
+    pub(crate) const fn kind(&self) -> CommandKind {
         match self {
             Self::EndTurn => CommandKind::EndTurn,
             Self::MoveUnit { .. } => CommandKind::MoveUnit,
@@ -471,6 +493,9 @@ pub struct AcceptedCommand {
     pub payload: CommandPayload,
     #[serde(default)]
     pub grounding: Vec<GroundingRef>,
+    /// Audit-only AI provenance. Replay applies this command without consulting it.
+    #[serde(default)]
+    pub intent_evidence: Option<IntentEvidence>,
 }
 
 /// Stable reason codes for command rejection.
@@ -1260,6 +1285,7 @@ mod tests {
             kind: CommandKind::MoveUnit,
             payload: CommandPayload::MoveUnit { unit_id: unit, target: TileIndex(target) },
             grounding: Vec::new(),
+            intent_evidence: None,
         }
     }
 
@@ -1276,7 +1302,7 @@ mod tests {
     }
 
     fn command(id: u64, sequence: u64, actor: CivId, payload: CommandPayload) -> AcceptedCommand {
-        AcceptedCommand { command_id: id, world_id: WorldId(9), turn: TurnNumber::ZERO, accepted_sequence: sequence, actor_id: actor, origin: CommandOrigin::Player, kind: payload.kind(), payload, grounding: Vec::new() }
+        AcceptedCommand { command_id: id, world_id: WorldId(9), turn: TurnNumber::ZERO, accepted_sequence: sequence, actor_id: actor, origin: CommandOrigin::Player, kind: payload.kind(), payload, grounding: Vec::new(), intent_evidence: None }
     }
 
     #[test]
@@ -1382,6 +1408,7 @@ mod tests {
             kind: CommandKind::SetResearch,
             payload: CommandPayload::SetResearch { research: "pottery".into() },
             grounding: Vec::new(),
+            intent_evidence: None,
         };
         let second = step(&first.state, &[second_command.clone()], 99, &versions());
         let mut log = CommandLog::default();

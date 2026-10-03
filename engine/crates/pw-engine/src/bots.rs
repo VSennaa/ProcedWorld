@@ -86,7 +86,7 @@ pub struct BotProposal { pub payload: CommandPayload, pub grounding: Vec<Groundi
 impl BotProposal {
     pub fn accept(self, state: &WorldState, actor_id: CivId, command_id: u64, accepted_sequence: u64) -> AcceptedCommand {
         let kind = command_kind(&self.payload);
-        AcceptedCommand { command_id, world_id: state.world_id, turn: state.turn, accepted_sequence, actor_id, origin: CommandOrigin::Bot, kind, payload: self.payload, grounding: self.grounding }
+        AcceptedCommand { command_id, world_id: state.world_id, turn: state.turn, accepted_sequence, actor_id, origin: CommandOrigin::Bot, kind, payload: self.payload, grounding: self.grounding, intent_evidence: None }
     }
 }
 
