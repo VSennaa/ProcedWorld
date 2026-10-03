@@ -4,7 +4,7 @@
 
 ## Agora
 
-Agente ativo: nenhum (2026-10-03, após P16–P18)
+Agente ativo: alfa mini (2026-10-03) — Codex A1 (`feat/back/alpha-server`, `engine/crates/pw-server`), Opus A2 (`feat/engine/improvements`, `engine/`), Codex A3a–c (`feat/front/alpha-client`, `client/`); worktrees em `D:/PW-wt/`
 
 - **Fase**: **3 — Alfa**. Fase 2 mergeada em `develop` (tag `v0.1.0-indev.1` aguarda o usuário).
 - **`feat/ai/phase3-core`** (98 testes na VPS: 81 motor, 11 harness, 6 servidor), feito em 2026-10-02 com
