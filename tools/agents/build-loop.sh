@@ -56,5 +56,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" && git push -q) >/dev/n
   fi
   if [[ "$status" == PASS* ]]; then board "$name" done --agent "$(model_of "$name")" --note "$status · cargo test ok na VPS"; else board "$name" failed --agent "$(model_of "$name")" --note "não passou após $attempts correções"; fi
   echo "$name | $start-$(date '+%T') | $status | $summary" >> "$log"
+  # Later tasks build on this one: stop instead of cascading failures.
+  if [[ "$status" != PASS* ]]; then echo "STOPPED after $name failed" >> "$log"; break; fi
 done < "$queue"
 echo "DONE $(date '+%F %T')" >> "$log"
