@@ -9,6 +9,10 @@
 - **Ordem de bots e Governadores** (decidido em 2026-10-01): definida pela **seed do mundo**, fixada no
   início da partida, que determina a ordem e o momento de envio de cada civilização automatizada, com
   rotação entre turnos. Reprodutível e sem prioridade fixa para ninguém.
+- **Unidades ociosas bloqueiam Pronto** (decidido em 2026-10-03): unidades jogam no turno do jogador
+  e são produzidas na fila da cidade, como no *Civilization*. Só a unidade **ociosa** (sem ordem em
+  andamento) impede Pronto; ordens de vários turnos (construir, explorar, fortificar, rota) não pedem
+  atenção. **Pular** resolve com um toque e vale só para o turno. Ausente: o Governador decide.
 - Fase de resolução depois das ações: produção, crescimento, Entropia, consolidação de memória.
 
 ## Proposta
@@ -18,7 +22,7 @@
 - **Turno, loop curto:** ler mudança, causa e o que vence em quantos turnos; escolher uma resposta à maior
   pressão; ajustar uma prioridade de cidade ou ordem de unidade; responder a uma oferta; tocar em
   **Pronto**. Proteger abastecimento pode adiar uma obra ou deixar a fronteira exposta. O jogador
-  decide qual compromisso aceita, não precisa distribuir cada unidade todo turno.
+  decide qual compromisso aceita; só dá ordem às unidades ociosas, nunca a todas em todo turno.
 - **Era, loop médio:** no marco de era, examinar coesão, território e relações; escolher foco e
   renúncia, rever o Mandato e confirmar compromissos. Trocar eficiência presente por resiliência
   conecta este loop ao foco proposto em [00-visao.md](00-visao.md) e ao ciclo em
@@ -40,7 +44,8 @@
 - O jogador pode confirmar um lote de ordens em poucos toques. O servidor valida cada comando e
   grava a sequência de aceitação; o lote não recebe prioridade especial. Ordens rejeitadas mostram o
   motivo antes de Pronto e não cobram custo.
-- **Pronto** encerra a edição do jogador naquele turno. Pode ser desfeito enquanto o turno não fechou;
+- **Pronto** encerra a edição do jogador naquele turno e só fica disponível sem unidades ociosas
+  (ordem dada ou Pular). Pode ser desfeito enquanto o turno não fechou;
   comandos já aceitos permanecem e novas ordens entram no fim do log. Quem não quer intervir envia
   **Manter plano** como comando explícito.
 - Quando todos os humanos presentes estão Prontos e as civilizações automatizadas enviaram suas

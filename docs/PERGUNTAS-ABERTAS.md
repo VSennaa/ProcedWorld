@@ -14,15 +14,6 @@ Prioridade ordenada pelo que impede fechar contratos ou aprovar a especificaçã
 
 ## Design de jogo
 
-### Unidades no turno do jogador (levantado pelo usuário em 2026-10-03)
-
-- **Pergunta:** O jogador precisa dar ordem a cada unidade antes de marcar Pronto (estilo *Civilization*), e quais tipos de unidade civil existem (construtor, caçador, pesquisador)?
-- **Origens:** feedback do usuário sobre o cliente rascunho; GDD 01 — Loop e turnos (hoje diz que o jogador "não precisa distribuir cada unidade todo turno"); catálogo `core.units`.
-- **Por que importa:** Contradiz a regra atual do GDD 01 e muda a duração da sessão mobile; produção de unidades seguiria a lógica de fila da cidade do *Civilization*.
-- **Opções:** (1) Pronto bloqueado até toda unidade ter ordem, com atalhos "fortificar/pular/repetir" e ordens persistentes; (2) só unidades ociosas sem ordem persistente bloqueiam; (3) manter a regra atual (Governador completa ordens faltantes).
-- **Recomendação:** (2): unidades com ordem de vários turnos (construir, explorar, fortificar) não pedem atenção; só ociosas bloqueiam, com "pular" de um toque. Avaliar caçador e pesquisador como papéis novos no catálogo.
-- **Bloqueia:** revisão do GDD 01 e do cliente (unidades no mapa).
-
 ### Árvore de pesquisa no cliente (levantado pelo usuário em 2026-10-03)
 
 - **Pergunta:** A tela de tecnologia entra já no cliente mínimo, mesmo só para visualização?
@@ -166,6 +157,10 @@ Prioridade ordenada pelo que impede fechar contratos ou aprovar a especificaçã
 ## Produto
 
 Nenhuma pergunta aberta de produto aparece diretamente nas seções consultadas. A janela de custo diário, que afeta a experiência do jogador, está agrupada em **Infra e segurança** por depender de regra de cobrança/medição a especificar no SDD.
+
+## Decididas em 2026-10-03
+
+- Unidades: só unidades ociosas (sem ordem em andamento) bloqueiam Pronto; Pular com um toque; produção na fila da cidade (GDD 01). Caçador e pesquisador ainda a avaliar no catálogo.
 
 ## Decididas em 2026-10-01
 
