@@ -52,10 +52,13 @@ Nenhum pilar fechou essas fórmulas. Proposta para o SDD validar no harness:
 
 ## Pressão de crise `P` (unifica 00 e 06; decisões de 2026-10-01)
 
-- Por cidade: `P_c = limitar(0, 100, 2·D_c + 2·G_c + W_c + E_c + (100 − S_c) / 10 − C / 5)`.
+- Por cidade: `P_c = limitar(0, 100, 2·D_c + 2·G_c + W_c + E_c + (100 − S_c) / 10 − (C − 50) / 5)`.
+  **Decidido em 2026-10-02**: o termo de coesão é **centrado em 50** (antes `− C / 5`, que tirava 10 pontos
+  com coesão média e impedia crises mesmo com a Entropia ativa — medido no P12). Coesão 50 é neutra;
+  80 alivia 6; 20 soma 6.
   - O termo `(100 − S_c)/10` (0–10) é a estabilidade local com **peso reduzido**, decidido pelo usuário.
     Ele pesa até metade de `W` ou `E` porque `S` já reflete a satisfação dos grupos que entra por `G`.
-  - `C` é a coesão da civilização (0–100); `C/5` vai de 0 a 20.
+  - `C` é a coesão da civilização (0–100); `(C − 50)/5` vai de −10 a +10.
 - Por civilização: `P_civ = média ponderada por população de P_c`.
 - Limiares (00, 01, 06): `P` 40–69 ⇒ aviso e decisão de mitigação; `P ≥ 70` por 2 turnos ⇒ crise
   (local para `P_c`, nacional para `P_civ`); `P_c ≥ 85` com `L < 30` ⇒ revolta elegível (06).
