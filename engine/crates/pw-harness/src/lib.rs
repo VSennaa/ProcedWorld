@@ -155,9 +155,7 @@ fn yields(biome: &str) -> TileYields { match biome { "forest" => TileYields { fo
         assert!(metrics.population >= 40, "expected at least 40 population, got {}", metrics.population);
         assert!(metrics.collapses <= 2, "expected at most two collapses, got {}", metrics.collapses);
         assert!(metrics.events >= 10, "expected the Entropy director to open events, got {}", metrics.events);
-        // Upper bound only: the pressure floor of 10 is unreachable under the GDD 08 fairness rules and the
-        // GDD 12 formula (the cohesion term alone subtracts 10). See engine/DIAGNOSTICO-P7.md, "P12".
-        assert!(metrics.average_pressure <= 80, "expected average pressure at most 80, got {} (events {}, crises {})", metrics.average_pressure, metrics.events, metrics.crises);
+        assert!((10..=80).contains(&metrics.average_pressure), "expected average pressure in 10..=80, got {} (events {}, crises {})", metrics.average_pressure, metrics.events, metrics.crises);
     }
 
     fn entropy_commands(run: &SimulationRun) -> Vec<pw_engine::world::AcceptedCommand> {

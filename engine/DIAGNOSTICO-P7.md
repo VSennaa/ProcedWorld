@@ -304,3 +304,24 @@ O que ainda permitiria pressão média >= 10 de forma legítima são fontes que 
 no motor: guerra entre civilizações (`W`), carga administrativa e crises sistêmicas que reduzam a coesão.
 O critério deve ser reavaliado quando elas existirem (Fase 3, diplomacia e guerra), ou redefinido pelo
 usuário para um cenário com conflito.
+
+# Diagnóstico P12b — pressão de crise
+## Execução de referência
+- Ambiente: VPS Linux, Docker `rust:1-slim`.
+- Comando: `cargo test --workspace`.
+- Cenário: `health_simulation_expands_grows_and_avoids_systemic_collapse`.
+- Pressão média observada: `4`.
+- Piso exigido: `10`.
+- Eventos da Entropia: `253`.
+- Crises locais: `0`.
+## Verificação da fórmula
+A implementação de `P_c` usa o termo de coesão decidido no P12b:
+`- (C - 50) / 5`
+O teste unitário de pressão também cobre a fórmula centrada: com `C = 49`, o termo
+trunca para `0`, e a pressão local calculada é `66`.
+## Conclusão
+Com os pesos, catálogo e limites atuais, a fórmula centrada não torna o piso de pressão
+média `>= 10` atingível no cenário de saúde de referência. O teste de saúde foi mantido
+inalterado; não foram alterados seus limites, a ordem de resolução ou o balanceamento da
+Entropia, pois essas mudanças excederiam o escopo do P12b. É necessária uma decisão de
+balanceamento para elevar a pressão sem enfraquecer esse gate.
