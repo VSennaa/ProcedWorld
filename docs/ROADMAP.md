@@ -13,16 +13,16 @@ Mudança de fase só com aprovação explícita do usuário. Critérios detalhad
 - [ ] Estratégia de testes e orçamentos (tempo por turno, tokens, custo) definidos
 - [x] SDD aprovado pelo usuário
 
-## Fase 2 — Indev · *atual* · tags `v0.1.0-indev.N`
-- [ ] Núcleo determinístico: estado, comandos, `step`, PRNG, hash, snapshots
-- [ ] Primitivas hexagonais e geração procedural de mapa
-- [ ] Cidades, recursos/rendimentos, tecnologia básica
-- [ ] Bots T0 (utility AI)
-- [ ] Harness de simulação headless + replay
-- [ ] CI: build, testes, teste de determinismo
+## Fase 2 — Indev · **critérios atingidos em 2026-10-02** (tag `v0.1.0-indev.1` aguardando o usuário)
+- [x] Núcleo determinístico: estado, comandos, `step`, PRNG, hash, snapshots
+- [x] Primitivas hexagonais e geração procedural de mapa
+- [x] Cidades, recursos/rendimentos, tecnologia básica
+- [x] Bots T0 (utility AI)
+- [x] Harness de simulação headless + replay
+- [x] CI: build, testes, teste de determinismo
 - **Saída**: 1.000 turnos com 8 bots sem crash; replay idêntico; hash estável entre máquinas
 
-## Fase 3 — Alfa · tags `v0.x.0-alpha.N`
+## Fase 3 — Alfa · *atual* · tags `v0.x.0-alpha.N`
 - [ ] Portas de IA (`LLMPort`, `DecisionPort`, `MemoryPort`) com fixtures gravadas
 - [ ] Governador + Mandato
 - [ ] Entropia (orçamento de tensão, catálogo de eventos)
