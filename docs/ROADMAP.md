@@ -6,14 +6,14 @@ Mudança de fase só com aprovação explícita do usuário. Critérios detalhad
 - [x] GDD completo
 - [x] GDD aprovado pelo usuário
 
-## Fase 1 — Especificação · *atual*
+## Fase 1 — Especificação · **concluída em 2026-10-02**
 - [ ] SDD de cada subsistema (`docs/sdd/`)
 - [x] ADR-0007 (stack) aceito, com spikes de validação
 - [ ] Protocolo cliente-servidor versionado
 - [ ] Estratégia de testes e orçamentos (tempo por turno, tokens, custo) definidos
-- [ ] SDD aprovado pelo usuário
+- [x] SDD aprovado pelo usuário
 
-## Fase 2 — Indev · tags `v0.1.0-indev.N`
+## Fase 2 — Indev · *atual* · tags `v0.1.0-indev.N`
 - [ ] Núcleo determinístico: estado, comandos, `step`, PRNG, hash, snapshots
 - [ ] Primitivas hexagonais e geração procedural de mapa
 - [ ] Cidades, recursos/rendimentos, tecnologia básica

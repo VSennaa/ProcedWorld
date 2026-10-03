@@ -150,3 +150,13 @@ Fonte: `docs/licoes-aprendidas.md` do projeto DynMagic (orquestração parecida)
 **Loop de crítico cego contra referência** (skill `gauntlet-loop`): não é padrão do projeto. Usar
 seletivamente onde há referência concreta e julgamento subjetivo — cliente/UX e arte na Fase 3+ —, e
 não no motor, que tem testes determinísticos objetivos.
+
+## 5. Quadro kanban dos agentes
+
+- Os scripts de fila (`run-queue.sh`, `build-loop.sh`) movem os cartões sozinhos: Fila → Rodando →
+  Corrigindo → Pronto/Falhou. Os subagentes **não gastam tokens** com o quadro.
+- Atualização manual (uma linha): `python tools/board/update.py <id> <todo|doing|fix|done|failed> --note "..."`.
+- Local: abrir `.agent-runs/board.html` no navegador (recarrega a cada 15 s).
+- Remoto (VPS): exportar `BOARD_REMOTE=deploy@<VPS_HOST>` ao lançar as filas; o quadro é servido pelo
+  container `pw-board` (nginx) em `127.0.0.1:8110` no host, só por túnel:
+  `ssh -L 8110:127.0.0.1:8110 deploy@<VPS_HOST>` e abrir `http://localhost:8110/board.html`.

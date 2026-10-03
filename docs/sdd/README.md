@@ -1,10 +1,12 @@
 # SDD — Software Design Document
 
-> **Fase 1.** Não iniciar antes da aprovação do GDD. Um arquivo por subsistema, cada um com:
+> **Aprovado pelo usuário em 2026-10-02** (Fase 1 encerrada). As recomendações marcadas em
+> `GUIA-DE-REVISAO.md` valem como escolhas aprovadas e podem ser revistas por ADR.
+> Antes: Um arquivo por subsistema, cada um com:
 > responsabilidades, interfaces/contratos, modelo de dados, invariantes, falhas e fallbacks,
 > orçamento (tempo/tokens/custo), estratégia de testes e ADRs relacionados.
 
-## Subsistemas (rascunhos de 2026-10-01, não aprovados)
+## Subsistemas (aprovados em 2026-10-02)
 
 | Arquivo | Subsistema |
 |---|---|

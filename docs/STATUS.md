@@ -4,38 +4,19 @@
 
 ## Agora
 
-Agente ativo: nenhum
+Agente ativo: Claude + build loop (Codex) em `feat/engine/core`, área `engine/` e `.github/`
 
-- **Fase**: **1 — Especificação** (GDD aprovado pelo usuário em 2026-10-01; Fase 0 encerrada).
-- **Branch**: `develop` recebeu o GDD aprovado e os rascunhos de SDD. Próximo trabalho em `docs/sdd/*`,
-  `docs/research/*` e `feat/front/asset-prototype`.
-- **Decidido em 2026-10-01 (lote final)**: stack aceita (ADR-0007); chave T1 do operador (ADR-0002);
-  Laya só no final (ADR-0005); magia com 3–5 fenômenos sistêmicos; interferir na Entropia custa rituais,
-  sacrifícios e pesquisas proibidas; direção de arte 2D estilizada (GDD 13); itens técnicos da revisão
-  cruzada decididos (ver `docs/sdd/REVISAO-CRUZADA.md`).
-- **Próximo passo**: revisão do SDD com o usuário (2 a 2, como no GDD) e aprovação → Fase 2.
-- **Feito na madrugada de 2026-10-02**: 4 estudos em `docs/research/` (outros jogos, sandbox e mundos
-  emergentes, IA com LLM em jogos, integrações técnicas) com fontes via busca na web do Codex; protótipo de
-  assets em `assets/` (89 SVGs de tiles por bioma com overlays, 26 ícones × 3 variantes, gerados por
-  `tools/assets/*.py`, determinísticos, CC0) — ver `assets/preview.html`.
-- **Feito em 2026-10-02 06:15–07:00 (fila sequencial no Codex)**: decisões sincronizadas nos SDDs e
-  `PERGUNTAS-ABERTAS.md` atualizado; catálogos-rascunho em `data/catalogs/` com validador
-  (`tools/catalogs/validate.py`); síntese dos estudos em `docs/research/SINTESE.md` (top 10 propostas);
-  spike `spike/back/protocol-serialization` (chunk 8×8 = 12,5 KiB JSON / 1,5 KiB gzip; `Option<Option>`
-  quebra em JSON → usar patch de três estados); spike `spike/front/godot-hex-render` (Godot 4.7, testes
-  headless passam, screenshot). No PC, o Smart App Control bloqueia executáveis recém-compilados
-  (build scripts do cargo); compilação Rust roda na VPS em Docker.
-- **Feito em 2026-10-02 11:30–12:05 (fila 2 no Codex, autônomo)**: `docs/sdd/GUIA-DE-REVISAO.md` (pares de
-  revisão com 39 perguntas de múltipla escolha); catálogos v2 (10 unidades, 14 edifícios, 12 melhorias,
-  24 eventos; validador ok); assets v2 em `assets/entities/` (138 SVGs, determinísticos); sucessão e
-  entrada tardia como comandos (SDD 15/17, RC2-03); SDDs 19 (retenção), 20 (conflitos), 21
-  (notificações); glossário sincronizado; spike Godot v2 (continentes, rios, fronteiras, névoa,
-  recursos; testes headless ok).
-- **Próximo passo**: revisão do SDD 2 a 2 seguindo `docs/sdd/GUIA-DE-REVISAO.md` → aprovação → Fase 2.
-- **Pendente para o usuário**: avaliar o visual em `assets/preview.html`; atualizar
-  `docs/PERGUNTAS-ABERTAS.md` com as decisões de 2026-10-01; revisão do SDD 2 a 2.
-- **Cotas (00:10)**: Claude 68% (5 h) / 77% (semana); Codex 95% (5 h) / 46% (semana) — Codex esgotado
-  até o reset da janela de 5 h.
+- **Fase**: **2 — Indev**. GDD aprovado em 2026-10-01; **SDD aprovado em 2026-10-02** (recomendações do
+  `docs/sdd/GUIA-DE-REVISAO.md` valem como escolhas aprovadas, revisáveis por ADR).
+- **Motor** (`engine/`, branch `feat/engine/core`): P1–P6 prontos e testados na VPS (33 testes): PRNG,
+  hash, hex em cilindro, estado/`step`/replay, mapa procedural, cidades/economia/pressão, tecnologia,
+  unidades, combate, bots T0, harness. 1.000 turnos com 8 bots sem crash e replay idêntico
+  (`FINAL 4045166529647992208`, ~0,8 ms/turno), **mas a simulação estava degenerada** (nenhuma expansão,
+  8 colapsos) — P7 corrige com teste de saúde; P8 cria a CI de determinismo em 3 plataformas.
+- **Como compilar**: no PC o Smart App Control bloqueia binários recém-compilados; usar
+  `VPS_SSH=deploy@<VPS_HOST> tools/dev/vps-test.sh` (Docker na VPS) ou a CI.
+- **Próximo passo**: após P7/P8 verdes, mergear `feat/engine/core` em `develop`; depois Fase 3 (portas de IA,
+  Governador, Entropia, diplomacia, servidor, cliente mínimo).
 
 ## Turno da noite (2026-10-01 22:30 → 23:10)
 

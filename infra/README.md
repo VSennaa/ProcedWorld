@@ -46,6 +46,16 @@ Para dar **push** a partir da VPS, cadastre a chave pública do `deploy`
 (`~deploy/.ssh/id_ed25519_github.pub`) no GitHub em *Settings → Deploy keys* do repositório,
 marcando **Allow write access**. O clone já está configurado para fazer push via SSH com essa chave.
 
+## Proxy reverso e quadro dos agentes (2026-10-02)
+
+- **Caddy** (container `caddy`, rede `proxy`) é o único serviço com porta pública (80/443), com HTTPS
+  automático (Let's Encrypt) no hostname da VPS. Config em `/opt/infra/caddy/Caddyfile` (no host, `chmod 600`).
+- Hoje ele só serve o **quadro kanban dos agentes** (`pw-board`, nginx somente leitura) atrás de HTTP Basic.
+  Endereço: `https://<hostname da VPS>/board.html`.
+- **Senha rotacionada a cada sprint**: no host, `/opt/infra/caddy/rotate-board-password.sh` (cópia em
+  `infra/scripts/`) gera uma senha nova, guarda só o hash bcrypt, recarrega o Caddy e imprime a senha uma vez.
+- O quadro também continua acessível só por túnel em `127.0.0.1:8110`.
+
 ## Ainda não existe (vem no SDD/Fase 2+)
 
 - `docker-compose.yml` da stack, proxy reverso com TLS, CI/CD de deploy, backups do PostgreSQL.
