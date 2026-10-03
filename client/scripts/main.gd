@@ -4,7 +4,8 @@ extends Control
 ## use the fixtures in res://fixtures and never touch the network.
 ##
 ## Startup arguments (after `--`): --demo=pauta|servidor  --server=<ws url>  --screen=<id>
-## --select-capital  --select-unit=<id>
+## --select-capital  --select-unit=<id>  --no-city (servidor demo: world without cities)
+## --select-city=<id> (servidor demo: open the city card)
 
 const WorldView := preload("res://scripts/world_view.gd")
 const ServerView := preload("res://scripts/server_view.gd")
@@ -16,6 +17,7 @@ const AgendaView := preload("res://scripts/agenda_view.gd")
 const MapView := preload("res://scripts/map_view.gd")
 const TechView := preload("res://scripts/tech_view.gd")
 const UnitPanel := preload("res://scripts/unit_panel.gd")
+const CityPanel := preload("res://scripts/city_panel.gd")
 const ConnectView := preload("res://scripts/connect_view.gd")
 const NetClient := preload("res://scripts/net_client.gd")
 
@@ -37,6 +39,14 @@ const PLACEHOLDERS := {
 	"sociedade": "O que sustenta a civilização: coesão, crises e focos permitidos.",
 	"relacoes": "Em quem confiar e o que é devido: ledger, tratados e propostas.",
 	"cronica": "O que aconteceu e quanto custou a IA: fatos, narrativa e consumo.",
+}
+const ENGINE_REASON_TEXT := {
+	"CityAlreadyExists": "Esse identificador de cidade já existe.",
+	"CityTileOccupied": "Já existe uma cidade nesse tile.",
+	"MissingSettler": "É preciso um colono nesse tile para fundar uma cidade.",
+	"UnitTechnologyNotResearched": "A tecnologia dessa unidade ainda não foi dominada.",
+	"UnknownCity": "Cidade desconhecida.",
+	"NotCommandOwner": "Essa cidade não é sua.",
 }
 const ERROR_TEXT := {
 	"protocol_version_mismatch": "Versão do protocolo incompatível com o servidor.",
@@ -71,6 +81,8 @@ var _inflight: Dictionary = {}  # request id -> {kind, unit_id, order_kind, orde
 var _overrides: Array = []      # accepted local orders of the open turn, re-applied on refresh
 var _overrides_turn := -1
 var _selected_unit := -1
+var _selected_city := -1
+var _founding_selected := false  # the starting tile (no city yet) is selected
 var _move_mode := false
 var _fresh := true  # next installed view is the first of a session (recenter, show the Pauta)
 var _screens: Dictionary = {}
@@ -85,6 +97,7 @@ var _agenda
 var _map
 var _tech
 var _unit_panel
+var _city_panel
 
 
 func _ready() -> void:
@@ -110,6 +123,11 @@ func _ready() -> void:
 				for other in args:
 					if other.begins_with("--select-unit="):
 						_select_unit(int(other.trim_prefix("--select-unit=")))
+					elif other.begins_with("--select-city="):
+						_select_city(int(other.trim_prefix("--select-city=")))
+					elif other == "--select-home" and world.needs_capital():
+						_map.focus_cell(world.home_cell)
+						_select_city(-1)
 			return
 	_show_connect()
 
@@ -167,6 +185,8 @@ func _build_shell() -> void:
 	_agenda.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_agenda.ready_pressed.connect(_on_ready_pressed)
 	_agenda.unit_focus_requested.connect(_on_unit_focus_requested)
+	_agenda.capital_focus_requested.connect(_on_capital_focus_requested)
+	_agenda.found_capital_requested.connect(_on_found_capital_requested)
 	content.add_child(_agenda)
 	_screens["pauta"] = _agenda
 
@@ -198,6 +218,17 @@ func _build_shell() -> void:
 	_unit_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	_unit_panel.action_requested.connect(_on_unit_action)
 	map_holder.add_child(_unit_panel)
+	_city_panel = CityPanel.new()
+	_city_panel.anchor_left = 0.0
+	_city_panel.anchor_right = 1.0
+	_city_panel.anchor_top = 1.0
+	_city_panel.anchor_bottom = 1.0
+	_city_panel.offset_bottom = -64
+	_city_panel.offset_top = -64
+	_city_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_city_panel.queue_requested.connect(_on_queue_requested)
+	_city_panel.found_capital_requested.connect(_on_found_capital_requested)
+	map_holder.add_child(_city_panel)
 	_screens["mapa"] = map_holder
 
 	_tech = TechView.new()
@@ -347,6 +378,9 @@ func _on_leave_pressed() -> void:
 	_pending_action = {}
 	_joined = false
 	_unit_panel.clear()
+	_city_panel.clear()
+	_selected_city = -1
+	_founding_selected = false
 	_set_move_mode(false)
 	var last := SessionStore.load_last(_url)
 	_connect.build(_url, last["world_id"], last["civ"])
@@ -441,7 +475,7 @@ func _on_command_accepted(request_id: String) -> void:
 		return
 	var meta: Dictionary = _inflight[request_id]
 	_inflight.erase(request_id)
-	if meta["kind"] in ["order", "skip"]:
+	if meta["kind"] in ["order", "skip", "found", "queue"]:
 		_overrides.append(meta)
 		_apply_override(meta)
 		_refresh_units()
@@ -454,7 +488,8 @@ func _on_error(request_id: String, payload: Dictionary) -> void:
 	var text: String = ERROR_TEXT.get(reason, "Erro do servidor: %s" % reason)
 	var detail := String(payload.get("detail", ""))
 	if reason == "command_rejected" and payload.get("engine_reason") != null:
-		text += " (%s)" % String(payload["engine_reason"])
+		var engine_reason := String(payload["engine_reason"])
+		text = ENGINE_REASON_TEXT.get(engine_reason, "%s (%s)" % [text, engine_reason])
 	elif not detail.is_empty() and reason != "units_awaiting_orders" and not ERROR_TEXT.has(reason):
 		text += " (%s)" % detail
 	if not _joined:
@@ -484,6 +519,10 @@ func _start_demo(kind: String) -> void:
 		if typeof(data) != TYPE_DICTIONARY:
 			_connect.set_status("Não foi possível abrir a fixture da visão do servidor.", true)
 			return
+		if "--no-city" in OS.get_cmdline_user_args():
+			data.erase("cities")
+			data["home_tile"] = 178
+			data["idle_units"] = []
 		_last_payload = data
 		parsed = ServerView.from_payload(data, _catalog)
 	else:
@@ -522,6 +561,7 @@ func _populate(first: bool) -> void:
 		_resource_box.add_child(label)
 	_agenda.build(world.agenda, world.turn)
 	_agenda.set_idle_units(_idle_entries())
+	_refresh_capital_card()
 	if mode == Mode.LIVE:
 		_agenda.set_status("")
 	else:
@@ -529,12 +569,10 @@ func _populate(first: bool) -> void:
 	_map.set_view(world, first)
 	_map.set_selected_unit(_selected_unit if not world.unit_by_id(_selected_unit).is_empty() else -1)
 	_refresh_tech()
-	if _selected_unit >= 0:
-		if world.unit_by_id(_selected_unit).is_empty():
-			_selected_unit = -1
-			_unit_panel.clear()
-		else:
-			_unit_panel.show_unit(world.unit_by_id(_selected_unit), world.turn)
+	if _selected_unit >= 0 and world.unit_by_id(_selected_unit).is_empty():
+		_selected_unit = -1
+		_unit_panel.clear()
+	_refresh_panels()
 
 
 func _chips() -> Array:
@@ -567,10 +605,33 @@ func _idle_entries() -> Array:
 
 func _refresh_units() -> void:
 	_agenda.set_idle_units(_idle_entries())
+	_refresh_capital_card()
 	_map.set_view(world, false)
 	_map.set_selected_unit(_selected_unit)
+	_refresh_panels()
+
+
+func _refresh_capital_card() -> void:
+	var cell: Vector2i = world.home_cell if world.needs_capital() else Vector2i(-1, -1)
+	_agenda.set_capital_card(cell, world.is_founding(world.home_cell))
+
+
+## Redraws whichever bottom card is open (unit, city or starting tile) from the current view.
+func _refresh_panels() -> void:
 	if _selected_unit >= 0 and not world.unit_by_id(_selected_unit).is_empty():
-		_unit_panel.show_unit(world.unit_by_id(_selected_unit), world.turn)
+		var unit: Dictionary = world.unit_by_id(_selected_unit)
+		_unit_panel.show_unit(unit, world.turn, world.tile_at(unit["cell"]))
+	if _selected_city >= 0:
+		var city: Dictionary = world.city_by_id(_selected_city)
+		if city.is_empty() or not city["own"]:
+			_clear_city_selection()
+		else:
+			_city_panel.show_city(city, _catalog, world.research)
+	elif _founding_selected:
+		if world.needs_capital():
+			_city_panel.show_founding(world.home_cell, world.is_founding(world.home_cell))
+		else:
+			_clear_city_selection()
 
 
 func _report(text: String, is_error: bool) -> void:
@@ -594,20 +655,48 @@ func _on_cell_selected(cell: Vector2i) -> void:
 		return
 	var parts: Array[String] = ["(%d, %d)" % [cell.x, cell.y], BIOME_NAMES.get(tile["biome"], tile["biome"])]
 	if tile.has("city"):
-		parts.append("cidade de %s" % tile["city"]["name"])
+		parts.append(tile["city"]["name"])
 	if tile.has("resource"):
 		parts.append("recurso: %s" % tile["resource"])
 	parts.append("visível" if tile["fog"] == "visible" else "lembrado")
 	_tile_info.text = " · ".join(parts)
-	var stack: Array = world.units_at(cell)
-	if stack.is_empty():
+	# Tapping the same tile again cycles through its stack: own city (or the starting tile), then units.
+	var entries: Array = []
+	var city: Dictionary = world.city_at(cell)
+	if not city.is_empty() and city["own"]:
+		entries.append({"city": city["id"]})
+	elif city.is_empty() and world.needs_capital() and cell == world.home_cell:
+		entries.append({"home": true})
+	for unit in world.units_at(cell):
+		entries.append({"unit": unit["id"]})
+	if entries.is_empty():
 		_clear_unit_selection()
+		_clear_city_selection()
 		return
 	var pick := 0
-	for i in stack.size():
-		if stack[i]["id"] == _selected_unit:
-			pick = (i + 1) % stack.size()  # tapping the same tile again cycles through the stack
-	_select_unit(stack[pick]["id"])
+	for i in entries.size():
+		var entry: Dictionary = entries[i]
+		if (entry.has("unit") and entry["unit"] == _selected_unit) or (entry.has("city") and entry["city"] == _selected_city) or (entry.has("home") and _founding_selected):
+			pick = (i + 1) % entries.size()
+	var chosen: Dictionary = entries[pick]
+	if chosen.has("unit"):
+		_select_unit(chosen["unit"])
+	else:
+		_clear_unit_selection()
+		_select_city(chosen["city"] if chosen.has("city") else -1)
+
+
+func _select_city(city_id: int) -> void:
+	_set_move_mode(false)
+	_selected_city = city_id
+	_founding_selected = city_id < 0
+	_refresh_panels()
+
+
+func _clear_city_selection() -> void:
+	_selected_city = -1
+	_founding_selected = false
+	_city_panel.clear()
 
 
 func _clear_unit_selection() -> void:
@@ -622,8 +711,9 @@ func _select_unit(unit_id: int) -> void:
 	if unit.is_empty():
 		return
 	_set_move_mode(false)
+	_clear_city_selection()
 	_selected_unit = unit_id
-	_unit_panel.show_unit(unit, world.turn)
+	_unit_panel.show_unit(unit, world.turn, world.tile_at(unit["cell"]))
 	_map.set_selected_unit(unit_id)
 
 
@@ -635,6 +725,15 @@ func _on_unit_focus_requested(unit_id: int) -> void:
 	_map.focus_cell(unit["cell"])
 	_map.selected = unit["cell"]
 	_select_unit(unit_id)
+
+
+func _on_capital_focus_requested(cell: Vector2i) -> void:
+	show_screen("mapa")
+	_map.focus_cell(cell)
+	_map.selected = cell
+	_clear_unit_selection()
+	_select_city(-1)
+	_tile_info.text = "(%d, %d) · ponto inicial" % [cell.x, cell.y]
 
 
 func _set_move_mode(on: bool) -> void:
@@ -654,6 +753,9 @@ func _on_unit_action(action: String) -> void:
 			_issue_order(unit_id, "Explore", Vector2i(-1, -1))
 		"fortify":
 			_issue_order(unit_id, "Fortify", Vector2i(-1, -1))
+		"found":
+			var unit: Dictionary = world.unit_by_id(unit_id)
+			_issue_found(Protocol.settler_city_id(unit_id), unit["cell"])
 		"skip":
 			_issue({"kind": "skip", "unit_id": unit_id}, Protocol.command_skip_unit(unit_id))
 
@@ -675,6 +777,23 @@ func _issue_order(unit_id: int, kind: String, target: Vector2i) -> void:
 	_issue({"kind": "order", "unit_id": unit_id, "order_kind": kind, "order_target": target}, Protocol.command_set_unit_order(unit_id, order))
 
 
+func _on_found_capital_requested() -> void:
+	if world == null or not world.needs_capital() or world.is_founding(world.home_cell):
+		return
+	_issue_found(world.civ_id, world.home_cell)
+
+
+func _issue_found(city_id: int, cell: Vector2i) -> void:
+	var index := Hex.index_of_cell(cell, world.map_width)
+	_issue({"kind": "found", "city_id": city_id, "cell": cell}, Protocol.command_found_city(city_id, index))
+
+
+func _on_queue_requested(unit_type: String) -> void:
+	if _selected_city < 0:
+		return
+	_issue({"kind": "queue", "city_id": _selected_city, "unit_type": unit_type}, Protocol.command_queue_unit(_selected_city, unit_type))
+
+
 ## Sends a unit command. Live: the order only takes effect locally once the server accepts it.
 ## Demonstration: applied locally at once, since there is no server to ask.
 func _issue(meta: Dictionary, payload: Dictionary) -> void:
@@ -692,10 +811,15 @@ func _issue(meta: Dictionary, payload: Dictionary) -> void:
 
 
 func _apply_override(meta: Dictionary) -> void:
-	if meta["kind"] == "skip":
-		world.apply_local_skip(meta["unit_id"])
-	else:
-		world.apply_local_order(meta["unit_id"], meta["order_kind"], meta["order_target"])
+	match meta["kind"]:
+		"skip":
+			world.apply_local_skip(meta["unit_id"])
+		"found":
+			world.apply_local_found(meta["cell"])
+		"queue":
+			world.apply_local_queue(meta["city_id"], meta["unit_type"])
+		_:
+			world.apply_local_order(meta["unit_id"], meta["order_kind"], meta["order_target"])
 
 
 # ---------------------------------------------------------------- ready

@@ -150,7 +150,8 @@ o botão Pronto sem perguntar ao servidor. Novos comandos: `set_unit_order` e `s
 
 Depois de `join`, o servidor envia `catalog` (sem `request_id`) com a árvore de tecnologia
 (`id`, nome, custo, pré-requisitos), os tipos de unidade (`id`, nome, papel, movimento, força) e a
-versão/hash do catálogo. O estado de pesquisa da própria civilização já vem em `civilization`.
+versão/hash do catálogo. Cada tipo de unidade traz também `cost` (mapa recurso → quantidade) e
+`requires_technology`, para o cliente listar o que a cidade pode produzir. O estado de pesquisa da própria civilização já vem em `civilization`.
 O cliente nunca lê `data/` diretamente.
 
 Correção de implementação: o envelope usa `protocol_version: "1.0"` (texto, §3) em ambos os lados.
@@ -188,7 +189,28 @@ Ataque declarado reserva unidade e custo ao ser aceito; dano e perdas simultâne
 de conflito do motor. Portanto `CommandAccepted` confirma a reserva, não uma vitória, ocupação ou
 resultado de combate.
 
+### 6.1 Fundar cidades e enfileirar unidades (decidido em 2026-10-03)
+
+Comandos via `submit_command`, na forma adjacente do motor:
+
+```json
+{"command": {"type": "found_city", "data": {"city_id": 0, "target": 178}}}
+{"command": {"type": "queue_unit", "data": {"city_id": 0, "unit_type": "unit.scout"}}}
+```
+
+O **cliente escolhe o `city_id`** (o servidor não o gera): a primeira cidade da civilização usa o
+id da própria civilização (`civ`); uma cidade fundada por colono usa `1_000_000 + id do colono`,
+a mesma regra dos bots. Id repetido ou tile ocupado volta como `command_rejected` com
+`engine_reason` `CityAlreadyExists` / `CityTileOccupied`, sem alterar o estado. A primeira cidade
+não consome colono e pode ser fundada no `home_tile`; as seguintes exigem um colono próprio no
+tile alvo (`MissingSettler`). Um colono com `found_city` aceito deixa de bloquear o `ready`
+(ele é consumido na resolução). `queue_unit` exige a tecnologia da unidade dominada
+(`UnitTechnologyNotResearched`).
+
 ## 7. Visão de estado, diffs e mapa
+
+A visão inclui `home_tile` (índice do tile inicial) enquanto a civilização não tem cidade, e `null`
+depois; é onde a primeira cidade é fundada.
 
 O servidor publica somente uma `WorldView` autorizada para a civilização. Ela contém estado próprio,
 informação pública e informação descoberta. Nunca contém seed secreta, comandos ainda privados,

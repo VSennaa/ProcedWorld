@@ -36,6 +36,13 @@ var pending_events: Array = []
 ## Research state of the own civilization: {current: String, done: Array, progress: Dictionary}.
 var research: Dictionary = {"current": "", "done": [], "progress": {}}
 var civ_colors: Dictionary = {}  # civ id -> Color
+## Starting tile of the civilization, only while it has no city (`home_tile`); (-1, -1) otherwise.
+var home_cell := Vector2i(-1, -1)
+## Cities seen by this civilization. Each: {id, name, cell, owner, own, population, housing, focus,
+## food_stock, stability, queue: Array[String], unit_production, yields: {food, production, ...}}.
+var cities: Array = []
+## Cells where a founding was accepted this turn but the city does not exist yet.
+var founding_cells: Array = []
 
 
 ## "N unidades aguardam ordem" copy shared by the Pauta and the tests.
@@ -43,6 +50,51 @@ static func gate_text(count: int) -> String:
 	if count == 1:
 		return "1 unidade aguarda ordem"
 	return "%d unidades aguardam ordem" % count
+
+
+func city_by_id(city_id: int) -> Dictionary:
+	for city in cities:
+		if city["id"] == city_id:
+			return city
+	return {}
+
+
+func city_at(cell: Vector2i) -> Dictionary:
+	for city in cities:
+		if city["cell"] == cell:
+			return city
+	return {}
+
+
+func own_cities() -> Array:
+	return cities.filter(func(city: Dictionary) -> bool: return city["own"])
+
+
+## True when the Pauta must offer "Fundar a capital": the server named a starting tile and no own city exists.
+func needs_capital() -> bool:
+	return live and home_cell.x >= 0 and own_cities().is_empty()
+
+
+func is_founding(cell: Vector2i) -> bool:
+	return founding_cells.has(cell)
+
+
+## Optimistic update after the server accepted FoundCity: the city appears when the turn resolves.
+## A settler on the tile is consumed then, so it stops waiting for an order.
+func apply_local_found(cell: Vector2i) -> void:
+	if not founding_cells.has(cell):
+		founding_cells.append(cell)
+	for unit in units:
+		if unit["own"] and unit["cell"] == cell and unit["type"] == "unit.settler":
+			unit["founding"] = true
+			unit["skipped_turn"] = turn
+			idle_units.erase(unit["id"])
+
+
+func apply_local_queue(city_id: int, unit_type: String) -> void:
+	var city := city_by_id(city_id)
+	if not city.is_empty():
+		city["queue"].append(unit_type)
 
 
 func awaiting_count() -> int:

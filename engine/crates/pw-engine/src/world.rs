@@ -681,6 +681,7 @@ pub fn client_catalog() -> serde_json::Value {
     let units: Vec<serde_json::Value> = unit_catalog().units.into_iter().map(|unit| serde_json::json!({
         "id": unit.id, "name": unit.name, "role": unit.role, "movement": unit.movement,
         "strength": unit.strength, "requires_technology": unit.requires_technology,
+        "cost": unit.cost,
     })).collect();
     serde_json::json!({
         "hash": format!("{:016x}", crate::hash::fnv1a(&bytes)),
@@ -1140,6 +1141,15 @@ pub fn effective_unit_orders(state: &WorldState, civ: CivId, pending: &[Accepted
             | CommandPayload::DeclareAttack { attacker: unit_id, .. } => {
                 let Some(unit) = state.units.get(unit_id).filter(|unit| unit.owner == civ) else { continue };
                 effective.entry(*unit_id).or_insert((unit.order, unit.skipped_turn)).1 = Some(state.turn.0);
+            }
+            // The settler standing on the founding tile is consumed when the turn resolves, so it
+            // must not keep blocking the Ready gate.
+            CommandPayload::FoundCity { target, .. } => {
+                let settler = state.units.iter()
+                    .find_map(|(id, unit)| (unit.owner == civ && unit.tile == *target && unit.unit_type == "unit.settler").then_some(*id));
+                let Some(unit_id) = settler else { continue };
+                let unit = &state.units[&unit_id];
+                effective.entry(unit_id).or_insert((unit.order, unit.skipped_turn)).1 = Some(state.turn.0);
             }
             _ => {}
         }

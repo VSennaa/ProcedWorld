@@ -4,6 +4,8 @@ extends MarginContainer
 
 signal ready_pressed(choices: Dictionary)
 signal unit_focus_requested(unit_id: int)
+signal capital_focus_requested(cell: Vector2i)
+signal found_capital_requested
 
 const WorldView := preload("res://scripts/world_view.gd")
 
@@ -20,6 +22,7 @@ var _ready_button: Button
 var _status: Label
 var _pending_label: Label
 var _idle_box: VBoxContainer
+var _capital_box: VBoxContainer
 var _blocked_count := 0
 var _sent := false
 var _sent_text := ""
@@ -48,6 +51,8 @@ func build(agenda: Array, turn: int) -> void:
 	heading.text = "Pauta do turno %d" % turn
 	heading.add_theme_font_size_override("font_size", 30)
 	column.add_child(heading)
+	_capital_box = VBoxContainer.new()
+	column.add_child(_capital_box)
 	if agenda.is_empty():
 		var empty := Label.new()
 		empty.text = "Nada exige uma decisão sua neste turno."
@@ -77,6 +82,61 @@ func build(agenda: Array, turn: int) -> void:
 	_status.add_theme_color_override("font_color", MUTED_COLOR)
 	column.add_child(_status)
 	_refresh_pending()
+
+
+## "Fundar a capital" card, shown while the civilization has no city. `cell` is the starting tile
+## ((-1, -1) hides the card); `pending` after the server accepted the founding this turn.
+func set_capital_card(cell: Vector2i, pending: bool) -> void:
+	if _capital_box == null:
+		return
+	for child in _capital_box.get_children():
+		_capital_box.remove_child(child)
+		child.queue_free()
+	if cell.x < 0:
+		return
+	var panel := PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = CARD_BG
+	style.border_color = CRITICAL_COLOR
+	style.border_width_left = 8
+	style.set_corner_radius_all(10)
+	style.content_margin_left = 20
+	style.content_margin_right = 14
+	style.content_margin_top = 12
+	style.content_margin_bottom = 14
+	panel.add_theme_stylebox_override("panel", style)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 6)
+	panel.add_child(box)
+	var tag := Label.new()
+	tag.text = "CRÍTICA · sem capital"
+	tag.add_theme_font_size_override("font_size", 18)
+	tag.add_theme_color_override("font_color", CRITICAL_COLOR)
+	box.add_child(tag)
+	var title := Label.new()
+	title.text = "Fundar a capital"
+	title.add_theme_font_size_override("font_size", 26)
+	box.add_child(title)
+	var body := Label.new()
+	body.text = "Fundação ordenada: a capital surge quando o turno for resolvido." if pending else "A civilização ainda não tem cidade. O ponto inicial é (%d, %d)." % [cell.x, cell.y]
+	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.add_theme_font_size_override("font_size", 19)
+	body.add_theme_color_override("font_color", MUTED_COLOR)
+	box.add_child(body)
+	var view_button := Button.new()
+	view_button.text = "Ver ponto inicial no mapa"
+	view_button.custom_minimum_size = Vector2(0, 56)
+	view_button.add_theme_font_size_override("font_size", 20)
+	view_button.pressed.connect(func() -> void: capital_focus_requested.emit(cell))
+	box.add_child(view_button)
+	if not pending:
+		var found_button := Button.new()
+		found_button.text = "Fundar capital"
+		found_button.custom_minimum_size = Vector2(0, 64)
+		found_button.add_theme_font_size_override("font_size", 22)
+		found_button.pressed.connect(func() -> void: found_capital_requested.emit())
+		box.add_child(found_button)
+	_capital_box.add_child(panel)
 
 
 func set_status(text: String) -> void:

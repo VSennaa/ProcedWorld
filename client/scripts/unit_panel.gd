@@ -3,10 +3,10 @@ extends PanelContainer
 ## Foreign units show information only. The server validates every order; the client only offers
 ## the actions that make sense for the unit role.
 
-signal action_requested(action: String)  # "move" | "explore" | "fortify" | "skip"
+signal action_requested(action: String)  # "move" | "explore" | "fortify" | "found" | "skip"
 
 const MUTED_COLOR := Color("b9c1c8")
-const ACTION_LABELS := {"move": "Mover", "explore": "Explorar", "fortify": "Fortificar", "skip": "Pular"}
+const ACTION_LABELS := {"move": "Mover", "explore": "Explorar", "fortify": "Fortificar", "found": "Fundar cidade", "skip": "Pular"}
 const NO_FORTIFY_ROLES: Array[String] = ["settler", "worker", "trade"]
 
 var _title: Label
@@ -57,7 +57,9 @@ func _ready() -> void:
 
 
 ## Actions offered for a unit. Own units only; the server remains the judge of legality.
-static func legal_actions(unit: Dictionary) -> Array[String]:
+## `tile` (optional) is what the client knows about the unit's tile: a settler is only offered
+## "Fundar cidade" on dry land without a city, and not again once a founding was accepted.
+static func legal_actions(unit: Dictionary, tile: Dictionary = {}) -> Array[String]:
 	var result: Array[String] = []
 	if not unit.get("own", false):
 		return result
@@ -66,11 +68,15 @@ static func legal_actions(unit: Dictionary) -> Array[String]:
 		result.append("explore")
 	if not NO_FORTIFY_ROLES.has(unit.get("role", "")):
 		result.append("fortify")
+	if unit.get("role", "") == "settler" and not unit.get("founding", false) and not tile.has("city") and tile.get("biome", "") != "oceano":
+		result.append("found")
 	result.append("skip")
 	return result
 
 
 static func order_label(unit: Dictionary) -> String:
+	if unit.get("founding", false):
+		return "fundando uma cidade"
 	match String(unit.get("order", "")):
 		"Idle":
 			return "aguardando ordem"
@@ -84,7 +90,7 @@ static func order_label(unit: Dictionary) -> String:
 	return "ordem desconhecida"
 
 
-func show_unit(unit: Dictionary, turn: int) -> void:
+func show_unit(unit: Dictionary, turn: int, tile: Dictionary = {}) -> void:
 	_unit_id = unit["id"]
 	var own: bool = unit["own"]
 	_title.text = "%s%s" % [unit["name"], "" if own else " (de outra civilização)"]
@@ -97,7 +103,7 @@ func show_unit(unit: Dictionary, turn: int) -> void:
 		if unit.get("skipped_turn", -1) == turn:
 			line += " (pulada neste turno)"
 	_details.text = line
-	var legal := legal_actions(unit)
+	var legal := legal_actions(unit, tile)
 	for action in _buttons:
 		_buttons[action].visible = legal.has(action)
 		_buttons[action].text = ACTION_LABELS[action]

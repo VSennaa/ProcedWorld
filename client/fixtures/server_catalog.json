@@ -159,70 +159,118 @@
    "name": "Batedor",
    "role": "exploration",
    "movement": 3,
-   "strength": 1
+   "strength": 1,
+   "cost": {
+    "production": 12
+   },
+   "requires_technology": "tech.foraging"
   },
   {
    "id": "unit.pathfinder",
    "name": "Guia de trilhas",
    "role": "exploration",
    "movement": 3,
-   "strength": 1
+   "strength": 1,
+   "cost": {
+    "production": 18,
+    "knowledge": 2
+   },
+   "requires_technology": "tech.paths"
   },
   {
    "id": "unit.militia",
    "name": "Milícia",
    "role": "defense",
    "movement": 2,
-   "strength": 3
+   "strength": 3,
+   "cost": {
+    "production": 16
+   },
+   "requires_technology": "tech.council"
   },
   {
    "id": "unit.guard",
    "name": "Guarda de muralha",
    "role": "defense",
    "movement": 1,
-   "strength": 5
+   "strength": 5,
+   "cost": {
+    "production": 24,
+    "wealth": 2
+   },
+   "requires_technology": "tech.public_works"
   },
   {
    "id": "unit.raider",
    "name": "Incursor",
    "role": "attack",
    "movement": 3,
-   "strength": 4
+   "strength": 4,
+   "cost": {
+    "production": 20,
+    "food": 2
+   },
+   "requires_technology": "tech.paths"
   },
   {
    "id": "unit.siege_crew",
    "name": "Equipe de cerco",
    "role": "attack",
    "movement": 1,
-   "strength": 6
+   "strength": 6,
+   "cost": {
+    "production": 30,
+    "wealth": 3
+   },
+   "requires_technology": "tech.public_works"
   },
   {
    "id": "unit.settler",
    "name": "Colono",
    "role": "settler",
    "movement": 2,
-   "strength": 1
+   "strength": 1,
+   "cost": {
+    "food": 10,
+    "production": 22
+   },
+   "requires_technology": "tech.storage"
   },
   {
    "id": "unit.worker",
    "name": "Trabalhador",
    "role": "worker",
    "movement": 2,
-   "strength": 1
+   "strength": 1,
+   "cost": {
+    "food": 4,
+    "production": 10
+   },
+   "requires_technology": "tech.foraging"
   },
   {
    "id": "unit.caravan",
    "name": "Caravana",
    "role": "trade",
    "movement": 3,
-   "strength": 1
+   "strength": 1,
+   "cost": {
+    "production": 18,
+    "wealth": 2
+   },
+   "requires_technology": "tech.caravanserai"
   },
   {
    "id": "unit.coastal_trader",
    "name": "Mercador costeiro",
    "role": "trade",
    "movement": 3,
-   "strength": 1
+   "strength": 1,
+   "cost": {
+    "production": 22,
+    "wealth": 3
+   },
+   "requires_technology": "tech.navigation"
   }
  ]
 }

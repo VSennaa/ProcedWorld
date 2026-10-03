@@ -82,6 +82,47 @@ func _run() -> void:
 	await _frames(5)
 	check(_received.any(func(f: Dictionary) -> bool: return f["type"] == "get_snapshot"), "units_awaiting_orders triggers a resync")
 
+	# Found and produce. A fresh world: no city, the server names the starting tile.
+	var empty_view: Dictionary = _view()
+	empty_view.erase("cities")
+	empty_view["home_tile"] = 178
+	empty_view["idle_units"] = []
+	_main._on_envelope({"type": "state_snapshot", "request_id": "", "payload": empty_view})
+	check(_main.world.needs_capital() and _main.world.home_cell == Vector2i(10, 7), "a world without cities asks for a capital")
+	var card_buttons: Array = _main._agenda._capital_box.find_children("*", "Button", true, false)
+	check(card_buttons.size() == 2, "the Pauta shows the capital card with its two actions")
+	card_buttons[0].pressed.emit()
+	check(_main._screens["mapa"].visible and _main._founding_selected and _main._city_panel.visible, "the card centers the map on the starting tile and opens it")
+	var sent_before := _received.size()
+	card_buttons = _main._agenda._capital_box.find_children("*", "Button", true, false)
+	card_buttons[1].pressed.emit()
+	await _wait(func() -> bool: return _main.world.is_founding(Vector2i(10, 7)))
+	var found: Dictionary = _received[sent_before]["payload"]["command"]
+	check(found["type"] == "found_city" and int(found["data"]["city_id"]) == 0 and int(found["data"]["target"]) == 178, "Fundar capital sends FoundCity with the civilization id at the starting tile")
+	check(_main._agenda._capital_box.find_children("*", "Button", true, false).size() == 1, "after acceptance the card no longer offers to found again")
+	# The city exists in the next view: tapping it opens the production panel.
+	_main._on_envelope({"type": "state_snapshot", "request_id": "", "payload": _view()})
+	_main._founding_selected = false
+	_main._clear_unit_selection()
+	_main._on_cell_selected(Vector2i(10, 7))
+	check(_main._selected_city == 0 and _main._city_panel.visible and _main._city_panel.city_id() == 0, "tapping the own city opens its panel")
+	var production: Array = _main._city_panel._box.find_children("*", "Button", true, false)
+	check(production.size() == 3, "the panel lists the units the civilization can produce")
+	sent_before = _received.size()
+	production[0].pressed.emit()
+	await _wait(func() -> bool: return _main.world.city_by_id(0)["queue"].size() == 2)
+	var queue: Dictionary = _received[sent_before]["payload"]["command"]
+	check(queue["type"] == "queue_unit" and int(queue["data"]["city_id"]) == 0 and queue["data"]["unit_type"] == "unit.scout", "a production button sends QueueUnit")
+	# A settler founds a city where it stands.
+	_main._select_unit(5)
+	check(_main._unit_panel._buttons["found"].visible, "the settler card offers Fundar cidade")
+	sent_before = _received.size()
+	_main._on_unit_action("found")
+	await _wait(func() -> bool: return _main.world.is_founding(Vector2i(9, 7)))
+	var settle: Dictionary = _received[sent_before]["payload"]["command"]
+	check(settle["type"] == "found_city" and int(settle["data"]["city_id"]) == 1000005 and int(settle["data"]["target"]) == 7 * 24 + 9, "Fundar cidade sends FoundCity with the settler-derived id")
+	check(not _main.world.idle_units.has(5) and not _main._unit_panel._buttons["found"].visible, "the settler stops waiting and cannot found twice")
+
 	var stored: String = _main.SessionStore.load_token(5, 0)
 	check(stored == "tok-5-0", "session token is stored for reconnection")
 	_main.SessionStore.forget_token(5, 0)
