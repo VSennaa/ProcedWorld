@@ -2,7 +2,7 @@
 
 use std::{collections::BTreeMap, fs, path::Path};
 use serde::{Deserialize, Serialize};
-use pw_engine::{entropy::{bundled_catalog, respond_commands, EntropyDirector}, diplomacy::{audit_records, DiplomaticAudit}, governor::{Governor, Mandate, MandatePreset}, hash::StateHash, ids::{CivId, TileIndex, TurnNumber}, mapgen::{generate, Catalog, WorldParams}, rng::Rng, world::{replay, step, CivilizationState, CommandLog, CommandOrigin, DomainEvent, SimulationVersions, TileState, TileYields, Visibility, WorldId, WorldSnapshot, WorldState, TERRAIN_COAST, TERRAIN_DESERT, TERRAIN_FOREST, TERRAIN_JUNGLE, TERRAIN_OCEAN, TERRAIN_PLAINS, TERRAIN_STEPPE, TERRAIN_SWAMP}};
+use pw_engine::{entropy::{bundled_catalog, respond_commands, EntropyDirector}, diplomacy::{audit_records, DiplomaticAudit}, governor::{Governor, Mandate, MandatePreset}, hash::StateHash, ids::{CivId, TileIndex, TurnNumber}, mapgen::{generate, Catalog, WorldParams}, memory::{CanonicalKind, CanonicalSet}, rng::Rng, world::{replay, step, CivilizationState, CommandLog, CommandOrigin, DomainEvent, SimulationVersions, TileState, TileYields, Visibility, WorldId, WorldSnapshot, WorldState, TERRAIN_COAST, TERRAIN_DESERT, TERRAIN_FOREST, TERRAIN_JUNGLE, TERRAIN_OCEAN, TERRAIN_PLAINS, TERRAIN_STEPPE, TERRAIN_SWAMP}};
 
 pub const SNAPSHOT_INTERVAL: u32 = 100;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)] pub struct RunConfig { pub seed: u64, pub civilizations: u32, pub turns: u32 }
@@ -67,7 +67,25 @@ pub fn write_run(directory: &Path, run: &SimulationRun) -> Result<(), String> {
         state = result.state;
         if state.turn.0 % SNAPSHOT_INTERVAL == 0 { write_json(snapshots.join(format!("turn-{}.json", state.turn.0)), &WorldSnapshot::new(state.clone(), run.stored.snapshot.versions.clone()))?; }
     }
-    write_json(snapshots.join("final.json"), &WorldSnapshot::new(run.final_state.clone(), run.stored.snapshot.versions.clone()))
+    write_json(snapshots.join("final.json"), &WorldSnapshot::new(run.final_state.clone(), run.stored.snapshot.versions.clone()))?;
+    write_chronicles(&directory.join("chronicle"), run)
+}
+fn write_chronicles(directory: &Path, run: &SimulationRun) -> Result<(), String> {
+    fs::create_dir_all(directory).map_err(|error| error.to_string())?;
+    let mut state = run.stored.snapshot.state.clone();
+    let mut event_history = Vec::new();
+    for turn in run.stored.log.turn_hashes.keys() {
+        let commands: Vec<_> = run.stored.log.commands.iter().filter(|command| command.turn == *turn).cloned().collect();
+        let result = step(&state, &commands, state.seed, &run.stored.snapshot.versions);
+        event_history.push((*turn, result.events));
+        state = result.state;
+    }
+    let mandate = Mandate::preset(MandatePreset::GrowCautiously, 1);
+    for civilization in state.civilizations.keys() {
+        let chronicle = CanonicalSet::rebuild(&state, *civilization, &mandate, &event_history).document(CanonicalKind::Chronicle).content.clone();
+        fs::write(directory.join(format!("civ-{}.md", civilization.0)), chronicle).map_err(|error| error.to_string())?;
+    }
+    Ok(())
 }
 pub fn load_log(path: impl AsRef<Path>) -> Result<StoredRun, String> { serde_json::from_str(&fs::read_to_string(path).map_err(|error| error.to_string())?).map_err(|error| error.to_string()) }
 fn write_json(path: impl AsRef<Path>, value: &impl Serialize) -> Result<(), String> { fs::write(path, serde_json::to_string_pretty(value).map_err(|error| error.to_string())?).map_err(|error| error.to_string()) }
@@ -154,6 +172,18 @@ fn yields(biome: &str) -> TileYields { match biome { "forest" => TileYields { fo
         assert_eq!(entropy_commands(&first), entropy_commands(&second));
         assert_eq!(first.final_hash(), second.final_hash());
         assert_eq!(replay_log(&first.stored).unwrap(), first.final_hash());
+    }
+
+    #[test] fn harness_writes_a_chronicle_for_each_civilization() {
+        let run = run_simulation(RunConfig { seed: 84, civilizations: 2, turns: 2 }).unwrap();
+        let directory = std::env::temp_dir().join("pw-harness-chronicle-test");
+        let _ = fs::remove_dir_all(&directory);
+        write_run(&directory, &run).unwrap();
+        for civilization in run.final_state.civilizations.keys() {
+            let chronicle = fs::read_to_string(directory.join("chronicle").join(format!("civ-{}.md", civilization.0))).unwrap();
+            assert!(chronicle.contains("# Chronicle"));
+        }
+        let _ = fs::remove_dir_all(&directory);
     }
 
     #[test] fn different_seeds_give_different_entropy_events() {

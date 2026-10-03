@@ -7,6 +7,7 @@ pub mod hash;
 pub mod hex;
 pub mod ids;
 pub mod mapgen;
+pub mod memory;
 pub mod rng;
 pub mod bots;
 pub mod diplomacy;
