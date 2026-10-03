@@ -49,6 +49,7 @@ const ENGINE_REASON_TEXT := {
 	"UnitTechnologyNotResearched": "A tecnologia dessa unidade ainda não foi dominada.",
 	"UnknownCity": "Cidade desconhecida.",
 	"NotCommandOwner": "Essa cidade não é sua.",
+	"InvalidQueueIndex": "Esse item não está mais na fila.",
 }
 const ERROR_TEXT := {
 	"protocol_version_mismatch": "Versão do protocolo incompatível com o servidor.",
@@ -235,6 +236,9 @@ func _build_shell() -> void:
 	_city_panel.offset_top = -64
 	_city_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	_city_panel.queue_requested.connect(_on_queue_requested)
+	_city_panel.queue_remove_requested.connect(_on_queue_remove_requested)
+	_city_panel.queue_move_requested.connect(_on_queue_move_requested)
+	_city_panel.focus_requested.connect(_on_focus_requested)
 	_city_panel.found_capital_requested.connect(_on_found_capital_requested)
 	map_holder.add_child(_city_panel)
 	_screens["mapa"] = map_holder
@@ -498,7 +502,7 @@ func _on_command_accepted(request_id: String) -> void:
 		return
 	var meta: Dictionary = _inflight[request_id]
 	_inflight.erase(request_id)
-	if meta["kind"] in ["order", "skip", "found", "queue"]:
+	if meta["kind"] in ["order", "skip", "found", "queue", "queue_remove", "queue_move", "focus"]:
 		_overrides.append(meta)
 		_apply_override(meta)
 		_refresh_units()
@@ -826,6 +830,24 @@ func _on_queue_requested(unit_type: String) -> void:
 	_issue({"kind": "queue", "city_id": _selected_city, "unit_type": unit_type}, Protocol.command_queue_unit(_selected_city, unit_type))
 
 
+func _on_queue_remove_requested(index: int) -> void:
+	if _selected_city < 0:
+		return
+	_issue({"kind": "queue_remove", "city_id": _selected_city, "index": index}, Protocol.command_remove_queued_unit(_selected_city, index))
+
+
+func _on_queue_move_requested(from: int, to: int) -> void:
+	if _selected_city < 0:
+		return
+	_issue({"kind": "queue_move", "city_id": _selected_city, "from": from, "to": to}, Protocol.command_move_queued_unit(_selected_city, from, to))
+
+
+func _on_focus_requested(focus: String) -> void:
+	if _selected_city < 0:
+		return
+	_issue({"kind": "focus", "city_id": _selected_city, "focus": focus}, Protocol.command_set_city_focus(_selected_city, focus))
+
+
 ## Sends a unit command. Live: the order only takes effect locally once the server accepts it.
 ## Demonstration: applied locally at once, since there is no server to ask.
 func _issue(meta: Dictionary, payload: Dictionary) -> void:
@@ -850,6 +872,12 @@ func _apply_override(meta: Dictionary) -> void:
 			world.apply_local_found(meta["cell"])
 		"queue":
 			world.apply_local_queue(meta["city_id"], meta["unit_type"])
+		"queue_remove":
+			world.apply_local_queue_remove(meta["city_id"], meta["index"])
+		"queue_move":
+			world.apply_local_queue_move(meta["city_id"], meta["from"], meta["to"])
+		"focus":
+			world.apply_local_focus(meta["city_id"], meta["focus"])
 		_:
 			world.apply_local_order(meta["unit_id"], meta["order_kind"], meta["order_target"])
 

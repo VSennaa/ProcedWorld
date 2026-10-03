@@ -105,6 +105,20 @@ static func command_queue_unit(city_id: int, unit_type: String) -> Dictionary:
 	return {"command": {"type": "queue_unit", "data": {"city_id": city_id, "unit_type": unit_type}}}
 
 
+static func command_remove_queued_unit(city_id: int, index: int) -> Dictionary:
+	return {"command": {"type": "remove_queued_unit", "data": {"city_id": city_id, "index": index}}}
+
+
+## Moves the queue item at `from` so that it ends at position `to`.
+static func command_move_queued_unit(city_id: int, from: int, to: int) -> Dictionary:
+	return {"command": {"type": "move_queued_unit", "data": {"city_id": city_id, "from": from, "to": to}}}
+
+
+## `focus` is the engine CityFocus name: "supply", "build" or "diversify".
+static func command_set_city_focus(city_id: int, focus: String) -> Dictionary:
+	return {"command": {"type": "set_city_focus", "data": {"city_id": city_id, "focus": focus}}}
+
+
 static func command_respond_to_event(event_id: int, choice_id: String) -> Dictionary:
 	return {"command": {"type": "respond_to_event", "data": {"event_id": event_id, "choice_id": choice_id}}}
 

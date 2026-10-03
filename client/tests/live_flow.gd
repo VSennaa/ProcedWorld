@@ -136,13 +136,33 @@ func _run() -> void:
 	_main._clear_unit_selection()
 	_main._on_cell_selected(Vector2i(10, 7))
 	check(_main._selected_city == 0 and _main._city_panel.visible and _main._city_panel.city_id() == 0, "tapping the own city opens its panel")
-	var production: Array = _main._city_panel._box.find_children("*", "Button", true, false)
+	var production: Array = _main._city_panel._box.find_children("*", "Button", true, false).filter(func(b: Button) -> bool: return b.text.begins_with("Produzir"))
 	check(production.size() == 3, "the panel lists the units the civilization can produce")
 	sent_before = _received.size()
 	production[0].pressed.emit()
 	await _wait(func() -> bool: return _main.world.city_by_id(0)["queue"].size() == 2)
 	var queue: Dictionary = _received[sent_before]["payload"]["command"]
 	check(queue["type"] == "queue_unit" and int(queue["data"]["city_id"]) == 0 and queue["data"]["unit_type"] == "unit.scout", "a production button sends QueueUnit")
+	# Queue management: move the new Scout up, then remove it; the server sees both commands.
+	var icons: Array = _main._city_panel._box.find_children("*", "Button", true, false).filter(func(b: Button) -> bool: return b.text in ["▲", "▼", "✕"])
+	sent_before = _received.size()
+	icons[3].pressed.emit()  # second row, up
+	await _wait(func() -> bool: return _main.world.city_by_id(0)["queue"][0] == "unit.scout")
+	var queue_move: Dictionary = _received[sent_before]["payload"]["command"]
+	check(queue_move["type"] == "move_queued_unit" and int(queue_move["data"]["city_id"]) == 0 and int(queue_move["data"]["from"]) == 1 and int(queue_move["data"]["to"]) == 0, "the up arrow sends MoveQueuedUnit")
+	icons = _main._city_panel._box.find_children("*", "Button", true, false).filter(func(b: Button) -> bool: return b.text in ["▲", "▼", "✕"])
+	sent_before = _received.size()
+	icons[2].pressed.emit()  # first row, remove
+	await _wait(func() -> bool: return _main.world.city_by_id(0)["queue"].size() == 1)
+	var drop: Dictionary = _received[sent_before]["payload"]["command"]
+	check(drop["type"] == "remove_queued_unit" and int(drop["data"]["city_id"]) == 0 and int(drop["data"]["index"]) == 0, "the remove button sends RemoveQueuedUnit")
+	# Focus selector.
+	var focus_buttons: Array = _main._city_panel._box.find_children("*", "Button", true, false).filter(func(b: Button) -> bool: return b.text == "Construção")
+	sent_before = _received.size()
+	focus_buttons[0].pressed.emit()
+	await _wait(func() -> bool: return _main.world.city_by_id(0)["focus"] == "build")
+	var focus: Dictionary = _received[sent_before]["payload"]["command"]
+	check(focus["type"] == "set_city_focus" and focus["data"]["focus"] == "build", "the focus selector sends SetCityFocus")
 	# A settler founds a city where it stands.
 	_main._select_unit(5)
 	check(_main._unit_panel._buttons["found"].visible, "the settler card offers Fundar cidade")

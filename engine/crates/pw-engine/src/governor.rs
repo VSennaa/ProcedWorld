@@ -114,7 +114,7 @@ enum Slot { Focus(CityId), Queue(CityId), Research, Investment, Unit(UnitId), De
 fn slots_for(payload: &CommandPayload) -> Vec<Slot> {
     match payload {
         CommandPayload::SetCityFocus { city_id, .. } => vec![Slot::Focus(*city_id)],
-        CommandPayload::QueueUnit { city_id, .. } => vec![Slot::Queue(*city_id)],
+        CommandPayload::QueueUnit { city_id, .. } | CommandPayload::RemoveQueuedUnit { city_id, .. } | CommandPayload::MoveQueuedUnit { city_id, .. } => vec![Slot::Queue(*city_id)],
         CommandPayload::SetResearch { .. } => vec![Slot::Research],
         CommandPayload::SetResearchInvestment { .. } => vec![Slot::Investment],
         CommandPayload::MoveUnit { unit_id, target } => vec![Slot::Unit(*unit_id), Slot::Destination(*target)],
@@ -209,7 +209,7 @@ fn candidate_from_proposal(index: usize, payload: CommandPayload, mut facts: Vec
         CommandPayload::FoundCity { .. } => Direction { security: 0, sustenance: direction.sustenance, development: direction.development, relations: 0 },
         CommandPayload::SetCityFocus { focus: crate::world::CityFocus::Supply, .. } => Direction { security: 0, sustenance: 100, development: 0, relations: 0 },
         CommandPayload::SetCityFocus { .. } => Direction { security: 0, sustenance: 0, development: direction.development, relations: 0 },
-        CommandPayload::QueueUnit { .. } => Direction { security: 0, sustenance: 0, development: 100, relations: 0 },
+        CommandPayload::QueueUnit { .. } | CommandPayload::RemoveQueuedUnit { .. } | CommandPayload::MoveQueuedUnit { .. } => Direction { security: 0, sustenance: 0, development: 100, relations: 0 },
         CommandPayload::SetResearch { .. } => Direction { security: 0, sustenance: 0, development: 100, relations: 0 },
         CommandPayload::SetResearchInvestment { .. } | CommandPayload::ActivatePractice { .. } | CommandPayload::DeactivatePractice { .. } => Direction { security: 0, sustenance: 0, development: direction.development, relations: 0 },
         CommandPayload::DeclareAttack { .. } => Direction { security: direction.security, sustenance: 0, development: 0, relations: 0 },
