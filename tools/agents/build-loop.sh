@@ -24,6 +24,11 @@ while IFS='|' read -r name brief dir attempts; do
   board "$name" doing --branch "$(cd "$dir" && git branch --show-current)" --note "Codex escrevendo"
   (cd "$dir" && "$root/tools/agents/jev-codex.sh" "$name" "$root/$brief" workspace-write < /dev/null > /dev/null 2>&1)
   status="FAIL"
+  # Codex out of quota: stop the queue instead of spinning fixes (and hammering the VPS over SSH).
+  if grep -q "usage limit" "$runs/$name.log" 2>/dev/null; then
+    board "$name" failed --note "cota do Codex esgotada; retomar depois do reset"
+    echo "$name | $start-$(date '+%T') | CODEX_QUOTA | fila parada" >> "$log"; echo "STOPPED (Codex quota)" >> "$log"; break
+  fi
   for n in $(seq 0 "$attempts"); do
     out="$runs/$name.test-$n.txt"
     "$root/tools/dev/vps-test.sh" "$dir" > "$out" 2>&1
@@ -44,6 +49,7 @@ while IFS='|' read -r name brief dir attempts; do
       echo '```'
     } > "$fix"
     (cd "$dir" && "$root/tools/agents/jev-codex.sh" "$name-fix$((n+1))" "$fix" workspace-write < /dev/null > /dev/null 2>&1)
+    if grep -q "usage limit" "$runs/$name-fix$((n+1)).log" 2>/dev/null; then status="CODEX_QUOTA"; break; fi
   done
   summary=$(grep -E "^test result|warning: unused" "$runs/$name".test-*.txt 2>/dev/null | tail -2 | tr '\n' ' ')
   if [[ "$status" == PASS* ]] && [ "${BUILD_LOOP_COMMIT:-1}" = "1" ]; then
@@ -57,6 +63,6 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" && git push -q) >/dev/n
   if [[ "$status" == PASS* ]]; then board "$name" done --agent "$(model_of "$name")" --note "$status · cargo test ok na VPS"; else board "$name" failed --agent "$(model_of "$name")" --note "não passou após $attempts correções"; fi
   echo "$name | $start-$(date '+%T') | $status | $summary" >> "$log"
   # Later tasks build on this one: stop instead of cascading failures.
-  if [[ "$status" != PASS* ]]; then echo "STOPPED after $name failed" >> "$log"; break; fi
+  if [[ "$status" != PASS* ]]; then echo "STOPPED after $name ($status)" >> "$log"; break; fi
 done < "$queue"
 echo "DONE $(date '+%F %T')" >> "$log"

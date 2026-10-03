@@ -34,7 +34,12 @@ def save(board):
     shutil.copyfile(os.path.join(os.path.dirname(__file__), "board.html"), os.path.join(RUNS, "board.html"))
     # Optional mirror to the VPS board container (BOARD_REMOTE=deploy@<VPS_HOST>); never blocks the caller.
     remote = os.environ.get("BOARD_REMOTE")
+    stamp = os.path.join(RUNS, ".board-synced")
+    # At most one sync per minute: bursts of SSH connections trip the VPS rate limit (ufw limit/fail2ban).
+    if remote and os.path.exists(stamp) and datetime.datetime.now().timestamp() - os.path.getmtime(stamp) < 60:
+        remote = None
     if remote:
+        open(stamp, "w").close()
         import subprocess
         try:
             subprocess.run(["scp", "-q", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5",
