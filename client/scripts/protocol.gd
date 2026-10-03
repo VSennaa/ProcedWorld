@@ -87,6 +87,24 @@ static func command_skip_unit(unit_id: int) -> Dictionary:
 	return {"command": {"type": "skip_unit", "data": {"unit_id": unit_id}}}
 
 
+## City ids are chosen by the client (docs/sdd/10 sec. 6.1): the first city of a civilization uses
+## the civilization id; a city founded by a settler uses SETTLER_CITY_ID_BASE + the settler's unit id
+## (the same rule the bots follow). A taken id comes back as a clean `command_rejected`.
+const SETTLER_CITY_ID_BASE := 1000000
+
+
+static func settler_city_id(unit_id: int) -> int:
+	return SETTLER_CITY_ID_BASE + unit_id
+
+
+static func command_found_city(city_id: int, tile_index: int) -> Dictionary:
+	return {"command": {"type": "found_city", "data": {"city_id": city_id, "target": tile_index}}}
+
+
+static func command_queue_unit(city_id: int, unit_type: String) -> Dictionary:
+	return {"command": {"type": "queue_unit", "data": {"city_id": city_id, "unit_type": unit_type}}}
+
+
 static func command_respond_to_event(event_id: int, choice_id: String) -> Dictionary:
 	return {"command": {"type": "respond_to_event", "data": {"event_id": event_id, "choice_id": choice_id}}}
 

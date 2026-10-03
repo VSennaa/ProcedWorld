@@ -122,9 +122,26 @@ static func from_payload(payload: Dictionary, catalog: RefCounted = null) -> Dic
 		var tile: Dictionary = grid[cell.y][cell.x]
 		if tile["fog"] == "unknown":
 			continue
-		tile["city"] = {"id": int(entry.get("id", 0)), "name": "Cidade %d" % (int(entry.get("id", 0)) + 1), "owner": owner, "own": owner == civ, "population": int(data.get("population", 0))}
+		var queue: Array = []
+		for unit_type in data.get("unit_queue", []):
+			queue.append(String(unit_type))
+		var yields: Variant = data.get("last_yields", {})
+		var city := {
+			"id": int(entry.get("id", 0)), "name": "", "cell": cell, "owner": owner, "own": owner == civ,
+			"population": int(data.get("population", 0)), "housing": int(data.get("housing", 0)),
+			"focus": String(data.get("focus", "")), "food_stock": int(data.get("food_stock", 0)),
+			"stability": int(data.get("stability", 0)), "queue": queue,
+			"unit_production": int(data.get("unit_production", 0)),
+			"yields": yields if typeof(yields) == TYPE_DICTIONARY else {},
+		}
+		view.cities.append(city)
+		tile["city"] = city
 		if owner == civ and first_own_city.x < 0:
 			first_own_city = cell
+	_name_cities(view)
+	var home: Variant = payload.get("home_tile")
+	if (typeof(home) == TYPE_INT or typeof(home) == TYPE_FLOAT) and view.own_cities().is_empty():
+		view.home_cell = Hex.cell_of_index(int(home), width)
 
 	var width_i := width
 	var order_info_present := false
@@ -163,6 +180,8 @@ static func from_payload(payload: Dictionary, catalog: RefCounted = null) -> Dic
 	view.agenda = WorldView._limit_agenda(view.agenda)
 
 	view.capital = first_own_city
+	if view.capital.x < 0 and view.home_cell.x >= 0:
+		view.capital = view.home_cell
 	if view.capital.x < 0:
 		for unit in view.units:
 			if unit["own"]:
@@ -171,6 +190,18 @@ static func from_payload(payload: Dictionary, catalog: RefCounted = null) -> Dic
 	if view.capital.x < 0:
 		view.capital = Vector2i(width / 2, height / 2)
 	return {"ok": true, "error": "", "view": view}
+
+
+## The server sends no city names. Own cities: "Capital" then "Cidade 2", "Cidade 3"... by id order;
+## foreign ones are named after their civilization.
+static func _name_cities(view: RefCounted) -> void:
+	var ordinal: Dictionary = {}
+	view.cities.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["id"] < b["id"])
+	for city in view.cities:
+		var owner: int = city["owner"]
+		ordinal[owner] = int(ordinal.get(owner, 0)) + 1
+		var label := "Capital" if ordinal[owner] == 1 else "Cidade %d" % ordinal[owner]
+		city["name"] = label if city["own"] else "%s da civilização %d" % [label, owner + 1]
 
 
 static func _fill_civilization(view: RefCounted, state: Dictionary) -> void:
