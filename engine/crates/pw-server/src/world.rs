@@ -13,9 +13,9 @@ use std::{
 
 use pw_engine::{
     governor::{Governor, Mandate, MandatePreset},
-    ids::{CivId, TileIndex},
+    ids::{CivId, TileIndex, UnitId},
     entropy::{bundled_catalog, respond_commands, EntropyDirector},
-    world::{step, AcceptedCommand, CommandKind, CommandOrigin, CommandPayload, DomainEvent, RejectionReason, SimulationVersions, WorldState},
+    world::{idle_units_with, step, AcceptedCommand, CommandKind, CommandOrigin, CommandPayload, DomainEvent, RejectionReason, SimulationVersions, WorldState},
 };
 use serde_json::{json, Value};
 use tokio::sync::mpsc::Sender;
@@ -92,6 +92,8 @@ fn kind_of(payload: &CommandPayload) -> CommandKind {
         CommandPayload::QueueUnit { .. } => CommandKind::QueueUnit,
         CommandPayload::DeclareAttack { .. } => CommandKind::DeclareAttack,
         CommandPayload::Explore { .. } => CommandKind::Explore,
+        CommandPayload::SetUnitOrder { .. } => CommandKind::SetUnitOrder,
+        CommandPayload::SkipUnit { .. } => CommandKind::SkipUnit,
         CommandPayload::KeepPlan => CommandKind::KeepPlan,
         CommandPayload::ProposeDiplomacy { .. } => CommandKind::ProposeDiplomacy,
         CommandPayload::BreakTreaty { .. } => CommandKind::BreakTreaty,
@@ -124,7 +126,16 @@ impl LiveWorld {
     }
 
     pub fn snapshot_for(&self, civ: CivId) -> Value {
-        view_for(&self.state, civ)
+        view_for(&self.state, civ, &self.pending)
+    }
+
+    /// Idle units that block `ready` (SDD 03 / SDD 15 section 4.3): only for a present human seat,
+    /// counting the orders already accepted in the open turn. Bots and absent seats are never blocked.
+    pub fn idle_blocking(&self, civ: CivId) -> Vec<UnitId> {
+        if !self.seats.get(&civ).is_some_and(|seat| !seat.absent) {
+            return Vec::new();
+        }
+        idle_units_with(&self.state, civ, &self.pending)
     }
 
     /// Claims a civilization (new seat) or resumes one with the session token.
@@ -298,10 +309,69 @@ impl LiveWorld {
                 "state_hash": state_hash_string(&self.state),
                 "commands": own,
                 "events": events_for(&self.state, *civ, &turn_commands, &result.events),
-                "view": view_for(&self.state, *civ),
+                "view": view_for(&self.state, *civ, &[]),
             });
             let _ = conn.tx.try_send(frame(None, "turn_diff", payload));
         }
         Ok(true)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::store::{InMemoryStore, WorldRecord};
+    use pw_engine::world::{CommandLog, UnitOrder, UnitState, WorldSnapshot};
+
+    fn live_with_idle_unit() -> LiveWorld {
+        let (mut state, versions, homes) = pw_harness::initial_world(5, 2).expect("world builds");
+        state.units.insert(UnitId(900), UnitState {
+            owner: CivId(0), tile: homes[&CivId(0)], unit_type: "unit.scout".into(), hit_points: 100,
+            movement_left: 3, explored: false, order: UnitOrder::Idle, skipped_turn: None,
+        });
+        let store = Arc::new(InMemoryStore::default());
+        store.create(WorldRecord { snapshot: WorldSnapshot::new(state.clone(), versions.clone()), log: CommandLog::default(), home_tiles: homes.clone(), state: state.clone() }).expect("store accepts the world");
+        LiveWorld::new(state, versions, homes, store)
+    }
+
+    fn conn(id: u64) -> Conn {
+        Conn { id, tx: tokio::sync::mpsc::channel(16).0 }
+    }
+
+    fn unit_json(live: &LiveWorld) -> Value {
+        let view = live.snapshot_for(CivId(0));
+        view["units"].as_array().unwrap().iter().find(|unit| unit["id"] == 900).unwrap()["unit"].clone()
+    }
+
+    #[test]
+    fn idle_unit_blocks_ready_until_ordered_or_skipped_and_skip_expires_next_turn() {
+        let mut live = live_with_idle_unit();
+        live.join(CivId(0), None, conn(1)).unwrap();
+        assert_eq!(live.idle_blocking(CivId(0)), vec![UnitId(900)]);
+        assert_eq!(live.snapshot_for(CivId(0))["idle_units"], json!([900]));
+
+        assert!(live.submit(CivId(0), CommandPayload::SkipUnit { unit_id: UnitId(900) }).is_ok());
+        assert!(live.idle_blocking(CivId(0)).is_empty());
+        assert_eq!(live.snapshot_for(CivId(0))["idle_units"], json!([]));
+        assert_eq!(unit_json(&live)["skipped_turn"], json!(0));
+
+        live.set_ready(CivId(0), true).unwrap();
+        assert!(live.try_advance().unwrap());
+        // The skip only covered the turn it was given in.
+        assert_eq!(live.idle_blocking(CivId(0)), vec![UnitId(900)]);
+
+        assert!(live.submit(CivId(0), CommandPayload::SetUnitOrder { unit_id: UnitId(900), order: UnitOrder::Fortify }).is_ok());
+        assert!(live.idle_blocking(CivId(0)).is_empty());
+        assert_eq!(unit_json(&live)["order"], json!({ "type": "fortify" }));
+    }
+
+    #[test]
+    fn absent_or_unseated_civilizations_are_never_blocked() {
+        let mut live = live_with_idle_unit();
+        assert!(live.idle_blocking(CivId(0)).is_empty());
+        live.join(CivId(0), None, conn(1)).unwrap();
+        let generation = live.disconnect(CivId(0), 1).unwrap();
+        assert!(live.grace_expired(CivId(0), generation));
+        assert!(live.idle_blocking(CivId(0)).is_empty());
     }
 }

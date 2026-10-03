@@ -5,7 +5,7 @@
 
 use pw_engine::{
     ids::CivId,
-    world::{AcceptedCommand, DomainEvent, Visibility, WorldState},
+    world::{effective_unit_orders, idle_units_with, AcceptedCommand, DomainEvent, Visibility, WorldState},
 };
 use serde_json::{json, Value};
 
@@ -13,7 +13,10 @@ pub fn state_hash_string(state: &WorldState) -> String {
     format!("{:016x}", state.state_hash().0)
 }
 
-pub fn view_for(state: &WorldState, civ: CivId) -> Value {
+/// `pending` are the open turn's accepted commands: own units show the order they will have once
+/// the turn resolves, and `idle_units` already accounts for them.
+pub fn view_for(state: &WorldState, civ: CivId, pending: &[AcceptedCommand]) -> Value {
+    let effective = effective_unit_orders(state, civ, pending);
     let vis = state.visibility.get(&civ);
     let seen = |tile| vis.and_then(|map| map.get(&tile)).copied().unwrap_or(Visibility::Unknown);
     let tiles: Vec<Value> = vis
@@ -38,7 +41,20 @@ pub fn view_for(state: &WorldState, civ: CivId) -> Value {
         .units
         .iter()
         .filter(|(_, u)| u.owner == civ || seen(u.tile) == Visibility::Visible)
-        .map(|(id, u)| json!({ "id": id, "unit": u }))
+        .map(|(id, u)| {
+            let mut unit = serde_json::to_value(u).unwrap_or(Value::Null);
+            if let Some(object) = unit.as_object_mut() {
+                if u.owner != civ {
+                    // Orders are private to the owner.
+                    object.remove("order");
+                    object.remove("skipped_turn");
+                } else if let Some((order, skipped)) = effective.get(id) {
+                    object.insert("order".to_string(), json!(order));
+                    object.insert("skipped_turn".to_string(), json!(skipped));
+                }
+            }
+            json!({ "id": id, "unit": unit })
+        })
         .collect();
     json!({
         "world_id": state.world_id,
@@ -50,6 +66,8 @@ pub fn view_for(state: &WorldState, civ: CivId) -> Value {
         "tiles": tiles,
         "cities": cities,
         "units": units,
+        // Own units awaiting an order: they block `ready` until ordered or skipped this turn.
+        "idle_units": idle_units_with(state, civ, pending),
         // Entropy events awaiting this civilization's response (other civilizations' are never sent).
         "pending_events": state.entropy.pending.iter().filter(|(_, event)| event.civilization == civ).map(|(id, event)| json!({ "id": id, "event": event })).collect::<Vec<Value>>(),
     })

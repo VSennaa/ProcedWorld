@@ -118,7 +118,7 @@ fn slots_for(payload: &CommandPayload) -> Vec<Slot> {
         CommandPayload::SetResearch { .. } => vec![Slot::Research],
         CommandPayload::SetResearchInvestment { .. } => vec![Slot::Investment],
         CommandPayload::MoveUnit { unit_id, target } => vec![Slot::Unit(*unit_id), Slot::Destination(*target)],
-        CommandPayload::Explore { unit_id } => vec![Slot::Unit(*unit_id)],
+        CommandPayload::Explore { unit_id } | CommandPayload::SetUnitOrder { unit_id, .. } | CommandPayload::SkipUnit { unit_id } => vec![Slot::Unit(*unit_id)],
         CommandPayload::FoundCity { city_id, .. } => vec![Slot::Found(*city_id)],
         CommandPayload::DeclareAttack { attacker, .. } => vec![Slot::Unit(*attacker)],
         CommandPayload::ActivatePractice { .. } | CommandPayload::DeactivatePractice { .. } => vec![Slot::Practice],
@@ -213,7 +213,7 @@ fn candidate_from_proposal(index: usize, payload: CommandPayload, mut facts: Vec
         CommandPayload::SetResearch { .. } => Direction { security: 0, sustenance: 0, development: 100, relations: 0 },
         CommandPayload::SetResearchInvestment { .. } | CommandPayload::ActivatePractice { .. } | CommandPayload::DeactivatePractice { .. } => Direction { security: 0, sustenance: 0, development: direction.development, relations: 0 },
         CommandPayload::DeclareAttack { .. } => Direction { security: direction.security, sustenance: 0, development: 0, relations: 0 },
-        CommandPayload::MoveUnit { .. } | CommandPayload::Explore { .. } => Direction { security: direction.security, sustenance: 0, development: direction.development, relations: 0 },
+        CommandPayload::MoveUnit { .. } | CommandPayload::Explore { .. } | CommandPayload::SetUnitOrder { .. } | CommandPayload::SkipUnit { .. } => Direction { security: direction.security, sustenance: 0, development: direction.development, relations: 0 },
         CommandPayload::EndTurn | CommandPayload::KeepPlan | CommandPayload::ApplyEvent { .. } | CommandPayload::RespondToEvent { .. } => Direction { security: 0, sustenance: 0, development: 0, relations: 0 },
         CommandPayload::ProposeDiplomacy { .. } | CommandPayload::BreakTreaty { .. } => Direction { security: 0, sustenance: 0, development: 0, relations: direction.relations },
         CommandPayload::DeclareWar { .. } => Direction { security: direction.security, sustenance: 0, development: 0, relations: direction.relations },
@@ -221,7 +221,7 @@ fn candidate_from_proposal(index: usize, payload: CommandPayload, mut facts: Vec
     CandidateAction { id: format!("{:?}-{index}", payload.kind()), scope, payload: payload.clone(), facts, benefits: benefit, opportunity_cost: u8::from(matches!(payload, CommandPayload::Explore { .. })), exposed_risk: 0, irreversible: matches!(payload, CommandPayload::DeclareAttack { .. } | CommandPayload::DeclareWar { .. } | CommandPayload::BreakTreaty { .. }) }
 }
 
-fn scope_for(payload: &CommandPayload) -> Scope { match payload { CommandPayload::ProposeDiplomacy { .. } | CommandPayload::BreakTreaty { .. } | CommandPayload::DeclareWar { .. } => Scope::Diplomacy, CommandPayload::SetResearch { .. } | CommandPayload::SetResearchInvestment { .. } | CommandPayload::ActivatePractice { .. } | CommandPayload::DeactivatePractice { .. } => Scope::Technology, CommandPayload::MoveUnit { .. } | CommandPayload::Explore { .. } | CommandPayload::DeclareAttack { .. } => Scope::ExplorationDefense, _ => Scope::CitiesEconomy } }
+fn scope_for(payload: &CommandPayload) -> Scope { match payload { CommandPayload::ProposeDiplomacy { .. } | CommandPayload::BreakTreaty { .. } | CommandPayload::DeclareWar { .. } => Scope::Diplomacy, CommandPayload::SetResearch { .. } | CommandPayload::SetResearchInvestment { .. } | CommandPayload::ActivatePractice { .. } | CommandPayload::DeactivatePractice { .. } => Scope::Technology, CommandPayload::MoveUnit { .. } | CommandPayload::Explore { .. } | CommandPayload::SetUnitOrder { .. } | CommandPayload::SkipUnit { .. } | CommandPayload::DeclareAttack { .. } => Scope::ExplorationDefense, _ => Scope::CitiesEconomy } }
 fn item(action_id: Option<String>, rule: String, facts: &[GroundingRef]) -> ReportItem { let first = facts.first().cloned().unwrap_or(GroundingRef::Turn { turn: crate::ids::TurnNumber::ZERO }); let second = facts.get(1).cloned().unwrap_or_else(|| first.clone()); ReportItem { action_id, rule, facts: [first, second] } }
 
 #[cfg(test)]

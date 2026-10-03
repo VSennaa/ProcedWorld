@@ -7,12 +7,19 @@ use pw_engine::world::{CommandPayload, RejectionReason};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-pub const PROTOCOL_VERSION: u32 = 1;
+/// Text version, `"major.minor"`. A client with the same major is accepted (docs/sdd/10 section 3).
+pub const PROTOCOL_VERSION: &str = "1.0";
+
+/// True when `version` is a `"major.minor"` (or bare `"major"`) text whose major is ours.
+pub fn version_compatible(version: &str) -> bool {
+    let major = |text: &str| text.split('.').next().and_then(|part| part.parse::<u32>().ok());
+    major(version).is_some() && major(version) == major(PROTOCOL_VERSION)
+}
 
 /// Incoming frame before the payload is decoded (the version is checked first).
 #[derive(Debug, Deserialize)]
 pub struct Envelope {
-    pub protocol_version: u32,
+    pub protocol_version: String,
     #[serde(default)]
     pub request_id: Option<String>,
     #[serde(rename = "type")]
@@ -38,6 +45,7 @@ pub enum ErrorReason {
     CivTaken,
     InvalidSessionToken,
     AlreadyReady,
+    UnitsAwaitingOrders,
     CommandRejected,
     Internal,
 }
@@ -70,6 +78,13 @@ pub fn frame(request_id: Option<&str>, kind: &str, payload: Value) -> String {
         "payload": payload,
     })
     .to_string()
+}
+
+/// `units_awaiting_orders`: `detail` is the comma-separated unit ids, `unit_ids` the same as numbers.
+pub fn units_awaiting_frame(request_id: Option<&str>, units: &[pw_engine::ids::UnitId]) -> String {
+    let ids: Vec<u32> = units.iter().map(|unit| unit.0).collect();
+    let detail = ids.iter().map(u32::to_string).collect::<Vec<_>>().join(",");
+    frame(request_id, "error", json!({ "reason": ErrorReason::UnitsAwaitingOrders, "detail": detail, "engine_reason": null, "unit_ids": ids }))
 }
 
 pub fn error_frame(request_id: Option<&str>, reason: ErrorReason, detail: &str, engine_reason: Option<RejectionReason>) -> String {

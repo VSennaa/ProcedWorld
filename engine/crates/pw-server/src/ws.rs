@@ -27,7 +27,7 @@ use tokio::sync::mpsc;
 
 use crate::{
     config::ServerConfig,
-    protocol::{error_frame, frame, CreateWorld, Envelope, ErrorReason, Join, SubmitCommand, PROTOCOL_VERSION},
+    protocol::{error_frame, frame, units_awaiting_frame, version_compatible, CreateWorld, Envelope, ErrorReason, Join, SubmitCommand, PROTOCOL_VERSION},
     store::{StoreError, WorldRecord, WorldStore},
     view::state_hash_string,
     world::{Conn, LiveWorld},
@@ -140,15 +140,15 @@ async fn handle(app: &Arc<AppState>, bound: &mut Option<Bound>, conn_id: u64, tx
         Ok(envelope) => envelope,
         Err(error) => {
             // A well-formed JSON object with a different protocol_version must report the mismatch.
-            let version = serde_json::from_str::<Value>(text).ok().and_then(|v| v.get("protocol_version").and_then(Value::as_u64));
-            if matches!(version, Some(v) if v != u64::from(PROTOCOL_VERSION)) {
+            let version = serde_json::from_str::<Value>(text).ok().and_then(|v| v.get("protocol_version").cloned());
+            if version.is_some_and(|v| v.as_str().map_or(true, |text| !version_compatible(text))) {
                 return vec![version_mismatch(None)];
             }
             return vec![error_frame(None, ErrorReason::MalformedMessage, &error.to_string(), None)];
         }
     };
     let rid = envelope.request_id.as_deref();
-    if envelope.protocol_version != PROTOCOL_VERSION {
+    if !version_compatible(&envelope.protocol_version) {
         return vec![version_mismatch(rid)];
     }
     let fail = |reason, detail: &str| vec![error_frame(rid, reason, detail, None)];
@@ -181,6 +181,7 @@ async fn handle(app: &Arc<AppState>, bound: &mut Option<Bound>, conn_id: u64, tx
                         live.broadcast("ready_state", &ready, Some(conn_id));
                         vec![
                             frame(rid, "joined", json!({ "world_id": params.world_id, "civ": civ, "session_token": token, "turn": live.state().turn })),
+                            frame(None, "catalog", pw_engine::world::client_catalog()),
                             frame(rid, "state_snapshot", live.snapshot_for(civ)),
                             frame(rid, "ready_state", ready),
                         ]
@@ -212,6 +213,12 @@ async fn handle(app: &Arc<AppState>, bound: &mut Option<Bound>, conn_id: u64, tx
         "ready" | "unready" => {
             let Some(b) = bound else { return fail(ErrorReason::NotJoined, "join first") };
             let mut live = lock(&b.world);
+            if envelope.kind == "ready" {
+                let idle = live.idle_blocking(b.civ);
+                if !idle.is_empty() {
+                    return vec![units_awaiting_frame(rid, &idle)];
+                }
+            }
             if let Err(reason) = live.set_ready(b.civ, envelope.kind == "ready") {
                 return fail(reason, "no active seat");
             }

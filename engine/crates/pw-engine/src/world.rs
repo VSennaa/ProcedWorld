@@ -1,6 +1,6 @@
 //! Deterministic world state, accepted commands, turn resolution, and replay.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use serde::{Deserialize, Serialize};
 
@@ -174,6 +174,18 @@ pub struct CityState {
     pub unit_production: u32,
 }
 
+/// Persistent order of a unit (docs/sdd/15 section 4.3). `MoveTo` and `Explore` run during
+/// movement resolution of every turn; `Fortify` only ends with a new order.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "type", content = "data")]
+pub enum UnitOrder {
+    #[default]
+    Idle,
+    Fortify,
+    Explore,
+    MoveTo { target: TileIndex },
+}
+
 /// Minimal unit state.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UnitState {
@@ -183,6 +195,12 @@ pub struct UnitState {
     pub hit_points: u8,
     pub movement_left: u8,
     pub explored: bool,
+    /// Persistent order; a new unit starts `Idle`.
+    #[serde(default)]
+    pub order: UnitOrder,
+    /// Turn number in which the unit was skipped (`SkipUnit`); only that turn is affected.
+    #[serde(default)]
+    pub skipped_turn: Option<u32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -303,6 +321,14 @@ impl WorldState {
             hasher.write_u8(unit.hit_points);
             hasher.write_u8(unit.movement_left);
             hasher.write_bool(unit.explored);
+            match unit.order {
+                UnitOrder::Idle => hasher.write_u8(0),
+                UnitOrder::Fortify => hasher.write_u8(1),
+                UnitOrder::Explore => hasher.write_u8(2),
+                UnitOrder::MoveTo { target } => { hasher.write_u8(3); hasher.write_u32(target.0); }
+            }
+            hasher.write_bool(unit.skipped_turn.is_some());
+            hasher.write_u32(unit.skipped_turn.unwrap_or(0));
         }
 
         hasher.write_u64(self.attacks.len() as u64);
@@ -436,6 +462,8 @@ pub enum CommandKind {
     QueueUnit,
     DeclareAttack,
     Explore,
+    SetUnitOrder,
+    SkipUnit,
     KeepPlan,
     ProposeDiplomacy,
     BreakTreaty,
@@ -459,6 +487,10 @@ pub enum CommandPayload {
     QueueUnit { city_id: CityId, unit_type: String },
     DeclareAttack { attacker: UnitId, target: UnitId },
     Explore { unit_id: UnitId },
+    /// Replaces the persistent order of an own unit.
+    SetUnitOrder { unit_id: UnitId, order: UnitOrder },
+    /// Marks the unit as skipped for the current turn only; no mechanical effect.
+    SkipUnit { unit_id: UnitId },
     KeepPlan,
     /// Structured proposal; the engine evaluates the automatic counterpart with `A`.
     ProposeDiplomacy { recipient: CivId, kind: ProposalKind },
@@ -495,6 +527,8 @@ impl CommandPayload {
             Self::QueueUnit { .. } => CommandKind::QueueUnit,
             Self::DeclareAttack { .. } => CommandKind::DeclareAttack,
             Self::Explore { .. } => CommandKind::Explore,
+            Self::SetUnitOrder { .. } => CommandKind::SetUnitOrder,
+            Self::SkipUnit { .. } => CommandKind::SkipUnit,
             Self::KeepPlan => CommandKind::KeepPlan,
             Self::ProposeDiplomacy { .. } => CommandKind::ProposeDiplomacy,
             Self::BreakTreaty { .. } => CommandKind::BreakTreaty,
@@ -591,6 +625,10 @@ struct TechCatalog { technologies: Vec<TechDefinition> }
 #[derive(Deserialize)]
 struct TechDefinition {
     id: String,
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    branch: String,
     prerequisites: Vec<String>,
     cost: u32,
     practice: PracticeDefinition,
@@ -605,6 +643,10 @@ struct UnitCatalog { units: Vec<UnitDefinition> }
 #[derive(Deserialize)]
 struct UnitDefinition {
     id: String,
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    role: String,
     cost: BTreeMap<String, u32>,
     movement: u8,
     strength: u8,
@@ -621,6 +663,31 @@ pub(crate) fn next_technology(researched: &BTreeSet<String>) -> Option<String> {
     tech_catalog().technologies.into_iter()
         .find(|technology| !researched.contains(&technology.id) && technology.prerequisites.iter().all(|required| researched.contains(required)))
         .map(|technology| technology.id)
+}
+
+const TECH_CATALOG_JSON: &str = include_str!("../../../../data/catalogs/tech_tree.json");
+const UNIT_CATALOG_JSON: &str = include_str!("../../../../data/catalogs/units.json");
+
+/// Technology tree and unit types for clients (docs/sdd/10 section 5.2). `hash` identifies the
+/// exact bundled catalog data so a client can cache it.
+pub fn client_catalog() -> serde_json::Value {
+    let mut bytes = TECH_CATALOG_JSON.as_bytes().to_vec();
+    bytes.extend_from_slice(UNIT_CATALOG_JSON.as_bytes());
+    let version = |raw: &str| serde_json::from_str::<serde_json::Value>(raw).ok().and_then(|value| value.get("catalog_version").and_then(serde_json::Value::as_u64));
+    let technologies: Vec<serde_json::Value> = tech_catalog().technologies.into_iter().map(|technology| serde_json::json!({
+        "id": technology.id, "name": technology.name, "branch": technology.branch,
+        "cost": technology.cost, "prerequisites": technology.prerequisites,
+    })).collect();
+    let units: Vec<serde_json::Value> = unit_catalog().units.into_iter().map(|unit| serde_json::json!({
+        "id": unit.id, "name": unit.name, "role": unit.role, "movement": unit.movement,
+        "strength": unit.strength, "requires_technology": unit.requires_technology,
+    })).collect();
+    serde_json::json!({
+        "hash": format!("{:016x}", crate::hash::fnv1a(&bytes)),
+        "versions": { "tech_tree": version(TECH_CATALOG_JSON), "units": version(UNIT_CATALOG_JSON) },
+        "technologies": technologies,
+        "units": units,
+    })
 }
 
 fn unit_catalog() -> UnitCatalog {
@@ -871,6 +938,31 @@ fn apply_command(state: &mut WorldState, command: &AcceptedCommand, events: &mut
             unit.explored = true;
             Ok(())
         }
+        CommandPayload::SetUnitOrder { unit_id, order } => {
+            let unit = state.units.get(unit_id).ok_or(RejectionReason::UnknownUnit)?;
+            if unit.owner != command.actor_id { return Err(RejectionReason::NotCommandOwner); }
+            match order {
+                UnitOrder::MoveTo { target } => {
+                    ensure_tile(state, *target)?;
+                    if state.attacks.contains_key(unit_id) { return Err(RejectionReason::UnitAlreadyReserved); }
+                    if state.units.values().any(|other| other.tile == *target) { return Err(RejectionReason::DestinationOccupied); }
+                    if unit_route(state, unit.tile, *target, unit_movement(&unit.unit_type)).is_none() { return Err(RejectionReason::InvalidTile); }
+                }
+                UnitOrder::Explore => {
+                    if state.attacks.contains_key(unit_id) { return Err(RejectionReason::UnitAlreadyReserved); }
+                }
+                UnitOrder::Idle | UnitOrder::Fortify => {}
+            }
+            state.units.get_mut(unit_id).expect("unit was checked above").order = *order;
+            Ok(())
+        }
+        CommandPayload::SkipUnit { unit_id } => {
+            let turn = state.turn.0;
+            let unit = state.units.get_mut(unit_id).ok_or(RejectionReason::UnknownUnit)?;
+            if unit.owner != command.actor_id { return Err(RejectionReason::NotCommandOwner); }
+            unit.skipped_turn = Some(turn);
+            Ok(())
+        }
         CommandPayload::ProposeDiplomacy { recipient, kind } => {
             ensure_diplomatic_target(state, command, *recipient)?;
             let turn = state.turn;
@@ -954,7 +1046,150 @@ fn reset_unit_movement(state: &mut WorldState) {
     }
 }
 
-fn resolve_movement(_state: &mut WorldState, seed: u64) { let _rng = Rng::derive(seed, "movement"); }
+/// Role of a unit type in the catalog (`exploration`, `defense`, `settler`, ...).
+pub(crate) fn unit_role(unit_type: &str) -> String {
+    unit_definition(unit_type).map_or_else(String::new, |definition| definition.role)
+}
+
+/// Straight-line route (excluding the start) whose every single step is affordable with the full
+/// movement allowance. `None` when a step can never be paid, so the target is unreachable.
+fn unit_route(state: &WorldState, from: TileIndex, to: TileIndex, movement: u8) -> Option<Vec<TileIndex>> {
+    let grid = grid_for(state).ok()?;
+    let line = grid.line(grid.cell(from).ok()?, grid.cell(to).ok()?).ok()?;
+    let mut tiles = Vec::new();
+    let mut previous = from;
+    for cell in line.into_iter().skip(1) {
+        let tile = grid.tile_index(cell).ok()?;
+        if movement_cost(state, previous, tile).ok()? > u32::from(movement) { return None; }
+        tiles.push(tile);
+        previous = tile;
+    }
+    Some(tiles)
+}
+
+fn tile_taken_by_other(state: &WorldState, id: UnitId, tile: TileIndex) -> bool {
+    state.units.iter().any(|(other, unit)| *other != id && unit.tile == tile)
+}
+
+/// First step toward the nearest tile unknown to the unit's owner, or `None` when no unknown tile
+/// is reachable (breadth-first, ties by tile id; occupied tiles are avoided).
+fn explore_step(state: &WorldState, id: UnitId) -> Option<TileIndex> {
+    let unit = state.units.get(&id)?;
+    let grid = grid_for(state).ok()?;
+    let movement = u32::from(unit_movement(&unit.unit_type));
+    let known = state.visibility.get(&unit.owner);
+    let is_known = |tile: TileIndex| known.and_then(|map| map.get(&tile)).is_some_and(|seen| *seen != Visibility::Unknown);
+    let occupied: BTreeSet<TileIndex> = state.units.iter().filter(|(other, _)| **other != id).map(|(_, other)| other.tile).collect();
+    let start = unit.tile;
+    let mut visited = BTreeSet::from([start]);
+    let mut frontier = VecDeque::from([(start, start)]);
+    while let Some((tile, first)) = frontier.pop_front() {
+        if tile != start && !is_known(tile) { return Some(first); }
+        let mut neighbors: Vec<TileIndex> = grid.neighbors(grid.cell(tile).ok()?).ok()?.into_iter()
+            .filter_map(|cell| grid.tile_index(cell).ok()).collect();
+        neighbors.sort_unstable();
+        for neighbor in neighbors {
+            if visited.contains(&neighbor) || occupied.contains(&neighbor) { continue; }
+            if !movement_cost(state, tile, neighbor).is_ok_and(|cost| cost <= movement) { continue; }
+            visited.insert(neighbor);
+            frontier.push_back((neighbor, if tile == start { neighbor } else { first }));
+        }
+    }
+    None
+}
+
+/// True when an `Explore` order for this unit would find an unknown tile to head to.
+pub fn can_explore(state: &WorldState, unit: UnitId) -> bool { explore_step(state, unit).is_some() }
+
+/// Idle units of `civ` in unit-id order: `Idle`, movement left and not skipped this turn.
+pub fn idle_units(state: &WorldState, civ: CivId) -> Vec<UnitId> {
+    idle_units_with(state, civ, &[])
+}
+
+/// Like `idle_units`, but as if the open turn's `pending` commands of `civ` were already applied.
+/// The server uses this for the Ready gate, because orders only change state when the turn resolves.
+pub fn idle_units_with(state: &WorldState, civ: CivId, pending: &[AcceptedCommand]) -> Vec<UnitId> {
+    let effective = effective_unit_orders(state, civ, pending);
+    state.units.iter()
+        .filter(|(_, unit)| unit.owner == civ && unit.movement_left > 0)
+        .filter(|(id, unit)| {
+            let (order, skipped) = effective.get(*id).copied().unwrap_or((unit.order, unit.skipped_turn));
+            order == UnitOrder::Idle && skipped != Some(state.turn.0)
+        })
+        .map(|(id, _)| *id)
+        .collect()
+}
+
+/// Order and skipped turn of the `civ` units touched by `pending` commands, applied in sequence.
+pub fn effective_unit_orders(state: &WorldState, civ: CivId, pending: &[AcceptedCommand]) -> BTreeMap<UnitId, (UnitOrder, Option<u32>)> {
+    let mut effective: BTreeMap<UnitId, (UnitOrder, Option<u32>)> = BTreeMap::new();
+    for command in pending.iter().filter(|command| command.actor_id == civ && command.turn == state.turn) {
+        match &command.payload {
+            CommandPayload::SetUnitOrder { unit_id, order } => {
+                let Some(unit) = state.units.get(unit_id).filter(|unit| unit.owner == civ) else { continue };
+                effective.entry(*unit_id).or_insert((unit.order, unit.skipped_turn)).0 = *order;
+            }
+            CommandPayload::SkipUnit { unit_id } => {
+                let Some(unit) = state.units.get(unit_id).filter(|unit| unit.owner == civ) else { continue };
+                effective.entry(*unit_id).or_insert((unit.order, unit.skipped_turn)).1 = Some(state.turn.0);
+            }
+            _ => {}
+        }
+    }
+    effective
+}
+
+/// Runs persistent `MoveTo` and `Explore` orders, in unit-id order, after the turn's commands.
+fn resolve_movement(state: &mut WorldState, seed: u64) {
+    let _rng = Rng::derive(seed, "movement");
+    let ids: Vec<UnitId> = state.units.keys().copied().collect();
+    for id in ids { execute_order(state, id); }
+}
+
+fn execute_order(state: &mut WorldState, id: UnitId) {
+    let Some(unit) = state.units.get(&id) else { return };
+    let order = unit.order;
+    if matches!(order, UnitOrder::Idle | UnitOrder::Fortify) || state.attacks.contains_key(&id) { return; }
+    let (from, movement) = (unit.tile, unit_movement(&unit.unit_type));
+    let mut left = unit.movement_left;
+    let mut at = from;
+    let mut finished = false;
+    match order {
+        UnitOrder::MoveTo { target } => {
+            match unit_route(state, from, target, movement) {
+                Some(path) if !tile_taken_by_other(state, id, target) => {
+                    for tile in path {
+                        let cost = movement_cost(state, at, tile).unwrap_or(u32::MAX);
+                        if cost > u32::from(left) { break; }
+                        if tile_taken_by_other(state, id, tile) { finished = at == from; break; }
+                        at = tile;
+                        left -= cost as u8;
+                    }
+                    finished = finished || at == target;
+                }
+                _ => finished = true,
+            }
+        }
+        UnitOrder::Explore => {
+            loop {
+                let Some(next) = explore_step(state, id) else { finished = true; break };
+                let cost = movement_cost(state, at, next).unwrap_or(u32::MAX);
+                if cost > u32::from(left) { break; }
+                // Move one tile at a time so the next step is computed from the new position.
+                let unit = state.units.get_mut(&id).expect("unit was checked above");
+                unit.tile = next;
+                at = next;
+                left -= cost as u8;
+            }
+        }
+        UnitOrder::Idle | UnitOrder::Fortify => return,
+    }
+    let unit = state.units.get_mut(&id).expect("unit was checked above");
+    if at != from { unit.explored = true; }
+    unit.tile = at;
+    unit.movement_left = left;
+    if finished { unit.order = UnitOrder::Idle; }
+}
 
 fn resolve_conflicts(state: &mut WorldState, seed: u64) {
     let _rng = Rng::derive(seed, "conflicts");
@@ -1124,7 +1359,7 @@ fn resolve_unit_production(state: &mut WorldState) {
             city.unit_queue.remove(0);
         }
         let next_id = next_id.expect("spawn id was checked before spending resources");
-        state.units.insert(UnitId(next_id), UnitState { owner, tile, unit_type, hit_points: 100, movement_left: definition.movement, explored: false });
+        state.units.insert(UnitId(next_id), UnitState { owner, tile, unit_type, hit_points: 100, movement_left: definition.movement, explored: false, order: UnitOrder::Idle, skipped_turn: None });
     }
 }
 
@@ -1381,8 +1616,8 @@ mod tests {
         civilizations.insert(CivId(1), CivilizationState::default());
         civilizations.insert(CivId(2), CivilizationState::default());
         let mut units = BTreeMap::new();
-        units.insert(UnitId(1), UnitState { owner: CivId(1), tile: TileIndex(0), unit_type: "unit.scout".into(), hit_points: 100, movement_left: 0, explored: false });
-        units.insert(UnitId(2), UnitState { owner: CivId(2), tile: TileIndex(2), unit_type: "unit.scout".into(), hit_points: 100, movement_left: 0, explored: false });
+        units.insert(UnitId(1), UnitState { owner: CivId(1), tile: TileIndex(0), unit_type: "unit.scout".into(), hit_points: 100, movement_left: 0, explored: false, order: UnitOrder::Idle, skipped_turn: None });
+        units.insert(UnitId(2), UnitState { owner: CivId(2), tile: TileIndex(2), unit_type: "unit.scout".into(), hit_points: 100, movement_left: 0, explored: false, order: UnitOrder::Idle, skipped_turn: None });
         WorldState {
             world_id: WorldId(9),
             turn: TurnNumber::ZERO,
@@ -1680,7 +1915,7 @@ mod tests {
     #[test]
     fn attacks_against_one_hex_are_resolved_as_one_order_independent_confrontation() {
         let mut initial = state();
-        initial.units.insert(UnitId(3), UnitState { owner: CivId(1), tile: TileIndex(3), unit_type: "unit.scout".into(), hit_points: 100, movement_left: 0, explored: false });
+        initial.units.insert(UnitId(3), UnitState { owner: CivId(1), tile: TileIndex(3), unit_type: "unit.scout".into(), hit_points: 100, movement_left: 0, explored: false, order: UnitOrder::Idle, skipped_turn: None });
         let first = command(1, 10, CivId(1), CommandPayload::DeclareAttack { attacker: UnitId(1), target: UnitId(2) });
         let second = command(2, 11, CivId(1), CommandPayload::DeclareAttack { attacker: UnitId(3), target: UnitId(2) });
         let forward = step(&initial, &[first.clone(), second.clone()], 99, &versions());
@@ -1698,5 +1933,126 @@ mod tests {
         let right = step(&initial, &[attack], 99, &versions());
         assert_eq!(left.state_hash, right.state_hash);
         assert_eq!(left.state.visibility[&CivId(1)][&TileIndex(0)], Visibility::Visible);
+    }
+
+    fn order_world() -> WorldState {
+        let mut initial = state();
+        initial.units.clear();
+        initial.map_width = 20;
+        initial.tiles = vec![TileState::default(); 200];
+        initial.units.insert(UnitId(1), UnitState { owner: CivId(1), tile: TileIndex(0), unit_type: "unit.scout".into(), hit_points: 100, movement_left: 3, explored: false, order: UnitOrder::Idle, skipped_turn: None });
+        initial.units.insert(UnitId(2), UnitState { owner: CivId(2), tile: TileIndex(50), unit_type: "unit.scout".into(), hit_points: 100, movement_left: 3, explored: false, order: UnitOrder::Idle, skipped_turn: None });
+        initial
+    }
+
+    fn at_turn(mut command: AcceptedCommand, turn: u32) -> AcceptedCommand { command.turn = TurnNumber(turn); command }
+
+    fn rejection_of(result: &StepResult, id: u64) -> Option<RejectionReason> {
+        result.events.iter().find_map(|event| match event {
+            DomainEvent::CommandRejected { command_id, reason } if *command_id == id => Some(*reason),
+            _ => None,
+        })
+    }
+
+    #[test]
+    fn move_to_advances_each_turn_arrives_and_returns_to_idle() {
+        let initial = order_world();
+        let order = command(1, 1, CivId(1), CommandPayload::SetUnitOrder { unit_id: UnitId(1), order: UnitOrder::MoveTo { target: TileIndex(7) } });
+        let first = step(&initial, &[order], 99, &versions());
+        assert_eq!(rejection_of(&first, 1), None);
+        assert_eq!(first.state.units[&UnitId(1)].tile, TileIndex(3));
+        assert_eq!(first.state.units[&UnitId(1)].order, UnitOrder::MoveTo { target: TileIndex(7) });
+        let second = step(&first.state, &[], 99, &versions());
+        assert_eq!(second.state.units[&UnitId(1)].tile, TileIndex(6));
+        assert!(idle_units(&second.state, CivId(1)).is_empty());
+        let third = step(&second.state, &[], 99, &versions());
+        assert_eq!(third.state.units[&UnitId(1)].tile, TileIndex(7));
+        assert_eq!(third.state.units[&UnitId(1)].order, UnitOrder::Idle);
+        assert_eq!(idle_units(&third.state, CivId(1)), vec![UnitId(1)]);
+    }
+
+    #[test]
+    fn move_to_becomes_idle_when_the_route_is_blocked() {
+        let mut initial = order_world();
+        initial.units.get_mut(&UnitId(1)).unwrap().order = UnitOrder::MoveTo { target: TileIndex(7) };
+        initial.units.get_mut(&UnitId(2)).unwrap().tile = TileIndex(7);
+        let result = step(&initial, &[], 99, &versions());
+        assert_eq!(result.state.units[&UnitId(1)].tile, TileIndex(0));
+        assert_eq!(result.state.units[&UnitId(1)].order, UnitOrder::Idle);
+    }
+
+    #[test]
+    fn set_unit_order_validates_owner_unit_and_target() {
+        let initial = order_world();
+        let foreign = command(1, 1, CivId(1), CommandPayload::SetUnitOrder { unit_id: UnitId(2), order: UnitOrder::Fortify });
+        let missing = command(2, 2, CivId(1), CommandPayload::SetUnitOrder { unit_id: UnitId(9), order: UnitOrder::Fortify });
+        let occupied = command(3, 3, CivId(1), CommandPayload::SetUnitOrder { unit_id: UnitId(1), order: UnitOrder::MoveTo { target: TileIndex(50) } });
+        let off_map = command(4, 4, CivId(1), CommandPayload::SetUnitOrder { unit_id: UnitId(1), order: UnitOrder::MoveTo { target: TileIndex(5000) } });
+        let skip_foreign = command(5, 5, CivId(1), CommandPayload::SkipUnit { unit_id: UnitId(2) });
+        let result = step(&initial, &[foreign, missing, occupied, off_map, skip_foreign], 99, &versions());
+        assert_eq!(rejection_of(&result, 1), Some(RejectionReason::NotCommandOwner));
+        assert_eq!(rejection_of(&result, 2), Some(RejectionReason::UnknownUnit));
+        assert_eq!(rejection_of(&result, 3), Some(RejectionReason::DestinationOccupied));
+        assert_eq!(rejection_of(&result, 4), Some(RejectionReason::InvalidTile));
+        assert_eq!(rejection_of(&result, 5), Some(RejectionReason::NotCommandOwner));
+
+        // A guard (movement 1) can never pay for a forest tile (cost 2).
+        let mut hard = order_world();
+        hard.units.get_mut(&UnitId(1)).unwrap().unit_type = "unit.guard".into();
+        hard.tiles[1].terrain = TERRAIN_FOREST;
+        let blocked = command(6, 1, CivId(1), CommandPayload::SetUnitOrder { unit_id: UnitId(1), order: UnitOrder::MoveTo { target: TileIndex(1) } });
+        assert_eq!(rejection_of(&step(&hard, &[blocked], 99, &versions()), 6), Some(RejectionReason::InvalidTile));
+    }
+
+    #[test]
+    fn skip_unit_frees_the_unit_only_for_the_current_turn() {
+        let initial = order_world();
+        assert_eq!(idle_units(&initial, CivId(1)), vec![UnitId(1)]);
+        let skip = command(1, 1, CivId(1), CommandPayload::SkipUnit { unit_id: UnitId(1) });
+        assert!(idle_units_with(&initial, CivId(1), &[skip.clone()]).is_empty());
+        let result = step(&initial, &[skip], 99, &versions());
+        assert_eq!(result.state.units[&UnitId(1)].skipped_turn, Some(0));
+        assert_eq!(result.state.turn, TurnNumber(1));
+        assert_eq!(idle_units(&result.state, CivId(1)), vec![UnitId(1)]);
+        let fortify = at_turn(command(2, 1, CivId(1), CommandPayload::SetUnitOrder { unit_id: UnitId(1), order: UnitOrder::Fortify }), 1);
+        assert!(idle_units_with(&result.state, CivId(1), &[fortify]).is_empty());
+    }
+
+    #[test]
+    fn explore_walks_toward_unknown_tiles_and_goes_idle_when_none_remain() {
+        let mut initial = order_world();
+        initial.units.get_mut(&UnitId(1)).unwrap().order = UnitOrder::Explore;
+        assert!(can_explore(&initial, UnitId(1)));
+        let moved = step(&initial, &[], 99, &versions());
+        assert_ne!(moved.state.units[&UnitId(1)].tile, TileIndex(0));
+        assert_eq!(moved.state.units[&UnitId(1)].order, UnitOrder::Explore);
+
+        let known: BTreeMap<TileIndex, Visibility> = (0..200).map(|tile| (TileIndex(tile), Visibility::Remembered)).collect();
+        initial.visibility.insert(CivId(1), known);
+        assert!(!can_explore(&initial, UnitId(1)));
+        let done = step(&initial, &[], 99, &versions());
+        assert_eq!(done.state.units[&UnitId(1)].tile, TileIndex(0));
+        assert_eq!(done.state.units[&UnitId(1)].order, UnitOrder::Idle);
+    }
+
+    #[test]
+    fn orders_are_part_of_the_hash_and_replay_identically() {
+        let initial = order_world();
+        let snapshot = WorldSnapshot::new(initial.clone(), versions());
+        let explore = command(1, 1, CivId(1), CommandPayload::SetUnitOrder { unit_id: UnitId(1), order: UnitOrder::Explore });
+        let travel = command(2, 2, CivId(2), CommandPayload::SetUnitOrder { unit_id: UnitId(2), order: UnitOrder::MoveTo { target: TileIndex(53) } });
+        let first = step(&initial, &[explore.clone(), travel.clone()], 99, &versions());
+        let again = step(&initial, &[explore.clone(), travel.clone()], 99, &versions());
+        assert_eq!(first.state_hash, again.state_hash);
+        let skip = command(1, 1, CivId(1), CommandPayload::SkipUnit { unit_id: UnitId(1) });
+        assert_ne!(step(&initial, &[skip], 99, &versions()).state_hash, step(&initial, &[], 99, &versions()).state_hash);
+        let second = step(&first.state, &[], 99, &versions());
+        let mut log = CommandLog::default();
+        log.append(explore);
+        log.append(travel);
+        log.record_turn(TurnNumber::ZERO, first.state_hash);
+        log.record_turn(TurnNumber(1), second.state_hash);
+        let replayed = replay(&snapshot, &log).unwrap();
+        assert_eq!(replayed.state, second.state);
     }
 }

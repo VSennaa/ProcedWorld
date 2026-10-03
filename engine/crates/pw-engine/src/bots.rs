@@ -3,7 +3,7 @@
 use crate::{
     hex::Grid,
     ids::{CivId, CityId, TileIndex},
-    world::{movement_cost, next_technology, queued_food_cost, unit_movement, AcceptedCommand, CityFocus, CommandOrigin, CommandPayload, GroundingRef, WorldState, SETTLER_CITY_ID_BASE, TERRAIN_OCEAN},
+    world::{can_explore, movement_cost, next_technology, queued_food_cost, unit_movement, unit_role, AcceptedCommand, CityFocus, CommandOrigin, CommandPayload, GroundingRef, UnitOrder, WorldState, SETTLER_CITY_ID_BASE, TERRAIN_OCEAN},
 };
 use std::collections::{BTreeSet, VecDeque};
 
@@ -76,11 +76,10 @@ impl BotT0 {
                 }
                 continue;
             }
-            if let Some(target) = grid.and_then(|grid| next_exploration_tile(state, grid, civilization, unit.tile, unit_movement(&unit.unit_type))) {
-                grounding.push(GroundingRef::Tile { tile: target });
-                proposals.push(BotProposal { payload: CommandPayload::MoveUnit { unit_id: *unit_id, target }, grounding: grounding.clone() });
-            }
-            proposals.push(BotProposal { payload: CommandPayload::Explore { unit_id: *unit_id }, grounding });
+            // Persistent orders replace per-turn micro-moves: only idle units need a new order.
+            if unit.order != UnitOrder::Idle { continue; }
+            let order = if unit_role(&unit.unit_type) == "defense" || !can_explore(state, *unit_id) { UnitOrder::Fortify } else { UnitOrder::Explore };
+            proposals.push(BotProposal { payload: CommandPayload::SetUnitOrder { unit_id: *unit_id, order }, grounding });
         }
         // At most one diplomatic action per turn, always grounded in Ledger entries (diplomacy slot).
         if let Some((payload, grounding)) = crate::diplomacy::t0_proposal(state, civilization) {
@@ -104,14 +103,6 @@ impl BotProposal {
 fn city_id_for_settler(settler_id: crate::ids::UnitId) -> CityId {
     // Production reserves ids represented by existing settlements as well.
     CityId(SETTLER_CITY_ID_BASE.saturating_add(settler_id.0))
-}
-
-fn next_exploration_tile(state: &WorldState, grid: Grid, owner: CivId, from: TileIndex, movement: u8) -> Option<TileIndex> {
-    let cell = grid.cell(from).ok()?;
-    grid.neighbors(cell).ok()?.into_iter().filter_map(|cell| grid.tile_index(cell).ok())
-        .filter(|tile| !state.units.values().any(|unit| unit.tile == *tile))
-        .filter(|tile| movement_cost(state, from, *tile).is_ok_and(|cost| cost <= u32::from(movement)))
-        .min_by_key(|tile| (state.visibility.get(&owner).is_some_and(|known| known.contains_key(tile)), tile.0))
 }
 
 fn settlement_site(state: &WorldState, grid: Grid, tile: TileIndex) -> bool {
@@ -208,7 +199,7 @@ mod tests {
         let unit_id = crate::ids::UnitId(1);
         state.units.insert(unit_id, crate::world::UnitState {
             owner: CivId(0), tile: TileIndex(0), unit_type: "unit.settler".into(),
-            hit_points: 100, movement_left: 0, explored: false,
+            hit_points: 100, movement_left: 0, explored: false, order: crate::world::UnitOrder::Idle, skipped_turn: None,
         });
         state.tiles[0].terrain = TERRAIN_OCEAN;
         state.tiles[1].terrain = TERRAIN_OCEAN;
@@ -220,7 +211,7 @@ mod tests {
         // Occupying the selected destination must force another route.
         state.units.insert(crate::ids::UnitId(2), crate::world::UnitState {
             owner: CivId(0), tile: target, unit_type: "unit.scout".into(),
-            hit_points: 100, movement_left: 0, explored: false,
+            hit_points: 100, movement_left: 0, explored: false, order: crate::world::UnitOrder::Idle, skipped_turn: None,
         });
         assert_ne!(settlement_step(&state, grid, TileIndex(0)), Some(target));
     }
@@ -287,5 +278,24 @@ mod tests {
         assert!(matches!(proposal.payload, CommandPayload::FoundCity { target: TileIndex(3), .. }));
         assert!(!proposal.grounding.is_empty());
         assert_eq!(proposal.accept(&state, CivId(0), 1, 1).origin, CommandOrigin::Bot);
+    }
+
+    #[test]
+    fn idle_units_get_a_persistent_order_and_ordered_units_are_left_alone() {
+        let initial = expansion_world();
+        let versions = crate::world::SimulationVersions { ruleset: initial.ruleset.clone(), resolver_version: 1 };
+        let founding = BotT0.decide(&initial, CivId(0), TileIndex(0)).remove(0).accept(&initial, CivId(0), 1, 1);
+        let mut state = crate::world::step(&initial, &[founding], initial.seed, &versions).state;
+        state.units.insert(crate::ids::UnitId(7), crate::world::UnitState {
+            owner: CivId(0), tile: TileIndex(0), unit_type: "unit.scout".into(),
+            hit_points: 100, movement_left: 3, explored: false, order: UnitOrder::Idle, skipped_turn: None,
+        });
+        let orders = |state: &WorldState| BotT0.decide(state, CivId(0), TileIndex(0)).into_iter().filter_map(|proposal| match proposal.payload {
+            CommandPayload::SetUnitOrder { unit_id, order } => Some((unit_id, order)),
+            _ => None,
+        }).collect::<Vec<_>>();
+        assert_eq!(orders(&state), vec![(crate::ids::UnitId(7), UnitOrder::Explore)]);
+        state.units.get_mut(&crate::ids::UnitId(7)).unwrap().order = UnitOrder::Fortify;
+        assert!(orders(&state).is_empty());
     }
 }
