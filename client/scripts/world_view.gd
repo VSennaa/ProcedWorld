@@ -97,6 +97,32 @@ func apply_local_queue(city_id: int, unit_type: String) -> void:
 		city["queue"].append(unit_type)
 
 
+## Optimistic update after RemoveQueuedUnit: the item goes, the accumulated production stays.
+func apply_local_queue_remove(city_id: int, index: int) -> void:
+	var city := city_by_id(city_id)
+	if not city.is_empty() and index >= 0 and index < city["queue"].size():
+		city["queue"].remove_at(index)
+
+
+## Optimistic update after MoveQueuedUnit: the item at `from` ends at position `to`.
+func apply_local_queue_move(city_id: int, from: int, to: int) -> void:
+	var city := city_by_id(city_id)
+	if city.is_empty():
+		return
+	var queue: Array = city["queue"]
+	if from < 0 or to < 0 or from >= queue.size() or to >= queue.size():
+		return
+	var item: Variant = queue[from]
+	queue.remove_at(from)
+	queue.insert(to, item)
+
+
+func apply_local_focus(city_id: int, focus: String) -> void:
+	var city := city_by_id(city_id)
+	if not city.is_empty():
+		city["focus"] = focus
+
+
 ## Remaining decisions in the stable order the compact Pronto button walks: the capital card first,
 ## then agenda cards (events) not yet answered in `answered` (card ids), then idle units by id.
 ## Each entry: {kind: "capital"} | {kind: "event", id: String} | {kind: "unit", id: int}.

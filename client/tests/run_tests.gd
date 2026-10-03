@@ -472,12 +472,26 @@ func test_found_and_produce_model() -> void:
 	check(UnitPanel.legal_actions(view.unit_by_id(5), view.tile_at(Vector2i(9, 7))) == ["move", "skip"], "no second founding for the same settler")
 	view.apply_local_queue(0, "unit.scout")
 	check(view.city_by_id(0)["queue"] == ["unit.worker", "unit.scout"], "accepted queue request is appended locally")
+	view.apply_local_queue_move(0, 1, 0)
+	check(view.city_by_id(0)["queue"] == ["unit.scout", "unit.worker"], "accepted move reorders locally")
+	view.apply_local_queue_remove(0, 0)
+	check(view.city_by_id(0)["queue"] == ["unit.worker"], "accepted remove drops the item")
+	check(view.city_by_id(0)["unit_production"] == 4, "removing keeps accumulated production")
+	view.apply_local_queue_remove(0, 5)
+	view.apply_local_queue_move(0, 0, 5)
+	check(view.city_by_id(0)["queue"] == ["unit.worker"], "out-of-range queue edits are ignored")
+	view.apply_local_focus(0, "build")
+	check(view.city_by_id(0)["focus"] == "build", "accepted focus is applied locally")
+	view.apply_local_queue(0, "unit.scout")
 	view.apply_local_queue(404, "unit.scout")
 	check(view.city_by_id(404).is_empty(), "queueing in an unknown city is ignored")
 
 
 func test_found_and_queue_commands() -> void:
 	check(Protocol.command_found_city(0, 178) == {"command": {"type": "found_city", "data": {"city_id": 0, "target": 178}}}, "FoundCity payload shape")
+	check(Protocol.command_remove_queued_unit(2, 1) == {"command": {"type": "remove_queued_unit", "data": {"city_id": 2, "index": 1}}}, "RemoveQueuedUnit payload shape")
+	check(Protocol.command_move_queued_unit(2, 1, 0) == {"command": {"type": "move_queued_unit", "data": {"city_id": 2, "from": 1, "to": 0}}}, "MoveQueuedUnit payload shape")
+	check(Protocol.command_set_city_focus(2, "build") == {"command": {"type": "set_city_focus", "data": {"city_id": 2, "focus": "build"}}}, "SetCityFocus payload shape")
 	check(Protocol.command_queue_unit(0, "unit.scout") == {"command": {"type": "queue_unit", "data": {"city_id": 0, "unit_type": "unit.scout"}}}, "QueueUnit payload shape")
 	check(Protocol.settler_city_id(5) == 1000005, "settler city ids follow the bots' rule")
 	var view := _adapt(_load_view_payload(), _load_catalog())
@@ -537,12 +551,16 @@ func test_city_panel() -> void:
 	panel.found_capital_requested.connect(func() -> void: founded.append(true))
 	panel.show_city(city, catalog, view.research)
 	check(panel.visible and panel.city_id() == 0, "panel opens for the city")
-	var buttons: Array = panel._box.find_children("*", "Button", true, false)
+	var all_buttons: Array = panel._box.find_children("*", "Button", true, false)
+	var buttons: Array = all_buttons.filter(func(b: Button) -> bool: return b.text.begins_with("Produzir"))
 	check(buttons.size() == 3, "one production button per available unit")
-	for button in buttons:
-		check(button.custom_minimum_size.y >= 44, "production buttons are at least 44 px tall")
+	for button in all_buttons:
+		check(button.custom_minimum_size.y >= 44, "every panel button is at least 44 px tall")
+	for button in all_buttons.filter(func(b: Button) -> bool: return b.text in ["▲", "▼", "✕"]):
+		check(button.custom_minimum_size.x >= 44, "icon buttons are at least 44 px wide")
 	buttons[0].pressed.emit()
 	check(queued == ["unit.scout"], "tapping a unit asks to queue it")
+	_check_queue_management(panel, city, catalog, view.research)
 	panel.show_founding(Vector2i(10, 7), false)
 	buttons = panel._box.find_children("*", "Button", true, false)
 	check(buttons.size() == 1 and buttons[0].text == "Fundar capital", "starting tile offers Fundar capital")
@@ -553,6 +571,43 @@ func test_city_panel() -> void:
 	panel.clear()
 	check(not panel.visible, "panel hides on clear")
 	panel.queue_free()
+
+
+func _check_queue_management(panel: CityPanel, city: Dictionary, catalog: RefCounted, research: Dictionary) -> void:
+	var removed: Array = []
+	var moved: Array = []
+	var focused: Array = []
+	panel.queue_remove_requested.connect(func(index: int) -> void: removed.append(index))
+	panel.queue_move_requested.connect(func(from: int, to: int) -> void: moved.append([from, to]))
+	panel.focus_requested.connect(func(focus: String) -> void: focused.append(focus))
+	var two := city.duplicate(true)
+	two["queue"] = ["unit.worker", "unit.scout"]
+	panel.show_city(two, catalog, research)
+	var icons: Array = panel._box.find_children("*", "Button", true, false).filter(func(b: Button) -> bool: return b.text in ["▲", "▼", "✕"])
+	check(icons.size() == 6, "each queue row has up, down and remove")
+	check(icons[0].disabled and not icons[1].disabled and not icons[2].disabled, "the first row cannot go up")
+	check(not icons[3].disabled and icons[4].disabled, "the last row cannot go down")
+	icons[1].pressed.emit()
+	icons[3].pressed.emit()
+	icons[5].pressed.emit()
+	check(moved == [[0, 1], [1, 0]] and removed == [1], "icons emit move and remove with the row index: %s %s" % [moved, removed])
+	var focus_buttons: Array = panel._box.find_children("*", "Button", true, false).filter(func(b: Button) -> bool: return b.text in ["Abastecimento", "Construção", "Diversificar"])
+	check(focus_buttons.size() == 3 and focus_buttons[0].button_pressed and not focus_buttons[1].button_pressed, "focus selector marks the current focus")
+	focus_buttons[0].pressed.emit()
+	focus_buttons[1].pressed.emit()
+	check(focused == ["build"], "choosing another focus emits it; the current one does nothing")
+	# Worker 10 and scout 12 at +2 per turn with 4 already produced: (10-4)/2 = 3, then (22-4)/2 = 9.
+	check(CityPanel.queue_etas(two, catalog) == [3, 9], "ETA per item with carry-over: %s" % [CityPanel.queue_etas(two, catalog)])
+	check(CityPanel.eta_text(1) == "1 turno" and CityPanel.eta_text(3) == "3 turnos" and CityPanel.eta_text(-1) == "—", "ETA text")
+	var stalled := two.duplicate(true)
+	stalled["yields"]["production"] = 0
+	check(CityPanel.queue_etas(stalled, catalog) == [-1, -1] and CityPanel.is_stalled(stalled, catalog), "no production: unknown ETA and stalled")
+	panel.show_city(stalled, catalog, research)
+	var texts: Array = panel._box.find_children("*", "Label", true, false).map(func(l: Label) -> String: return l.text)
+	check(texts.has(CityPanel.NO_PRODUCTION_HINT), "stalled queue shows the hint")
+	check(texts.any(func(t: String) -> bool: return t.begins_with("2. ") and t.ends_with("—")), "unknown ETA shows a dash")
+	check(not CityPanel.is_stalled(two, catalog), "producing city is not stalled")
+	panel.show_city(city, catalog, research)
 
 
 func test_decisions_and_fab() -> void:
