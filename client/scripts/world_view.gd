@@ -97,6 +97,23 @@ func apply_local_queue(city_id: int, unit_type: String) -> void:
 		city["queue"].append(unit_type)
 
 
+## Remaining decisions in the stable order the compact Pronto button walks: the capital card first,
+## then agenda cards (events) not yet answered in `answered` (card ids), then idle units by id.
+## Each entry: {kind: "capital"} | {kind: "event", id: String} | {kind: "unit", id: int}.
+func decisions(answered: Array = []) -> Array:
+	var list: Array = []
+	if needs_capital() and not is_founding(home_cell):
+		list.append({"kind": "capital"})
+	for card in agenda:
+		if not answered.has(card["id"]):
+			list.append({"kind": "event", "id": card["id"]})
+	var ids: Array = idle_units.duplicate()
+	ids.sort()
+	for unit_id in ids:
+		list.append({"kind": "unit", "id": unit_id})
+	return list
+
+
 func awaiting_count() -> int:
 	return idle_units.size()
 

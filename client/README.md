@@ -20,7 +20,7 @@ $GODOT --headless --path client -s res://tests/live_flow.gd
 # abrir o jogo (janela): começa na tela inicial (servidor, criar mundo, entrar, demonstração)
 $GODOT --path client
 # argumentos úteis, depois de "--": --server=ws://host:porta/ws  --demo=pauta|servidor
-#   --screen=pauta|mapa|pesquisa  --select-capital  --select-unit=<id>
+#   --screen=pauta|mapa|pesquisa  --select-capital  --select-unit=<id>  --no-decisions
 ```
 
 A tela inicial pede a URL do servidor (padrão `ws://127.0.0.1:8100/ws`). **Criar mundo** envia
@@ -29,7 +29,7 @@ A tela inicial pede a URL do servidor (padrão `ws://127.0.0.1:8100/ws`). **Cria
 `fixtures/state_snapshot.json` (escrito à mão) e "visão do servidor" abre `fixtures/server_view.json`
 e `fixtures/server_catalog.json`, no formato real de `view_for` e do frame `catalog`.
 
-Capturas em `client/docs/` (`inicio`, `pauta`, `pauta-unidades`, `mapa`, `pesquisa`), geradas com
+Capturas em `client/docs/` (`inicio`, `pauta`, `pauta-unidades`, `mapa`, `mapa-pronto`, `pesquisa`), geradas com
 `--write-movie <pasta existente>/frame.png --quit-after 20 --resolution 720x1280` e pegando o último quadro.
 
 ## O que é real
@@ -44,6 +44,7 @@ Capturas em `client/docs/` (`inicio`, `pauta`, `pauta-unidades`, `mapa`, `pesqui
 - Adaptador da visão do servidor (`scripts/server_view.gd`): `tile` row-major para célula odd-r, terreno numérico para bioma, fronteiras derivadas de `owner`, cidades, unidades (`order`, `skipped_turn`), `idle_units` e eventos pendentes da Entropia como cartões da Pauta. Campos opcionais ausentes são tolerados.
 - Unidades no mapa (ícone por tipo/papel, cor da civilização, marca âmbar quando ociosa), cartão da unidade com **Mover** (toque no destino, `MoveTo`), **Explorar**, **Fortificar** e **Pular**. A ordem só aparece na tela depois de `command_accepted`.
 - Pauta com a fila de unidades ociosas (toque centraliza o mapa) e **Pronto** desabilitado com "N unidades aguardam ordem"; `units_awaiting_orders` pede novo snapshot.
+- Botão **Pronto** compacto (`scripts/ready_fab.gd`) fora da Pauta: selo com as decisões restantes (capital por fundar, eventos sem escolha, unidades ociosas). Com decisões, leva à próxima (capital, eventos na Pauta, unidades por id); com zero, envia `ready` pelo mesmo caminho do botão da Pauta e depois espera o turno avançar. Só conta eventos que aparecem na Pauta (limite de 3 cartões).
 - Pesquisa (só leitura) a partir do frame `catalog`: colunas por profundidade de pré-requisito, dominadas, atual e progresso (`scripts/catalog_view.gd`, `scripts/tech_view.gd`).
 
 ## O que é placeholder ou limitado

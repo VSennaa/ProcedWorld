@@ -6,6 +6,8 @@ signal ready_pressed(choices: Dictionary)
 signal unit_focus_requested(unit_id: int)
 signal capital_focus_requested(cell: Vector2i)
 signal found_capital_requested
+## Anything the compact Pronto button depends on changed (choices, idle list, sent state).
+signal state_changed
 
 const WorldView := preload("res://scripts/world_view.gd")
 
@@ -144,6 +146,10 @@ func set_status(text: String) -> void:
 		_status.text = text
 
 
+func is_sent() -> bool:
+	return _sent
+
+
 func mark_ready(sent: bool) -> void:
 	_sent = true
 	_sent_text = "Pronto (enviado)" if sent else "Pronto (rascunho local)"
@@ -181,6 +187,7 @@ func set_idle_units(entries: Array) -> void:
 
 
 func _refresh_ready() -> void:
+	state_changed.emit()
 	if _ready_button == null:
 		return
 	if _sent:
@@ -249,6 +256,7 @@ func _build_card(card: Dictionary) -> Control:
 
 func _on_option_pressed(card_id: String, option_id: String) -> void:
 	choices[card_id] = option_id
+	state_changed.emit()
 	for id in _option_buttons[card_id]:
 		_option_buttons[card_id][id].button_pressed = (id == option_id)
 	_refresh_pending()
