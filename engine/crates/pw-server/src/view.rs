@@ -64,6 +64,8 @@ pub fn events_for(state: &WorldState, civ: CivId, turn_commands: &[AcceptedComma
             DomainEvent::CommandApplied { command_id } | DomainEvent::CommandRejected { command_id, .. } => own(*command_id),
             DomainEvent::PopulationMigrated { from, to, .. } => own_city(from) || own_city(to),
             DomainEvent::CollapseTriggered { .. } => true,
+            // A diplomatic resolution is visible to both parties.
+            DomainEvent::DiplomacyResolved { actor, other, .. } => *actor == civ || *other == civ,
         })
         .map(|event| serde_json::to_value(event).unwrap_or(Value::Null))
         .collect()

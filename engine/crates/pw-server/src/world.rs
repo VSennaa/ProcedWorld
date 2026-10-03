@@ -92,6 +92,9 @@ fn kind_of(payload: &CommandPayload) -> CommandKind {
         CommandPayload::DeclareAttack { .. } => CommandKind::DeclareAttack,
         CommandPayload::Explore { .. } => CommandKind::Explore,
         CommandPayload::KeepPlan => CommandKind::KeepPlan,
+        CommandPayload::ProposeDiplomacy { .. } => CommandKind::ProposeDiplomacy,
+        CommandPayload::BreakTreaty { .. } => CommandKind::BreakTreaty,
+        CommandPayload::DeclareWar { .. } => CommandKind::DeclareWar,
     }
 }
 
