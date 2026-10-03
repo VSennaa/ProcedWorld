@@ -463,6 +463,8 @@ pub enum CommandKind {
     ActivatePractice,
     DeactivatePractice,
     QueueUnit,
+    RemoveQueuedUnit,
+    MoveQueuedUnit,
     DeclareAttack,
     Explore,
     SetUnitOrder,
@@ -488,6 +490,10 @@ pub enum CommandPayload {
     ActivatePractice { practice: String },
     DeactivatePractice { practice: String },
     QueueUnit { city_id: CityId, unit_type: String },
+    /// Drops the queue item at `index`; removing the head keeps the accumulated `unit_production`.
+    RemoveQueuedUnit { city_id: CityId, index: u32 },
+    /// Moves the queue item at `from` so it ends at position `to`.
+    MoveQueuedUnit { city_id: CityId, from: u32, to: u32 },
     DeclareAttack { attacker: UnitId, target: UnitId },
     Explore { unit_id: UnitId },
     /// Replaces the persistent order of an own unit.
@@ -528,6 +534,8 @@ impl CommandPayload {
             Self::ActivatePractice { .. } => CommandKind::ActivatePractice,
             Self::DeactivatePractice { .. } => CommandKind::DeactivatePractice,
             Self::QueueUnit { .. } => CommandKind::QueueUnit,
+            Self::RemoveQueuedUnit { .. } => CommandKind::RemoveQueuedUnit,
+            Self::MoveQueuedUnit { .. } => CommandKind::MoveQueuedUnit,
             Self::DeclareAttack { .. } => CommandKind::DeclareAttack,
             Self::Explore { .. } => CommandKind::Explore,
             Self::SetUnitOrder { .. } => CommandKind::SetUnitOrder,
@@ -596,6 +604,7 @@ pub enum RejectionReason {
     UnknownUnitType,
     UnitTechnologyNotResearched,
     UnitAlreadyReserved,
+    InvalidQueueIndex,
     MissingSettler,
     AttackNotHostile,
     AttackOutOfRange,
@@ -921,6 +930,23 @@ fn apply_command(state: &mut WorldState, command: &AcceptedCommand, events: &mut
             let city = state.cities.get_mut(city_id).ok_or(RejectionReason::UnknownCity)?;
             if city.owner != command.actor_id { return Err(RejectionReason::NotCommandOwner); }
             city.unit_queue.push(unit_type.clone());
+            Ok(())
+        }
+        CommandPayload::RemoveQueuedUnit { city_id, index } => {
+            let city = state.cities.get_mut(city_id).ok_or(RejectionReason::UnknownCity)?;
+            if city.owner != command.actor_id { return Err(RejectionReason::NotCommandOwner); }
+            let index = *index as usize;
+            if index >= city.unit_queue.len() { return Err(RejectionReason::InvalidQueueIndex); }
+            city.unit_queue.remove(index);
+            Ok(())
+        }
+        CommandPayload::MoveQueuedUnit { city_id, from, to } => {
+            let city = state.cities.get_mut(city_id).ok_or(RejectionReason::UnknownCity)?;
+            if city.owner != command.actor_id { return Err(RejectionReason::NotCommandOwner); }
+            let (from, to) = (*from as usize, *to as usize);
+            if from >= city.unit_queue.len() || to >= city.unit_queue.len() { return Err(RejectionReason::InvalidQueueIndex); }
+            let item = city.unit_queue.remove(from);
+            city.unit_queue.insert(to, item);
             Ok(())
         }
         CommandPayload::DeclareAttack { attacker, target } => {
@@ -1370,8 +1396,9 @@ fn resolve_unit_production(state: &mut WorldState) {
         let highest_id = state.units.keys().map(|id| id.0)
             .chain(state.cities.keys().filter_map(|id| id.0.checked_sub(SETTLER_CITY_ID_BASE))).max();
         let next_id = match highest_id { Some(id) => id.checked_add(1), None => Some(0) };
-        let can_spawn = next_id.is_some_and(|id| id <= u32::MAX - SETTLER_CITY_ID_BASE)
-            && !state.units.values().any(|unit| unit.tile == tile);
+        // The city tile first; when occupied, the first free adjacent land tile in index order.
+        let spawn_tile = spawn_tile_for(state, tile);
+        let can_spawn = next_id.is_some_and(|id| id <= u32::MAX - SETTLER_CITY_ID_BASE) && spawn_tile.is_some();
         {
             let city = state.cities.get_mut(&city_id).expect("city id was collected from state");
             city.unit_production = city.unit_production.saturating_add(produced);
@@ -1381,8 +1408,24 @@ fn resolve_unit_production(state: &mut WorldState) {
             city.unit_queue.remove(0);
         }
         let next_id = next_id.expect("spawn id was checked before spending resources");
+        let tile = spawn_tile.expect("spawn tile was checked before spending resources");
         state.units.insert(UnitId(next_id), UnitState { owner, tile, unit_type, hit_points: 100, movement_left: definition.movement, explored: false, order: UnitOrder::Idle, skipped_turn: None });
     }
+}
+
+/// Where a unit produced by the city on `city_tile` appears: the city tile if free, otherwise the
+/// lowest-index free adjacent land tile. `None` when every candidate is taken.
+fn spawn_tile_for(state: &WorldState, city_tile: TileIndex) -> Option<TileIndex> {
+    let occupied = |tile: TileIndex| state.units.values().any(|unit| unit.tile == tile);
+    if !occupied(city_tile) { return Some(city_tile); }
+    let grid = grid_for(state).ok()?;
+    let mut neighbors: Vec<TileIndex> = grid.neighbors(grid.cell(city_tile).ok()?).ok()?.into_iter()
+        .filter_map(|cell| grid.tile_index(cell).ok()).collect();
+    neighbors.sort_unstable();
+    neighbors.dedup();
+    neighbors.into_iter().find(|tile| {
+        state.tiles.get(tile.0 as usize).is_some_and(|data| data.terrain != TERRAIN_OCEAN) && !occupied(*tile)
+    })
 }
 
 fn resolve_visibility(state: &mut WorldState) {
@@ -1772,6 +1815,8 @@ mod tests {
         producer.food_stock = 12;
         producer.unit_production = 22;
         initial.cities.insert(CityId(1), producer);
+        // Every neighbour is water: nowhere to spawn, so production waits complete.
+        for tile in 1..4 { initial.tiles[tile].terrain = TERRAIN_OCEAN; }
         resolve_unit_production(&mut initial);
         let blocked = &initial.cities[&CityId(1)];
         assert_eq!(blocked.unit_queue, vec!["unit.settler"]);
@@ -1783,6 +1828,100 @@ mod tests {
         assert!(initial.cities[&CityId(1)].unit_queue.is_empty());
         assert_eq!(initial.cities[&CityId(1)].food_stock, 2);
         assert_eq!(initial.units[&UnitId(10)].unit_type, "unit.settler");
+    }
+
+    fn queue_state(queue: &[&str]) -> WorldState {
+        let mut initial = state();
+        let mut producer = city(CivId(1), 0, 4);
+        producer.unit_queue = queue.iter().map(|unit| (*unit).to_owned()).collect();
+        initial.cities.insert(CityId(1), producer);
+        initial
+    }
+
+    fn rejected(result: &StepResult, reason: RejectionReason) -> bool { result.events.iter().any(|event| matches!(event, DomainEvent::CommandRejected { reason: found, .. } if *found == reason)) }
+
+    fn queue_of(state: &WorldState) -> Vec<&str> { state.cities[&CityId(1)].unit_queue.iter().map(String::as_str).collect() }
+
+    #[test]
+    fn queue_remove_and_move_validate_and_reorder() {
+        let initial = queue_state(&["unit.scout", "unit.settler", "unit.scout"]);
+        let remove = |index: u32, actor: CivId| command(1, 1, actor, CommandPayload::RemoveQueuedUnit { city_id: CityId(1), index });
+        let shift = |from: u32, to: u32| command(1, 1, CivId(1), CommandPayload::MoveQueuedUnit { city_id: CityId(1), from, to });
+        let result = step(&initial, &[remove(1, CivId(1))], 99, &versions());
+        assert_eq!(queue_of(&result.state), vec!["unit.scout", "unit.scout"]);
+        let result = step(&initial, &[shift(1, 0)], 99, &versions());
+        assert_eq!(queue_of(&result.state), vec!["unit.settler", "unit.scout", "unit.scout"]);
+        let result = step(&initial, &[shift(0, 2)], 99, &versions());
+        assert_eq!(queue_of(&result.state), vec!["unit.settler", "unit.scout", "unit.scout"]);
+        for bad in [remove(3, CivId(1)), shift(3, 0), shift(0, 3)] {
+            let result = step(&initial, &[bad], 99, &versions());
+            assert_eq!(queue_of(&result.state), queue_of(&initial));
+            assert!(rejected(&result, RejectionReason::InvalidQueueIndex), "{:?}", result.events);
+        }
+        let result = step(&initial, &[remove(0, CivId(2))], 99, &versions());
+        assert!(rejected(&result, RejectionReason::NotCommandOwner));
+        let unknown = command(1, 1, CivId(1), CommandPayload::RemoveQueuedUnit { city_id: CityId(77), index: 0 });
+        let result = step(&initial, &[unknown], 99, &versions());
+        assert!(rejected(&result, RejectionReason::UnknownCity));
+    }
+
+    #[test]
+    fn removing_the_queue_head_keeps_accumulated_production() {
+        let mut initial = queue_state(&["unit.settler", "unit.scout"]);
+        initial.cities.get_mut(&CityId(1)).unwrap().unit_production = 7;
+        let command = command(1, 1, CivId(1), CommandPayload::RemoveQueuedUnit { city_id: CityId(1), index: 0 });
+        let result = step(&initial, &[command], 99, &versions());
+        assert_eq!(queue_of(&result.state), vec!["unit.scout"]);
+        assert_eq!(result.state.cities[&CityId(1)].unit_production, 7);
+    }
+
+    #[test]
+    fn production_spawns_on_first_free_adjacent_land_tile_when_city_tile_is_occupied() {
+        let mut initial = queue_state(&["unit.scout"]);
+        initial.cities.get_mut(&CityId(1)).unwrap().unit_production = 100;
+        // Unit 1 stands on the city tile; the foreign unit is moved around below.
+        initial.units.get_mut(&UnitId(2)).unwrap().tile = TileIndex(0);
+        let grid = grid_for(&initial).unwrap();
+        let mut around: Vec<TileIndex> = grid.neighbors(grid.cell(TileIndex(0)).unwrap()).unwrap().into_iter().map(|cell| grid.tile_index(cell).unwrap()).collect();
+        around.sort_unstable();
+        around.dedup();
+        assert!(around.len() >= 2, "test map needs two neighbours");
+        let (first, second) = (around[0], around[1]);
+        // Lowest neighbour is water, so the second one is the first free land tile.
+        initial.tiles[first.0 as usize].terrain = TERRAIN_OCEAN;
+        let mut resolved = initial.clone();
+        resolve_unit_production(&mut resolved);
+        let spawned: Vec<_> = resolved.units.iter().filter(|(id, _)| id.0 >= 3).collect();
+        assert_eq!(resolved.units.len(), 3);
+        assert!(resolved.cities[&CityId(1)].unit_queue.is_empty());
+        assert_eq!(spawned.len(), 1);
+        assert_eq!(spawned[0].1.tile, second);
+        // Occupying the second tile moves the spawn on to the next free land tile (or waits).
+        initial.units.get_mut(&UnitId(2)).unwrap().tile = second;
+        let mut again = initial.clone();
+        resolve_unit_production(&mut again);
+        let tile_of_new = again.units.iter().find(|(id, _)| id.0 >= 3).map(|(_, unit)| unit.tile);
+        assert_ne!(tile_of_new, Some(second));
+        assert_ne!(tile_of_new, Some(first));
+    }
+
+    #[test]
+    fn queue_commands_replay_deterministically() {
+        let initial = queue_state(&["unit.scout", "unit.settler"]);
+        let commands = [command(1, 1, CivId(1), CommandPayload::MoveQueuedUnit { city_id: CityId(1), from: 1, to: 0 }), command(2, 2, CivId(1), CommandPayload::RemoveQueuedUnit { city_id: CityId(1), index: 1 })];
+        let a = step(&initial, &commands, 99, &versions());
+        let b = step(&initial, &commands, 99, &versions());
+        assert_eq!(a.state_hash, b.state_hash);
+        assert_eq!(a.state, b.state);
+        assert_eq!(queue_of(&a.state), vec!["unit.settler"]);
+    }
+
+    #[test]
+    fn queue_command_wire_format_is_adjacent_tagged() {
+        let json = serde_json::to_string(&CommandPayload::MoveQueuedUnit { city_id: CityId(1), from: 2, to: 0 }).unwrap();
+        assert!(json.contains("\"type\":\"move_queued_unit\"") && json.contains("\"data\""), "{json}");
+        let json = serde_json::to_string(&CommandPayload::RemoveQueuedUnit { city_id: CityId(1), index: 0 }).unwrap();
+        assert!(json.contains("\"type\":\"remove_queued_unit\""), "{json}");
     }
 
     #[test]

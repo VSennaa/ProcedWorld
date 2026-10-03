@@ -90,6 +90,8 @@ fn kind_of(payload: &CommandPayload) -> CommandKind {
         CommandPayload::ActivatePractice { .. } => CommandKind::ActivatePractice,
         CommandPayload::DeactivatePractice { .. } => CommandKind::DeactivatePractice,
         CommandPayload::QueueUnit { .. } => CommandKind::QueueUnit,
+        CommandPayload::RemoveQueuedUnit { .. } => CommandKind::RemoveQueuedUnit,
+        CommandPayload::MoveQueuedUnit { .. } => CommandKind::MoveQueuedUnit,
         CommandPayload::DeclareAttack { .. } => CommandKind::DeclareAttack,
         CommandPayload::Explore { .. } => CommandKind::Explore,
         CommandPayload::SetUnitOrder { .. } => CommandKind::SetUnitOrder,
