@@ -123,6 +123,11 @@ func apply_local_focus(city_id: int, focus: String) -> void:
 		city["focus"] = focus
 
 
+## Optimistic display only after SetResearch is accepted; the next projection is authoritative.
+func apply_local_research(research_id: String) -> void:
+	research["current"] = research_id
+
+
 ## Remaining decisions in the stable order the compact Pronto button walks: the capital card first,
 ## then agenda cards (events) not yet answered in `answered` (card ids), then idle units by id.
 ## Each entry: {kind: "capital"} | {kind: "event", id: String} | {kind: "unit", id: int}.
@@ -183,6 +188,19 @@ func apply_local_order(unit_id: int, order_kind: String, order_target: Vector2i 
 			idle_units.sort()
 	else:
 		idle_units.erase(unit_id)
+
+
+func apply_local_build(unit_id: int, improvement: String) -> void:
+	var unit := unit_by_id(unit_id)
+	if unit.is_empty():
+		return
+	unit["order"] = "Build"
+	unit["order_improvement"] = improvement
+	idle_units.erase(unit_id)
+
+
+func apply_local_attack(unit_id: int) -> void:
+	idle_units.erase(unit_id)
 
 
 func apply_local_skip(unit_id: int) -> void:

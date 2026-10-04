@@ -272,5 +272,33 @@
    },
    "requires_technology": "tech.navigation"
   }
+ ],
+ "improvements": [
+  {
+   "id": "improvement.farm",
+   "name": "Plantação",
+   "cost": {"work": 4},
+   "requires_technology": "tech.foraging",
+   "biomes": ["planicie", "savana"]
+  },
+  {
+   "id": "improvement.lumberyard",
+   "name": "Madeireira",
+   "cost": {"work": 5},
+   "technology": "tech.foraging",
+   "biomes": ["floresta"]
+  }
+ ],
+ "event_templates": [
+  {
+   "id": "event.valley_drought",
+   "name": "Estiagem do vale",
+   "category": "Clima",
+   "text": "Duas estações sem chuva reduziram a colheita das fazendas ao sul.",
+   "choices": [
+    {"id": "ration", "label": "Racionar alimentos"},
+    {"id": "import_grain", "label": "Importar grãos"}
+   ]
+  }
  ]
 }

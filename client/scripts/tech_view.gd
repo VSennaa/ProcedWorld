@@ -1,6 +1,7 @@
 extends MarginContainer
-## Research tree screen (read-only): columns by prerequisite depth, mastered / current / available /
-## locked technologies and progress. Choosing research is not part of this slice.
+## Research tree screen. Only catalog-available technologies can be selected.
+
+signal research_requested(research_id: String)
 
 const MUTED_COLOR := Color("b9c1c8")
 const CARD_BG := Color("223140")
@@ -69,7 +70,19 @@ static func summary_text(catalog: RefCounted, research: Dictionary) -> String:
 		text += "Em pesquisa: %s (%d/%d)." % [catalog.tech_name(current), p["have"], p["cost"]]
 	else:
 		text += "Nenhuma pesquisa em andamento."
-	return text + " Somente leitura."
+	if current != "" and catalog.techs.has(current):
+		var estimate := estimate_turns(catalog, current, research)
+		text += " " + ("Estimativa: %d turnos." % estimate if estimate >= 0 else "Estimativa indisponível.")
+	return text
+
+
+## An estimate from the rate the current projection exposes; it never changes game state.
+static func estimate_turns(catalog: RefCounted, id: String, research: Dictionary) -> int:
+	var rate := int(research.get("per_turn", 0))
+	if rate <= 0 or not catalog.techs.has(id):
+		return -1
+	var p: Dictionary = catalog.progress(id, research)
+	return ceili(float(maxi(0, p["cost"] - p["have"])) / rate)
 
 
 func _card(id: String) -> Control:
@@ -119,4 +132,11 @@ func _card(id: String) -> Control:
 		missing.add_theme_font_size_override("font_size", 16)
 		missing.add_theme_color_override("font_color", MUTED_COLOR)
 		box.add_child(missing)
+	if status == "available":
+		var select := Button.new()
+		select.text = "Escolher pesquisa"
+		select.custom_minimum_size = Vector2(0, 44)
+		select.add_theme_font_size_override("font_size", 17)
+		select.pressed.connect(func() -> void: research_requested.emit(id))
+		box.add_child(select)
 	return panel

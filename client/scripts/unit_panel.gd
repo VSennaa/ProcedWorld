@@ -3,10 +3,10 @@ extends PanelContainer
 ## Foreign units show information only. The server validates every order; the client only offers
 ## the actions that make sense for the unit role.
 
-signal action_requested(action: String)  # "move" | "explore" | "fortify" | "sentry" | "found" | "skip"
+signal action_requested(action: String)  # base action or "attack:<unit>" / "build:<improvement>"
 
 const MUTED_COLOR := Color("b9c1c8")
-const ACTION_LABELS := {"move": "Mover", "explore": "Explorar", "fortify": "Fortificar", "sentry": "Prontidão", "found": "Fundar cidade", "skip": "Pular"}
+const ACTION_LABELS := {"move": "Mover", "explore": "Explorar", "fortify": "Fortificar", "sentry": "Prontidão", "found": "Fundar cidade", "skip": "Pular", "attack": "Atacar"}
 const NO_FORTIFY_ROLES: Array[String] = ["settler", "worker", "trade"]
 
 var _title: Label
@@ -14,6 +14,7 @@ var _details: Label
 var _hint: Label
 var _buttons: Dictionary = {}
 var _row: HBoxContainer
+var _choices: VBoxContainer
 var _unit_id := -1
 
 
@@ -44,6 +45,9 @@ func _ready() -> void:
 	_row = HBoxContainer.new()
 	_row.add_theme_constant_override("separation", 8)
 	box.add_child(_row)
+	_choices = VBoxContainer.new()
+	_choices.add_theme_constant_override("separation", 5)
+	box.add_child(_choices)
 	for action in ACTION_LABELS:
 		var button := Button.new()
 		button.text = ACTION_LABELS[action]
@@ -59,7 +63,7 @@ func _ready() -> void:
 ## Actions offered for a unit. Own units only; the server remains the judge of legality.
 ## `tile` (optional) is what the client knows about the unit's tile: a settler is only offered
 ## "Fundar cidade" on dry land without a city, and not again once a founding was accepted.
-static func legal_actions(unit: Dictionary, tile: Dictionary = {}) -> Array[String]:
+static func legal_actions(unit: Dictionary, tile: Dictionary = {}, has_attack_target: bool = false) -> Array[String]:
 	var result: Array[String] = []
 	if not unit.get("own", false):
 		return result
@@ -71,6 +75,8 @@ static func legal_actions(unit: Dictionary, tile: Dictionary = {}) -> Array[Stri
 		result.append("sentry")
 	if unit.get("role", "") == "settler" and not unit.get("founding", false) and not tile.has("city") and tile.get("biome", "") != "oceano":
 		result.append("found")
+	if has_attack_target:
+		result.append("attack")
 	result.append("skip")
 	return result
 
@@ -90,10 +96,12 @@ static func order_label(unit: Dictionary) -> String:
 		"MoveTo":
 			var target: Vector2i = unit.get("order_target", Vector2i(-1, -1))
 			return "indo para (%d, %d)" % [target.x, target.y]
+		"Build":
+			return "construindo %s" % String(unit.get("order_improvement", "melhoria"))
 	return "ordem desconhecida"
 
 
-func show_unit(unit: Dictionary, turn: int, tile: Dictionary = {}) -> void:
+func show_unit(unit: Dictionary, turn: int, tile: Dictionary = {}, attack_targets: Array = [], improvement_options: Array = []) -> void:
 	_unit_id = unit["id"]
 	var own: bool = unit["own"]
 	_title.text = "%s%s" % [unit["name"], "" if own else " (de outra civilização)"]
@@ -106,13 +114,28 @@ func show_unit(unit: Dictionary, turn: int, tile: Dictionary = {}) -> void:
 		if unit.get("skipped_turn", -1) == turn:
 			line += " (pulada neste turno)"
 	_details.text = line
-	var legal := legal_actions(unit, tile)
+	var legal := legal_actions(unit, tile, not attack_targets.is_empty())
 	for action in _buttons:
 		_buttons[action].visible = legal.has(action)
 		_buttons[action].text = ACTION_LABELS[action]
 	_row.visible = not legal.is_empty()
+	for child in _choices.get_children():
+		child.queue_free()
+	for target in attack_targets:
+		_add_choice("Atacar %s" % String(target.get("name", "unidade inimiga")), "attack:%d" % int(target.get("id", -1)))
+	for improvement in improvement_options:
+		_add_choice("Construir: %s" % String(improvement.get("name", improvement.get("id", "melhoria"))), "build:%s" % String(improvement.get("id", "")))
 	_hint.visible = false
 	visible = true
+
+
+func _add_choice(label: String, action: String) -> void:
+	var button := Button.new()
+	button.text = label
+	button.custom_minimum_size = Vector2(0, 48)
+	button.add_theme_font_size_override("font_size", 19)
+	button.pressed.connect(func() -> void: action_requested.emit(action))
+	_choices.add_child(button)
 
 
 func unit_id() -> int:

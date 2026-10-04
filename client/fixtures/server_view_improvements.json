@@ -1,0 +1,18 @@
+{
+  "world_id": 20261003,
+  "turn": 42,
+  "map_width": 3,
+  "map_height": 1,
+  "civ": 0,
+  "civilization": {
+    "researched_technologies": ["tech.foraging"]
+  },
+  "tiles": [
+    {"tile": 0, "visibility": "visible", "terrain": 0, "improvement": "improvement.farm", "owner": 0},
+    {"tile": 1, "visibility": "visible", "terrain": 1, "build_progress": {"improvement": "improvement.lumberyard", "work": 2, "required": 5}, "owner": 0},
+    {"tile": 2, "visibility": "visible", "terrain": 1, "owner": 0}
+  ],
+  "units": [
+    {"id": 8, "unit": {"owner": 0, "tile": 2, "unit_type": "unit.worker", "hit_points": 10, "movement_left": 2, "order": {"type": "build", "data": {"improvement": "improvement.lumberyard"}}}}
+  ]
+}

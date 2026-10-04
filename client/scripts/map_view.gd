@@ -172,6 +172,7 @@ func _draw_tile(screen: Vector2, tile_size: Vector2, tile: Dictionary, cell: Vec
 	if tile.has("resource"):
 		var icon_size := Vector2(31, 31) * zoom
 		draw_texture_rect(_icons[tile["resource"]], Rect2(screen - icon_size * 0.5, icon_size), false)
+	_draw_improvement(screen, tile)
 	if tile.has("city"):
 		var city_size := Vector2(46, 46) * zoom
 		draw_texture_rect(_city, Rect2(screen - city_size * 0.5, city_size), false)
@@ -180,6 +181,29 @@ func _draw_tile(screen: Vector2, tile_size: Vector2, tile: Dictionary, cell: Vec
 	_draw_units(screen, cell, tile.has("city"))
 	if cell == selected:
 		draw_arc(screen, RADIUS * 0.84 * zoom, 0.0, TAU, 24, SELECT_COLOR, 4.0)
+
+
+## Improvements are catalog ids in the projection. A small blue marker keeps them distinct from
+## resources; an amber hammer/progress label marks an unfinished work without inventing a rate.
+func _draw_improvement(screen: Vector2, tile: Dictionary) -> void:
+	if tile.has("improvement"):
+		var marker := Rect2(screen + Vector2(-15, 20) * zoom, Vector2(30, 14) * zoom)
+		draw_rect(marker, Color("56b4e9"), true)
+		draw_rect(marker, Color("17212b"), false, 2.0)
+		var id := String(tile["improvement"])
+		var text := id.get_slice(".", id.get_slice_count(".") - 1).left(3).to_upper()
+		draw_string(ThemeDB.fallback_font, marker.position + Vector2(2, marker.size.y - 2), text, HORIZONTAL_ALIGNMENT_LEFT, marker.size.x - 2, int(10 * zoom + 4), Color("17212b"))
+	if tile.has("build_progress"):
+		var progress: Variant = tile["build_progress"]
+		var label := "⚒"
+		if typeof(progress) == TYPE_DICTIONARY:
+			var work: Variant = progress.get("work", progress.get("progress", progress.get("current", null)))
+			var required: Variant = progress.get("required", progress.get("total", null))
+			if work != null:
+				label += " %s%s" % [str(work), "/%s" % str(required) if required != null else ""]
+		elif typeof(progress) == TYPE_INT or typeof(progress) == TYPE_FLOAT:
+			label += " %s" % str(progress)
+		draw_string(ThemeDB.fallback_font, screen + Vector2(-20, 42) * zoom, label, HORIZONTAL_ALIGNMENT_LEFT, -1, int(12 * zoom + 5), SELECT_COLOR)
 
 
 func _gui_input(event: InputEvent) -> void:

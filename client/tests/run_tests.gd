@@ -12,11 +12,14 @@ const AgendaView := preload("res://scripts/agenda_view.gd")
 const UnitPanel := preload("res://scripts/unit_panel.gd")
 const CityPanel := preload("res://scripts/city_panel.gd")
 const TechView := preload("res://scripts/tech_view.gd")
+const SocietyView := preload("res://scripts/society_view.gd")
 const ConnectView := preload("res://scripts/connect_view.gd")
 const ReadyFab := preload("res://scripts/ready_fab.gd")
+const EventView := preload("res://scripts/event_view.gd")
 
 const SERVER_VIEW := "res://fixtures/server_view.json"
 const SERVER_CATALOG := "res://fixtures/server_catalog.json"
+const IMPROVEMENT_VIEW := "res://fixtures/server_view_improvements.json"
 
 var _failures := 0
 var _checks := 0
@@ -43,6 +46,8 @@ func _init() -> void:
 	test_city_panel()
 	test_found_and_queue_commands()
 	test_catalog_layout()
+	test_event_catalog_and_view()
+	test_research_selection()
 	test_catalog_rejects_bad_input()
 	test_session_store()
 	test_views_build()
@@ -191,8 +196,11 @@ func test_commands() -> void:
 	check(set_order == {"command": {"type": "set_unit_order", "data": {"unit_id": 3, "order": {"type": "fortify"}}}}, "SetUnitOrder payload shape (serde adjacent tagging)")
 	var move := Protocol.command_set_unit_order(3, Protocol.order_move_to(99))
 	check(move["command"]["data"]["order"] == {"type": "move_to", "data": {"target": 99}}, "MoveTo order is adjacently tagged")
+	check(Protocol.order_build("improvement.farm") == {"type": "build", "data": {"improvement": "improvement.farm"}}, "Build order is adjacently tagged")
+	check(Protocol.command_declare_attack(3, 20) == {"command": {"type": "declare_attack", "data": {"attacker": 3, "target": 20}}}, "DeclareAttack payload shape")
 	check(Protocol.command_skip_unit(5) == {"command": {"type": "skip_unit", "data": {"unit_id": 5}}}, "SkipUnit payload shape")
 	check(Protocol.command_respond_to_event(7, "ration")["command"]["data"] == {"event_id": 7, "choice_id": "ration"}, "RespondToEvent payload shape")
+	check(Protocol.command_set_research("tech.herbal_care") == {"command": {"type": "set_research", "data": {"research": "tech.herbal_care"}}}, "SetResearch payload shape")
 	var framed := Protocol.parse_envelope(Protocol.build_envelope("submit_command", Protocol.command_skip_unit(5), "c-9"))
 	check(framed["ok"] and framed["envelope"]["payload"]["command"]["type"] == "skip_unit", "command survives the envelope round trip")
 
@@ -248,8 +256,11 @@ func test_server_view_adapter() -> void:
 	check(view.civ_colors[0] != view.civ_colors[1], "each civilization gets its own color")
 
 	check(view.research["current"] == "tech.storage" and view.research["done"].has("tech.council") and view.research["progress"]["tech.storage"] == 6, "research state of the own civilization")
+	check(view.research["per_turn"] == 0, "absent research rate falls back to known city yield")
 	check(view.header_chips.size() == 4 and view.header_chips[0]["value"] == 18, "header chips: wealth, knowledge, culture, cohesion")
 	check(view.agenda.size() == 1 and view.agenda[0]["event_id"] == 7 and view.agenda[0]["options"].size() == 2, "pending event becomes an agenda card with its choices")
+	check(view.agenda[0]["title"] == "Estiagem do vale" and view.agenda[0]["category"] == "Clima" and view.agenda[0]["effect"].contains("colheita"), "event uses readable name, category and text from catalog")
+	check(view.agenda[0]["options"][0]["label"] == "Racionar alimentos", "event choice uses the catalog PT-BR label")
 	check(view.agenda[0]["deadline_turns"] == 3 and view.agenda[0]["options"][1]["sacrifice"] == "wealth -3", "event deadline and choice effects")
 	check(view.pending_events.size() == 1, "pending events are kept for the response command")
 
@@ -276,6 +287,10 @@ func test_adapter_tolerates_missing_fields() -> void:
 	check(_adapt(payload).idle_units == [3], "idle list keeps only own, visible units")
 	var strange := ServerView.parse_order({"Weird": 1}, 24)
 	check(strange["kind"] == "", "unrecognized order decodes to unknown, not a crash")
+	var improvement_payload: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(IMPROVEMENT_VIEW))
+	var improvement_view := _adapt(improvement_payload, _load_catalog())
+	check(improvement_view.tile_at(Vector2i(0, 0))["improvement"] == "improvement.farm" and improvement_view.tile_at(Vector2i(1, 0)).has("build_progress"), "tile improvements and ongoing work are adapted")
+	check(improvement_view.unit_by_id(8)["order"] == "Build" and improvement_view.unit_by_id(8)["order_improvement"] == "improvement.lumberyard", "Build order keeps its improvement id")
 
 
 func test_adapter_rejects_bad_input() -> void:
@@ -350,11 +365,19 @@ func test_unit_panel_actions() -> void:
 	check(not UnitPanel.legal_actions(view.unit_by_id(5)).has("sentry"), "settler has no sentry")
 	check(UnitPanel.order_label(view.unit_by_id(6)) == "indo para (11, 9)", "MoveTo label shows the destination")
 	check(UnitPanel.order_label({"order": ""}) == "ordem desconhecida", "unknown order label")
+	check(UnitPanel.legal_actions(view.unit_by_id(3), {}, true).has("attack"), "own unit with a visible adjacent enemy offers attack")
+	var worker_tile: Dictionary = view.tile_at(view.unit_by_id(8)["cell"])
+	var options: Array = _load_catalog().improvements_for(worker_tile, view.research)
+	check(options == [{"id": "improvement.lumberyard", "name": "Madeireira"}], "worker sees catalog improvements compatible with mastered technology and biome")
+	worker_tile["improvement"] = "improvement.lumberyard"
+	check(_load_catalog().improvements_for(worker_tile, view.research).is_empty(), "existing improvement hides build options")
+	check(ServerView.parse_order({"type": "build", "data": {"improvement": "improvement.farm"}}, 24)["kind"] == "Build", "Build order decodes tolerantly")
 
 
 func test_catalog_layout() -> void:
 	var catalog := _load_catalog()
-	check(catalog.techs.size() == 17 and catalog.unit_types.size() == 10 and catalog.version == 1, "catalog counts and version")
+	check(catalog.techs.size() == 17 and catalog.unit_types.size() == 10 and catalog.event_templates.size() == 1 and catalog.improvements.size() == 2 and catalog.version == 1, "catalog counts and version")
+	check(catalog.improvement_name("improvement.farm") == "Plantação", "improvement name is indexed")
 	check(catalog.depth("tech.foraging") == 0 and catalog.depth("tech.storage") == 1 and catalog.depth("tech.irrigation") == 2 and catalog.depth("tech.crop_rotation") == 3, "depth follows the prerequisite chain")
 	check(catalog.depth("tech.granary_administration") == 2, "depth is the longest prerequisite path (storage 1, recordkeeping 1)")
 	check(catalog.depth("tech.market_charter") == 3, "market charter sits three levels deep")
@@ -381,8 +404,26 @@ func test_catalog_layout() -> void:
 	check(catalog.progress("tech.foraging", research)["have"] == catalog.progress("tech.foraging", research)["cost"], "mastered tech reads full")
 	check(catalog.progress("tech.irrigation", {"progress": {"tech.irrigation": 999}})["have"] == 20, "progress is capped at the cost")
 	check(catalog.missing_prerequisites("tech.irrigation", research) == ["Armazenamento"], "locked tech names what it still needs")
-	check(TechView.summary_text(catalog, research) == "2 de 17 dominadas. Em pesquisa: Armazenamento (6/14). Somente leitura.", "summary line")
+	check(TechView.summary_text(catalog, research) == "2 de 17 dominadas. Em pesquisa: Armazenamento (6/14). Estimativa indisponível.", "summary line")
 	check(TechView.summary_text(catalog, {"current": "", "done": [], "progress": {}}).contains("Nenhuma pesquisa em andamento"), "summary without current research")
+	check(TechView.estimate_turns(catalog, "tech.storage", {"progress": {"tech.storage": 6}, "per_turn": 2}) == 4, "research turn estimate uses projection rate")
+
+
+func test_research_selection() -> void:
+	var catalog := _load_catalog()
+	var view := _adapt(_load_view_payload(), catalog)
+	var tech := TechView.new()
+	root.add_child(tech)
+	var selected: Array = []
+	tech.research_requested.connect(func(id: String) -> void: selected.append(id))
+	tech.build(catalog, view.research)
+	var buttons: Array = tech.find_children("*", "Button", true, false)
+	check(buttons.size() == 4, "one selectable button per available technology")
+	for button in buttons:
+		check(button.custom_minimum_size.y >= 44, "research choices are at least 44 px tall")
+	buttons[0].pressed.emit()
+	check(selected.size() == 1 and catalog.status(selected[0], view.research) == "available", "tapping an available technology emits its id")
+	tech.queue_free()
 
 
 func test_catalog_rejects_bad_input() -> void:
@@ -395,8 +436,26 @@ func test_catalog_rejects_bad_input() -> void:
 	check(tolerant["ok"] and tolerant["catalog"].depth("b") == 1 and tolerant["catalog"].unit_types.has("unit.x"), "aliases accepted; unknown prerequisites ignored")
 
 
+func test_event_catalog_and_view() -> void:
+	var catalog := _load_catalog()
+	check(catalog.event_template("event.valley_drought")["name"] == "Estiagem do vale", "event template is indexed by id")
+	var fallback := _adapt(_load_view_payload(), null)
+	check(fallback.agenda[0]["title"] == "Valley drought" and fallback.agenda[0]["options"][0]["label"] == "Ration", "event falls back to humanized ids without catalog")
+	var event := EventView.new()
+	root.add_child(event)
+	var selected: Array = []
+	event.choice_selected.connect(func(card_id: String, option_id: String) -> void: selected.append({"card": card_id, "option": option_id}))
+	event.show_event(_adapt(_load_view_payload(), catalog).agenda[0])
+	var buttons: Array = event.find_children("*", "Button", true, false)
+	check(buttons.size() == 3 and buttons[1].custom_minimum_size.y >= 44, "event detail has back and accessible choice buttons")
+	buttons[1].pressed.emit()
+	check(selected == [{"card": "event-7", "option": "ration"}], "event detail emits the selected response draft")
+	event.queue_free()
+
+
 func test_session_store() -> void:
-	var path := "user://test_sessions.cfg"
+	# Keep the test self-contained: the headless sandbox may not expose the OS user-data folder.
+	var path := "res://tests/.tmp_sessions.cfg"
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 	check(SessionStore.load_token(7, 1, path) == "", "no token before saving")
 	SessionStore.save_token(7, 1, "tok-abc", path)
@@ -419,6 +478,13 @@ func test_views_build() -> void:
 	tech.build(catalog, view.research)
 	check(tech.get_child_count() > 0, "tech view builds without errors")
 	tech.free()
+	var society := SocietyView.new()
+	root.add_child(society)
+	society.build(view)
+	var society_text: Array = society.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text)
+	check(society_text.any(func(text: String) -> bool: return text.begins_with("P · Pressão de crise") and text.contains("Fatores recebidos")), "society shows pressure with its factors")
+	check(society_text.any(func(text: String) -> bool: return text.contains("W") and text.contains("provisório")), "society marks W and E as provisional")
+	society.queue_free()
 	var connect := ConnectView.new()
 	var created: Array = []
 	connect.create_requested.connect(func(url: String, seed: int, civs: int) -> void: created.append([url, seed, civs]))
