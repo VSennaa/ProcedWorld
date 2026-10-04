@@ -348,3 +348,8 @@ balanceamento para elevar a pressão sem enfraquecer esse gate.
   bot exigindo renda de riqueza do turno ≥ sustento + manutenção das melhorias + 1. A queda leve de
   cidades/população vem do custo dos trabalhadores (4 comida, 10 produção); com moradia inicial 4 por
   cidade, o bônus de comida das fazendas ainda não vira crescimento.
+## Correção da revisão (2026-10-03)
+- A renda disponível para manutenção passou a contar só a base; o bônus de riqueza de uma melhoria entra
+  depois de ela ser paga (salinas não pagam a própria manutenção). Regra de obra abandonada explicitada.
+- Harness após a correção: `cities 27 population 108 average_pressure 4 crises 0 collapses 0 events 251 ms/turn 12.144`,
+  hash final idêntico (11416498987709273344): o bot T0 não tinha melhoria de riqueza inadimplida nessa semente.
