@@ -27,7 +27,10 @@ use tokio::sync::mpsc;
 
 use crate::{
     config::ServerConfig,
-    protocol::{error_frame, frame, units_awaiting_frame, version_compatible, CreateWorld, Envelope, ErrorReason, Join, SubmitCommand, PROTOCOL_VERSION},
+    protocol::{
+        error_frame, frame, units_awaiting_frame, version_compatible, CreateWorld, Envelope,
+        ErrorReason, Join, SubmitCommand, PROTOCOL_VERSION,
+    },
     store::{StoreError, WorldRecord, WorldStore},
     view::state_hash_string,
     world::{Conn, LiveWorld},
@@ -48,16 +51,50 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(config: ServerConfig, store: Arc<dyn WorldStore>) -> Self {
-        Self { config, store, worlds: Mutex::new(HashMap::new()), next_conn: AtomicU64::new(1) }
+        Self {
+            config,
+            store,
+            worlds: Mutex::new(HashMap::new()),
+            next_conn: AtomicU64::new(1),
+        }
+    }
+
+    /// Invalid worlds are deliberately not served: FileStore verifies their full sealed replay.
+    pub fn restore_worlds(&self) {
+        let ids = match self.store.list() {
+            Ok(ids) => ids,
+            Err(error) => {
+                eprintln!("world restore skipped: {error:?}");
+                return;
+            }
+        };
+        let mut worlds = lock(&self.worlds);
+        for id in ids {
+            match self.store.load(id) {
+                Ok(Some(record)) => {
+                    worlds.insert(
+                        id.0,
+                        Arc::new(Mutex::new(LiveWorld::restore(record, self.store.clone()))),
+                    );
+                }
+                Ok(None) => {}
+                Err(error) => eprintln!("refusing saved world {}: {error:?}", id.0),
+            }
+        }
     }
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 pub fn build_app(state: Arc<AppState>) -> Router {
-    Router::new().route("/health", get(health)).route("/ws", get(ws_handler)).with_state(state)
+    Router::new()
+        .route("/health", get(health))
+        .route("/ws", get(ws_handler))
+        .with_state(state)
 }
 
 async fn health() -> Json<Value> {
@@ -135,16 +172,29 @@ fn decode<T: DeserializeOwned>(payload: Value) -> Result<T, String> {
     serde_json::from_value(payload).map_err(|error| error.to_string())
 }
 
-async fn handle(app: &Arc<AppState>, bound: &mut Option<Bound>, conn_id: u64, tx: &mpsc::Sender<String>, text: &str) -> Vec<String> {
+async fn handle(
+    app: &Arc<AppState>,
+    bound: &mut Option<Bound>,
+    conn_id: u64,
+    tx: &mpsc::Sender<String>,
+    text: &str,
+) -> Vec<String> {
     let envelope: Envelope = match serde_json::from_str(text) {
         Ok(envelope) => envelope,
         Err(error) => {
             // A well-formed JSON object with a different protocol_version must report the mismatch.
-            let version = serde_json::from_str::<Value>(text).ok().and_then(|v| v.get("protocol_version").cloned());
+            let version = serde_json::from_str::<Value>(text)
+                .ok()
+                .and_then(|v| v.get("protocol_version").cloned());
             if version.is_some_and(|v| v.as_str().map_or(true, |text| !version_compatible(text))) {
                 return vec![version_mismatch(None)];
             }
-            return vec![error_frame(None, ErrorReason::MalformedMessage, &error.to_string(), None)];
+            return vec![error_frame(
+                None,
+                ErrorReason::MalformedMessage,
+                &error.to_string(),
+                None,
+            )];
         }
     };
     let rid = envelope.request_id.as_deref();
@@ -166,7 +216,10 @@ async fn handle(app: &Arc<AppState>, bound: &mut Option<Bound>, conn_id: u64, tx
                 Err(detail) => return fail(ErrorReason::MalformedMessage, &detail),
             };
             if bound.is_some() {
-                return fail(ErrorReason::AlreadyJoined, "this connection already holds a civilization");
+                return fail(
+                    ErrorReason::AlreadyJoined,
+                    "this connection already holds a civilization",
+                );
             }
             let Some(world) = lock(&app.worlds).get(&params.world_id).cloned() else {
                 return fail(ErrorReason::WorldNotFound, "no such world");
@@ -174,13 +227,24 @@ async fn handle(app: &Arc<AppState>, bound: &mut Option<Bound>, conn_id: u64, tx
             let civ = CivId(params.civ);
             let replies = {
                 let mut live = lock(&world);
-                match live.join(civ, params.session_token.as_deref(), Conn { id: conn_id, tx: tx.clone() }) {
+                match live.join(
+                    civ,
+                    params.session_token.as_deref(),
+                    Conn {
+                        id: conn_id,
+                        tx: tx.clone(),
+                    },
+                ) {
                     Err(reason) => return fail(reason, "join refused"),
                     Ok(token) => {
                         let ready = live.ready_payload();
                         live.broadcast("ready_state", &ready, Some(conn_id));
                         vec![
-                            frame(rid, "joined", json!({ "world_id": params.world_id, "civ": civ, "session_token": token, "turn": live.state().turn })),
+                            frame(
+                                rid,
+                                "joined",
+                                json!({ "world_id": params.world_id, "civ": civ, "session_token": token, "turn": live.state().turn }),
+                            ),
                             frame(None, "catalog", pw_engine::world::client_catalog()),
                             frame(rid, "state_snapshot", live.snapshot_for(civ)),
                             frame(rid, "ready_state", ready),
@@ -192,7 +256,11 @@ async fn handle(app: &Arc<AppState>, bound: &mut Option<Bound>, conn_id: u64, tx
             replies
         }
         "get_snapshot" => match bound {
-            Some(b) => vec![frame(rid, "state_snapshot", lock(&b.world).snapshot_for(b.civ))],
+            Some(b) => vec![frame(
+                rid,
+                "state_snapshot",
+                lock(&b.world).snapshot_for(b.civ),
+            )],
             None => fail(ErrorReason::NotJoined, "join first"),
         },
         "submit_command" => {
@@ -200,18 +268,27 @@ async fn handle(app: &Arc<AppState>, bound: &mut Option<Bound>, conn_id: u64, tx
                 Ok(params) => params,
                 Err(detail) => return fail(ErrorReason::MalformedMessage, &detail),
             };
-            let Some(b) = bound else { return fail(ErrorReason::NotJoined, "join first") };
+            let Some(b) = bound else {
+                return fail(ErrorReason::NotJoined, "join first");
+            };
             match lock(&b.world).submit(b.civ, params.command) {
                 Ok(command) => vec![frame(
                     rid,
                     "command_accepted",
                     json!({ "command_id": command.command_id, "accepted_sequence": command.accepted_sequence, "turn": command.turn }),
                 )],
-                Err(error) => vec![error_frame(rid, error.reason, &error.detail, error.engine_reason)],
+                Err(error) => vec![error_frame(
+                    rid,
+                    error.reason,
+                    &error.detail,
+                    error.engine_reason,
+                )],
             }
         }
         "ready" | "unready" => {
-            let Some(b) = bound else { return fail(ErrorReason::NotJoined, "join first") };
+            let Some(b) = bound else {
+                return fail(ErrorReason::NotJoined, "join first");
+            };
             let mut live = lock(&b.world);
             if envelope.kind == "ready" {
                 let idle = live.idle_blocking(b.civ);
@@ -237,7 +314,12 @@ async fn handle(app: &Arc<AppState>, bound: &mut Option<Bound>, conn_id: u64, tx
 }
 
 fn version_mismatch(rid: Option<&str>) -> String {
-    error_frame(rid, ErrorReason::ProtocolVersionMismatch, &format!("this server speaks protocol_version {PROTOCOL_VERSION}"), None)
+    error_frame(
+        rid,
+        ErrorReason::ProtocolVersionMismatch,
+        &format!("this server speaks protocol_version {PROTOCOL_VERSION}"),
+        None,
+    )
 }
 
 async fn create_world(app: &Arc<AppState>, rid: Option<&str>, params: CreateWorld) -> Vec<String> {
@@ -248,40 +330,59 @@ async fn create_world(app: &Arc<AppState>, rid: Option<&str>, params: CreateWorl
     {
         let worlds = lock(&app.worlds);
         if worlds.contains_key(&params.seed) {
-            return fail(ErrorReason::WorldExists, "a world with this seed already exists");
+            return fail(
+                ErrorReason::WorldExists,
+                "a world with this seed already exists",
+            );
         }
         if worlds.len() >= app.config.max_worlds {
             return fail(ErrorReason::TooManyWorlds, "world limit reached");
         }
     }
     let (seed, civs) = (params.seed, params.civs);
-    let built = match tokio::task::spawn_blocking(move || pw_harness::initial_world(seed, civs)).await {
-        Ok(Ok(built)) => built,
-        Ok(Err(detail)) => return fail(ErrorReason::InvalidWorldParams, &detail),
-        Err(_) => return fail(ErrorReason::Internal, "world generation failed"),
-    };
+    let built =
+        match tokio::task::spawn_blocking(move || pw_harness::initial_world(seed, civs)).await {
+            Ok(Ok(built)) => built,
+            Ok(Err(detail)) => return fail(ErrorReason::InvalidWorldParams, &detail),
+            Err(_) => return fail(ErrorReason::Internal, "world generation failed"),
+        };
     let (state, versions, homes) = built;
     let record = WorldRecord {
         snapshot: WorldSnapshot::new(state.clone(), versions.clone()),
         log: CommandLog::default(),
         home_tiles: homes.clone(),
+        session_tokens: Default::default(),
         state: state.clone(),
     };
     let world_id: WorldId = state.world_id;
     let mut worlds = lock(&app.worlds);
     if worlds.contains_key(&params.seed) {
-        return fail(ErrorReason::WorldExists, "a world with this seed already exists");
+        return fail(
+            ErrorReason::WorldExists,
+            "a world with this seed already exists",
+        );
     }
     if worlds.len() >= app.config.max_worlds {
         return fail(ErrorReason::TooManyWorlds, "world limit reached");
     }
     match app.store.create(record) {
         Ok(()) => {}
-        Err(StoreError::AlreadyExists) => return fail(ErrorReason::WorldExists, "a world with this seed already exists"),
-        Err(StoreError::NotFound) => return fail(ErrorReason::Internal, "store unavailable"),
+        Err(StoreError::AlreadyExists) => {
+            return fail(
+                ErrorReason::WorldExists,
+                "a world with this seed already exists",
+            )
+        }
+        Err(StoreError::NotFound | StoreError::Io(_) | StoreError::Invalid(_)) => {
+            return fail(ErrorReason::Internal, "store unavailable")
+        }
     }
     let live = LiveWorld::new(state.clone(), versions, homes, app.store.clone());
     let civs = live.civs();
     worlds.insert(params.seed, Arc::new(Mutex::new(live)));
-    vec![frame(rid, "world_created", json!({ "world_id": world_id, "civs": civs, "turn": state.turn, "state_hash": state_hash_string(&state) }))]
+    vec![frame(
+        rid,
+        "world_created",
+        json!({ "world_id": world_id, "civs": civs, "turn": state.turn, "state_hash": state_hash_string(&state) }),
+    )]
 }
