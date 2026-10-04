@@ -8,11 +8,11 @@ extends RefCounted
 const Hex := preload("res://scripts/hex.gd")
 const WorldView := preload("res://scripts/world_view.gd")
 
-## Engine terrain ids (world.rs TERRAIN_*) -> client biome ids (assets/tiles).
-const TERRAIN_BIOMES: Array[String] = ["planicie", "floresta", "selva", "pantano", "deserto", "estepe", "costa", "oceano"]
+## Catalog biome ids are English; map assets retain their Portuguese filenames.
+const BIOME_ASSETS := {"plains": "planicie", "forest": "floresta", "jungle": "selva", "swamp": "pantano", "desert": "deserto", "steppe": "estepe", "coast": "costa", "ocean": "oceano"}
 ## assets/palette.json overlays.civilizations, repeated for more than four civilizations.
 const CIV_COLORS: Array[String] = ["#E69F00", "#56B4E9", "#CC79A7", "#F0E442"]
-const KNOWN_ORDERS: Array[String] = ["Idle", "Fortify", "Explore", "MoveTo", "Sentry"]
+const KNOWN_ORDERS: Array[String] = ["Idle", "Fortify", "Explore", "MoveTo", "Sentry", "Build"]
 ## Fallback role when no catalog has arrived yet (catalog ids are authoritative otherwise).
 const ROLE_BY_TYPE := {
 	"unit.scout": "exploration", "unit.pathfinder": "exploration", "unit.militia": "defense",
@@ -42,6 +42,9 @@ static func parse_order(raw: Variant, width: int) -> Dictionary:
 		if tag == "move_to":
 			var data: Variant = raw.get("data", {})
 			raw = {"MoveTo": data if typeof(data) == TYPE_DICTIONARY else {}}
+		elif tag == "build":
+			var data: Variant = raw.get("data", {})
+			return {"kind": "Build", "target": none, "improvement": String(data.get("improvement", "")) if typeof(data) == TYPE_DICTIONARY else ""}
 		else:
 			raw = {"idle": "Idle", "fortify": "Fortify", "explore": "Explore", "sentry": "Sentry"}.get(tag, "")
 	if typeof(raw) == TYPE_STRING and KNOWN_ORDERS.has(raw) and raw != "MoveTo":
@@ -90,11 +93,17 @@ static func from_payload(payload: Dictionary, catalog: RefCounted = null) -> Dic
 		var visibility := String(entry.get("visibility", ""))
 		if visibility != "visible" and visibility != "remembered":
 			continue  # "unknown" tiles are never sent with data; keep them blank
-		var terrain := int(entry.get("terrain", -1))
-		if terrain < 0 or terrain >= TERRAIN_BIOMES.size():
-			return _fail("terreno desconhecido: %d" % terrain)
+		var biome: Variant = entry.get("biome")
+		if typeof(biome) == TYPE_STRING and BIOME_ASSETS.has(biome):
+			biome = BIOME_ASSETS[biome]
+		else:
+			return _fail("bioma desconhecido: %s" % biome)
 		var cell := Hex.cell_of_index(index, width)
-		var tile: Dictionary = {"fog": visibility, "biome": TERRAIN_BIOMES[terrain], "river": bool(entry.get("river", false)), "yields": entry.get("yields", {})}
+		var tile: Dictionary = {"fog": visibility, "biome": biome, "river": bool(entry.get("river", false)), "yields": entry.get("yields", {})}
+		if entry.get("improvement") != null:
+			tile["improvement"] = String(entry["improvement"])
+		if entry.has("build_progress") and entry["build_progress"] != null:
+			tile["build_progress"] = entry["build_progress"]
 		var owner: Variant = entry.get("owner")
 		tile["owner"] = int(owner) if owner != null else -1
 		grid[cell.y][cell.x] = tile
@@ -112,7 +121,7 @@ static func from_payload(payload: Dictionary, catalog: RefCounted = null) -> Dic
 	view.civ_colors = {}
 	view.civilization = {"id": civ, "name": "Civilização %d" % (civ + 1), "color": "#" + civ_color(civ).to_html(false)}
 	var state: Dictionary = payload.get("civilization", {}) if typeof(payload.get("civilization")) == TYPE_DICTIONARY else {}
-	_fill_civilization(view, state)
+	_fill_civilization(view, state, payload)
 
 	var first_own_city := Vector2i(-1, -1)
 	for entry in payload.get("cities", []):
@@ -133,6 +142,7 @@ static func from_payload(payload: Dictionary, catalog: RefCounted = null) -> Dic
 			"stability": int(data.get("stability", 0)), "queue": queue,
 			"unit_production": int(data.get("unit_production", 0)),
 			"yields": yields if typeof(yields) == TYPE_DICTIONARY else {},
+			"indicators": {"stability": int(data.get("stability", 0)), "deprivation": int(data.get("deprivation", 0)), "group_tension": int(data.get("group_tension", 0)), "war_threat": int(data.get("war_threat", 0)), "environmental_exposure": int(data.get("environmental_exposure", 0)), "crisis_pressure": int(data.get("crisis_pressure", 0))},
 		}
 		view.cities.append(city)
 		tile["city"] = city
@@ -153,13 +163,18 @@ static func from_payload(payload: Dictionary, catalog: RefCounted = null) -> Dic
 		var parsed := parse_order(data.get("order"), width_i)
 		order_info_present = order_info_present or parsed["kind"] != ""
 		var skipped: Variant = data.get("skipped_turn")
+		var buildable: Array = []
+		if owner == civ and typeof(data.get("buildable")) == TYPE_ARRAY:
+			for improvement in data["buildable"]:
+				if typeof(improvement) == TYPE_STRING:
+					buildable.append(improvement)
 		var info := _unit_info(catalog, type)
 		view.units.append({
 			"id": int(entry.get("id", 0)), "owner": owner, "own": owner == civ, "cell": cell, "type": type,
 			"name": info["name"], "role": info["role"], "movement_max": info["movement"],
 			"hp": int(data.get("hit_points", 0)), "movement_left": int(data.get("movement_left", 0)),
-			"order": parsed["kind"], "order_target": parsed["target"],
-			"skipped_turn": int(skipped) if skipped != null else -1,
+			"order": parsed["kind"], "order_target": parsed["target"], "order_improvement": parsed.get("improvement", ""),
+			"skipped_turn": int(skipped) if skipped != null else -1, "buildable": buildable,
 		})
 		view.civ_colors[owner] = civ_color(owner)
 	view.civ_colors[civ] = civ_color(civ)
@@ -173,7 +188,7 @@ static func from_payload(payload: Dictionary, catalog: RefCounted = null) -> Dic
 	view.idle_units.sort()
 
 	for entry in payload.get("pending_events", []):
-		var card := _event_card(entry, view.turn)
+		var card := _event_card(entry, view.turn, catalog)
 		if not card.is_empty():
 			view.pending_events.append({"id": int(entry.get("id", 0)), "template_id": card["title_id"], "choices": card["raw_choices"]})
 			view.agenda.append(card["card"])
@@ -204,10 +219,10 @@ static func _name_cities(view: RefCounted) -> void:
 		city["name"] = label if city["own"] else "%s da civilização %d" % [label, owner + 1]
 
 
-static func _fill_civilization(view: RefCounted, state: Dictionary) -> void:
+static func _fill_civilization(view: RefCounted, state: Dictionary, payload: Dictionary) -> void:
 	var wealth := int(state.get("treasury_wealth", 0))
 	view.resources = {"riqueza": wealth, "conhecimento": int(state.get("knowledge", 0)), "cultura": int(state.get("culture", 0))}
-	view.indicators = {"coesao": int(state.get("cohesion", 0)), "legitimidade": int(state.get("legitimacy", 0)), "pressao_crise": int(state.get("crisis_pressure", 0))}
+	view.indicators = {"coesao": int(state.get("cohesion", 0)), "legitimidade": int(state.get("legitimacy", 0)), "deprivation": int(state.get("deprivation", 0)), "group_tension": int(state.get("group_tension", 0)), "war_threat": int(state.get("war_threat", 0)), "environmental_exposure": int(state.get("environmental_exposure", 0)), "crisis_pressure": int(state.get("crisis_pressure", 0))}
 	view.header_chips = [
 		{"icon": "riqueza", "value": wealth, "label": "Riqueza"},
 		{"icon": "conhecimento", "value": int(state.get("knowledge", 0)), "label": "Conhecimento"},
@@ -223,7 +238,13 @@ static func _fill_civilization(view: RefCounted, state: Dictionary) -> void:
 	if typeof(raw_progress) == TYPE_DICTIONARY:
 		for id in raw_progress:
 			progress[String(id)] = int(raw_progress[id])
-	view.research = {"current": String(current) if current != null else "", "done": done, "progress": progress}
+	# Only the explicit contract rate can support an estimate. City knowledge yields are
+	# not guaranteed to be the effective research rate (modifiers may apply server-side).
+	var raw_per_turn: Variant = payload.get("research_per_turn")
+	var per_turn := int(raw_per_turn) if typeof(raw_per_turn) == TYPE_INT or typeof(raw_per_turn) == TYPE_FLOAT else 0
+	var percentages: Array = payload.get("research_percentages", [])
+	var investment := int(state.get("research_investment", 0))
+	view.research = {"current": String(current) if current != null else "", "done": done, "progress": progress, "per_turn": per_turn, "investment": investment, "percentages": percentages}
 
 
 ## Border edges: where the neighbor in that direction has another owner (or none). Display only.
@@ -259,23 +280,34 @@ static func _unit_info(catalog: RefCounted, type: String) -> Dictionary:
 	return {"name": name, "role": role, "movement": movement}
 
 
-## Turns a pending Entropy event into an agenda card. The server sends template/choice ids, not prose,
-## so the card shows ids humanized and the mechanical effects of each choice.
-static func _event_card(entry: Dictionary, turn: int) -> Dictionary:
+## Turns a pending Entropy event into an agenda card. The optional catalog supplies readable text
+## and PT-BR labels; ids/effects remain a resilient fallback during staggered server rollout.
+static func _event_card(entry: Dictionary, turn: int, catalog: RefCounted = null) -> Dictionary:
 	var event: Variant = entry.get("event")
 	if typeof(event) != TYPE_DICTIONARY:
 		return {}
 	var event_id := int(entry.get("id", 0))
 	var template := String(event.get("template_id", ""))
+	var template_data: Dictionary = catalog.event_template(template) if catalog != null and catalog.has_method("event_template") else {}
+	var category := String(template_data.get("category", event.get("category", "?")))
+	var narrative := String(template_data.get("text", template_data.get("narrative", template_data.get("description", ""))))
+	var template_choices: Dictionary = {}
+	for template_choice in template_data.get("choices", []):
+		if typeof(template_choice) == TYPE_DICTIONARY and typeof(template_choice.get("id")) == TYPE_STRING:
+			template_choices[template_choice["id"]] = template_choice
 	var options: Array = []
 	var raw_choices: Array = event.get("choices", [])
 	for choice in raw_choices:
+		if typeof(choice) != TYPE_DICTIONARY:
+			continue
 		var choice_id := String(choice.get("id", ""))
-		options.append({"id": choice_id, "label": humanize(choice_id), "sacrifice": _describe_effects(choice.get("effects", []))})
+		var template_choice: Dictionary = template_choices.get(choice_id, {})
+		var label := String(template_choice.get("label", template_choice.get("name", choice.get("label", humanize(choice_id)))))
+		options.append({"id": choice_id, "label": label, "sacrifice": _describe_effects(choice.get("effects", []))})
 	var card := {
 		"id": "event-%d" % event_id, "event_id": event_id, "severity": "important",
-		"title": humanize(template), "cause": "Evento da Entropia (%s)" % String(event.get("category", "?")),
-		"effect": "", "risk": "", "deadline_turns": maxi(0, int(event.get("expires", turn)) - turn), "options": options,
+		"title": String(template_data.get("name", humanize(template))), "category": category,
+		"cause": "Categoria: %s" % category, "effect": narrative, "risk": "", "deadline_turns": maxi(0, int(event.get("expires", turn)) - turn), "options": options,
 	}
 	return {"card": card, "title_id": template, "raw_choices": raw_choices}
 

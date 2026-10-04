@@ -66,13 +66,21 @@ static func build_envelope(type: String, payload: Dictionary, request_id: String
 
 ## UnitOrder on the wire (engine serde adjacent tagging): {"type": "fortify"}, {"type": "sentry"} or
 ## {"type": "move_to", "data": {"target": N}}. `kind` is the client name ("Idle", "MoveTo", ...).
-const ORDER_WIRE := {"Idle": "idle", "Fortify": "fortify", "Explore": "explore", "MoveTo": "move_to", "Sentry": "sentry"}
+const ORDER_WIRE := {"Idle": "idle", "Fortify": "fortify", "Explore": "explore", "MoveTo": "move_to", "Sentry": "sentry", "Build": "build"}
 
 
 static func order_wire(kind: String, tile_index: int = -1) -> Dictionary:
 	if kind == "MoveTo":
 		return {"type": "move_to", "data": {"target": tile_index}}
 	return {"type": ORDER_WIRE.get(kind, "idle")}
+
+
+static func order_build(improvement: String) -> Dictionary:
+	return {"type": "build", "data": {"improvement": improvement}}
+
+
+static func command_declare_attack(attacker: int, target: int) -> Dictionary:
+	return {"command": {"type": "declare_attack", "data": {"attacker": attacker, "target": target}}}
 
 
 static func order_move_to(tile_index: int) -> Dictionary:
@@ -117,6 +125,14 @@ static func command_move_queued_unit(city_id: int, from: int, to: int) -> Dictio
 ## `focus` is the engine CityFocus name: "supply", "build" or "diversify".
 static func command_set_city_focus(city_id: int, focus: String) -> Dictionary:
 	return {"command": {"type": "set_city_focus", "data": {"city_id": city_id, "focus": focus}}}
+
+
+static func command_set_research(research: String) -> Dictionary:
+	return {"command": {"type": "set_research", "data": {"research": research}}}
+
+
+static func command_set_research_investment(percent: int) -> Dictionary:
+	return {"command": {"type": "set_research_investment", "data": {"percent": percent}}}
 
 
 static func command_respond_to_event(event_id: int, choice_id: String) -> Dictionary:

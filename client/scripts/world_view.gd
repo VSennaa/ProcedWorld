@@ -34,7 +34,7 @@ var idle_units: Array = []
 ## Entropy events waiting for a response: Array of {id, template_id, choices}.
 var pending_events: Array = []
 ## Research state of the own civilization: {current: String, done: Array, progress: Dictionary}.
-var research: Dictionary = {"current": "", "done": [], "progress": {}}
+var research: Dictionary = {"current": "", "done": [], "progress": {}, "per_turn": 0, "investment": 0, "percentages": []}
 var civ_colors: Dictionary = {}  # civ id -> Color
 ## Starting tile of the civilization, only while it has no city (`home_tile`); (-1, -1) otherwise.
 var home_cell := Vector2i(-1, -1)
@@ -123,6 +123,16 @@ func apply_local_focus(city_id: int, focus: String) -> void:
 		city["focus"] = focus
 
 
+## Optimistic display only after SetResearch is accepted; the next projection is authoritative.
+func apply_local_research(research_id: String) -> void:
+	research["current"] = research_id
+
+
+## Optimistic display only after SetResearchInvestment is accepted.
+func apply_local_research_investment(percent: int) -> void:
+	research["investment"] = percent
+
+
 ## Remaining decisions in the stable order the compact Pronto button walks: the capital card first,
 ## then agenda cards (events) not yet answered in `answered` (card ids), then idle units by id.
 ## Each entry: {kind: "capital"} | {kind: "event", id: String} | {kind: "unit", id: int}.
@@ -183,6 +193,22 @@ func apply_local_order(unit_id: int, order_kind: String, order_target: Vector2i 
 			idle_units.sort()
 	else:
 		idle_units.erase(unit_id)
+
+
+func apply_local_build(unit_id: int, improvement: String) -> void:
+	var unit := unit_by_id(unit_id)
+	if unit.is_empty():
+		return
+	unit["order"] = "Build"
+	unit["order_improvement"] = improvement
+	idle_units.erase(unit_id)
+
+
+func apply_local_attack(unit_id: int) -> void:
+	var unit := unit_by_id(unit_id)
+	if not unit.is_empty():
+		unit["attacked_turn"] = turn
+	idle_units.erase(unit_id)
 
 
 func apply_local_skip(unit_id: int) -> void:

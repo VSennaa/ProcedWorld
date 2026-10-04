@@ -17,11 +17,13 @@ const Hex := preload("res://scripts/hex.gd")
 const AgendaView := preload("res://scripts/agenda_view.gd")
 const MapView := preload("res://scripts/map_view.gd")
 const TechView := preload("res://scripts/tech_view.gd")
+const SocietyView := preload("res://scripts/society_view.gd")
 const UnitPanel := preload("res://scripts/unit_panel.gd")
 const CityPanel := preload("res://scripts/city_panel.gd")
 const ConnectView := preload("res://scripts/connect_view.gd")
 const NetClient := preload("res://scripts/net_client.gd")
 const ReadyFab := preload("res://scripts/ready_fab.gd")
+const EventView := preload("res://scripts/event_view.gd")
 
 const FIXTURE_PATH := "res://fixtures/state_snapshot.json"
 const SERVER_VIEW_PATH := "res://fixtures/server_view.json"
@@ -38,7 +40,6 @@ const SCREENS: Array[Array] = [
 	["relacoes", "Relações"], ["cronica", "Crônica"],
 ]
 const PLACEHOLDERS := {
-	"sociedade": "O que sustenta a civilização: coesão, crises e focos permitidos.",
 	"relacoes": "Em quem confiar e o que é devido: ledger, tratados e propostas.",
 	"cronica": "O que aconteceu e quanto custou a IA: fatos, narrativa e consumo.",
 }
@@ -50,6 +51,14 @@ const ENGINE_REASON_TEXT := {
 	"UnknownCity": "Cidade desconhecida.",
 	"NotCommandOwner": "Essa cidade não é sua.",
 	"InvalidQueueIndex": "Esse item não está mais na fila.",
+	"not_a_worker": "Apenas trabalhadores podem construir melhorias.",
+	"unknown_improvement": "Essa melhoria é desconhecida.",
+	"improvement_technology_not_researched": "A tecnologia dessa melhoria ainda não foi dominada.",
+	"improvement_terrain_invalid": "Essa melhoria não pode ser construída neste terreno.",
+	"tile_already_improved": "Este tile já possui uma melhoria.",
+	"city_tile_not_improvable": "Não é possível construir uma melhoria no tile da cidade.",
+	"tile_work_in_progress": "Já há uma obra em andamento neste tile.",
+	"tile_outside_territory": "Este tile está fora do território permitido para a obra.",
 }
 const ERROR_TEXT := {
 	"protocol_version_mismatch": "Versão do protocolo incompatível com o servidor.",
@@ -80,6 +89,8 @@ var _url := NetClient.DEFAULT_URL
 var _pending_action: Dictionary = {}
 var _joined := false
 var _session: Dictionary = {}
+## Tests can use a project-local ConfigFile when their sandbox cannot write user://.
+var _session_store_path := SessionStore.DEFAULT_PATH
 var _inflight: Dictionary = {}  # request id -> {kind, unit_id, order_kind, order_target, ...}
 var _overrides: Array = []      # accepted local orders of the open turn, re-applied on refresh
 var _overrides_turn := -1
@@ -99,8 +110,10 @@ var _connect: Control
 var _agenda
 var _map
 var _tech
+var _society
 var _unit_panel
 var _city_panel
+var _event
 var _content: Control
 var _fab
 var _ready_inflight := false  # Pronto was sent and the server has not answered yet
@@ -110,7 +123,7 @@ var _current_screen := ""
 func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
 	_build_shell()
-	var last := SessionStore.load_last(_url)
+	var last := SessionStore.load_last(_url, _session_store_path)
 	_url = last["url"]
 	for arg in args:
 		if arg.begins_with("--server="):
@@ -124,6 +137,8 @@ func _ready() -> void:
 		if arg.begins_with("--demo="):
 			_start_demo(arg.trim_prefix("--demo="))
 			show_screen(start)
+			if start == "evento":
+				_open_event("event-7")
 			if start == "mapa" and "--select-capital" in args:
 				_map.select_cell(world.capital)
 			if arg == "--demo=servidor":
@@ -244,9 +259,21 @@ func _build_shell() -> void:
 	_screens["mapa"] = map_holder
 
 	_tech = TechView.new()
+	_tech.research_requested.connect(_on_research_requested)
+	_tech.investment_requested.connect(_on_research_investment_requested)
 	_tech.set_anchors_preset(Control.PRESET_FULL_RECT)
 	content.add_child(_tech)
 	_screens["pesquisa"] = _tech
+	_society = SocietyView.new()
+	_society.set_anchors_preset(Control.PRESET_FULL_RECT)
+	content.add_child(_society)
+	_screens["sociedade"] = _society
+	_event = EventView.new()
+	_event.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_event.choice_selected.connect(_on_event_choice_selected)
+	_event.back_requested.connect(func() -> void: show_screen("pauta"))
+	content.add_child(_event)
+	_screens["evento"] = _event
 
 	for key in PLACEHOLDERS:
 		_screens[key] = _build_placeholder(key)
@@ -381,7 +408,7 @@ func _run_pending_action() -> void:
 	else:
 		_connect.set_status("Entrando no mundo…")
 		var payload := {"world_id": action["world_id"], "civ": action["civ"]}
-		var token := SessionStore.load_token(action["world_id"], action["civ"])
+		var token := SessionStore.load_token(action["world_id"], action["civ"], _session_store_path)
 		if not token.is_empty():
 			payload["session_token"] = token
 		_inflight[net.send_request("join", payload)] = {"kind": "join"}
@@ -391,7 +418,7 @@ func _on_connection_lost(was_open: bool) -> void:
 	var text := "Conexão com o servidor perdida. Use Entrar para retomar a mesma civilização." if was_open else "Não foi possível conectar a %s." % _url
 	_close_connection()
 	_inflight.clear()
-	var last := SessionStore.load_last(_url)
+	var last := SessionStore.load_last(_url, _session_store_path)
 	_connect.build(_url, last["world_id"], last["civ"])
 	_connect.set_status(text, true)
 	_show_connect()
@@ -407,7 +434,7 @@ func _on_leave_pressed() -> void:
 	_selected_city = -1
 	_founding_selected = false
 	_set_move_mode(false)
-	var last := SessionStore.load_last(_url)
+	var last := SessionStore.load_last(_url, _session_store_path)
 	_connect.build(_url, last["world_id"], last["civ"])
 	_show_connect()
 
@@ -429,8 +456,8 @@ func _on_envelope(envelope: Dictionary) -> void:
 			_session = {"world_id": int(payload.get("world_id", 0)), "civ": int(payload.get("civ", 0))}
 			var token := String(payload.get("session_token", ""))
 			if not token.is_empty():
-				SessionStore.save_token(_session["world_id"], _session["civ"], token)
-			SessionStore.save_last(_url, _session["world_id"], _session["civ"])
+				SessionStore.save_token(_session["world_id"], _session["civ"], token, _session_store_path)
+			SessionStore.save_last(_url, _session["world_id"], _session["civ"], _session_store_path)
 		"state_snapshot":
 			_apply_view(payload, false)
 		"turn_diff":
@@ -502,10 +529,11 @@ func _on_command_accepted(request_id: String) -> void:
 		return
 	var meta: Dictionary = _inflight[request_id]
 	_inflight.erase(request_id)
-	if meta["kind"] in ["order", "skip", "found", "queue", "queue_remove", "queue_move", "focus"]:
+	if meta["kind"] in ["order", "skip", "found", "queue", "queue_remove", "queue_move", "focus", "research", "research_investment", "attack", "build"]:
 		_overrides.append(meta)
 		_apply_override(meta)
 		_refresh_units()
+		_refresh_tech()
 
 
 func _on_error(request_id: String, payload: Dictionary) -> void:
@@ -601,6 +629,7 @@ func _populate(first: bool) -> void:
 	_map.set_view(world, first)
 	_map.set_selected_unit(_selected_unit if not world.unit_by_id(_selected_unit).is_empty() else -1)
 	_refresh_tech()
+	_society.build(world)
 	if _selected_unit >= 0 and world.unit_by_id(_selected_unit).is_empty():
 		_selected_unit = -1
 		_unit_panel.clear()
@@ -624,6 +653,25 @@ func _refresh_tech() -> void:
 		_tech.build(_catalog, world.research)
 	elif _screens["pesquisa"].visible:
 		show_screen("pauta")
+
+
+func _on_research_requested(research_id: String) -> void:
+	if world == null or _catalog == null or _catalog.status(research_id, world.research) != "available":
+		return
+	_issue({"kind": "research", "research": research_id}, Protocol.command_set_research(research_id))
+
+
+func _on_research_investment_requested(percent: int) -> void:
+	if world == null:
+		return
+	var supported := false
+	for value in world.research.get("percentages", []):
+		if int(value) == percent:
+			supported = true
+			break
+	if not supported:
+		return
+	_issue({"kind": "research_investment", "percent": percent}, Protocol.command_set_research_investment(percent))
 
 
 func _idle_entries() -> Array:
@@ -654,7 +702,8 @@ func _refresh_capital_card() -> void:
 func _refresh_panels() -> void:
 	if _selected_unit >= 0 and not world.unit_by_id(_selected_unit).is_empty():
 		var unit: Dictionary = world.unit_by_id(_selected_unit)
-		_unit_panel.show_unit(unit, world.turn, world.tile_at(unit["cell"]))
+		var tile: Dictionary = world.tile_at(unit["cell"])
+		_unit_panel.show_unit(unit, world.turn, tile, _attack_targets(unit), _build_options(unit, tile))
 	if _selected_city >= 0:
 		var city: Dictionary = world.city_by_id(_selected_city)
 		if city.is_empty() or not city["own"]:
@@ -747,7 +796,8 @@ func _select_unit(unit_id: int) -> void:
 	_set_move_mode(false)
 	_clear_city_selection()
 	_selected_unit = unit_id
-	_unit_panel.show_unit(unit, world.turn, world.tile_at(unit["cell"]))
+	var tile: Dictionary = world.tile_at(unit["cell"])
+	_unit_panel.show_unit(unit, world.turn, tile, _attack_targets(unit), _build_options(unit, tile))
 	_map.set_selected_unit(unit_id)
 
 
@@ -780,6 +830,12 @@ func _on_unit_action(action: String) -> void:
 	if _selected_unit < 0:
 		return
 	var unit_id := _selected_unit
+	if action.begins_with("attack:"):
+		_issue_attack(unit_id, int(action.trim_prefix("attack:")))
+		return
+	if action.begins_with("build:"):
+		_issue_build(unit_id, action.trim_prefix("build:"))
+		return
 	match action:
 		"move":
 			_set_move_mode(not _move_mode)
@@ -794,6 +850,51 @@ func _on_unit_action(action: String) -> void:
 			_issue_found(Protocol.settler_city_id(unit_id), unit["cell"])
 		"skip":
 			_issue({"kind": "skip", "unit_id": unit_id}, Protocol.command_skip_unit(unit_id))
+		"attack":
+			var targets := _attack_targets(world.unit_by_id(unit_id))
+			if targets.size() == 1:
+				_issue_attack(unit_id, int(targets[0]["id"]))
+			else:
+				_report("Escolha a unidade inimiga na lista de ataque.", false)
+
+
+## Only an uncommitted own unit with movement remaining may attack; the server rechecks reach and hostility.
+func _attack_targets(unit: Dictionary) -> Array:
+	var result: Array = []
+	if unit.is_empty() or not unit.get("own", false) or int(unit.get("movement_left", 0)) <= 0:
+		return result
+	if unit.get("order", "") != "Idle" or int(unit.get("skipped_turn", -1)) == world.turn or int(unit.get("attacked_turn", -1)) == world.turn:
+		return result
+	var adjacent := Hex.neighbors(unit["cell"], world.map_width, world.map_height)
+	for other in world.units:
+		if other["own"] or not adjacent.has(other["cell"]):
+			continue
+		var tile: Dictionary = world.tile_at(other["cell"])
+		if tile.get("fog", "unknown") == "visible":
+			result.append(other)
+	return result
+
+
+func _build_options(unit: Dictionary, _tile: Dictionary) -> Array:
+	if _catalog == null:
+		return []
+	var result: Array = []
+	for id in unit.get("buildable", []):
+		result.append({"id": String(id), "name": _catalog.improvement_name(String(id))})
+	return result
+
+
+func _issue_attack(attacker: int, target: int) -> void:
+	if not _attack_targets(world.unit_by_id(attacker)).any(func(unit: Dictionary) -> bool: return unit["id"] == target):
+		return
+	_issue({"kind": "attack", "unit_id": attacker}, Protocol.command_declare_attack(attacker, target))
+
+
+func _issue_build(unit_id: int, improvement: String) -> void:
+	var unit: Dictionary = world.unit_by_id(unit_id)
+	if unit.is_empty() or not _build_options(unit, world.tile_at(unit["cell"])).any(func(option: Dictionary) -> bool: return option["id"] == improvement):
+		return
+	_issue({"kind": "build", "unit_id": unit_id, "improvement": improvement}, Protocol.command_set_unit_order(unit_id, Protocol.order_build(improvement)))
 
 
 func _on_target_chosen(cell: Vector2i) -> void:
@@ -878,6 +979,14 @@ func _apply_override(meta: Dictionary) -> void:
 			world.apply_local_queue_move(meta["city_id"], meta["from"], meta["to"])
 		"focus":
 			world.apply_local_focus(meta["city_id"], meta["focus"])
+		"research":
+			world.apply_local_research(meta["research"])
+		"research_investment":
+			world.apply_local_research_investment(meta["percent"])
+		"attack":
+			world.apply_local_attack(meta["unit_id"])
+		"build":
+			world.apply_local_build(meta["unit_id"], meta["improvement"])
 		_:
 			world.apply_local_order(meta["unit_id"], meta["order_kind"], meta["order_target"])
 
@@ -943,7 +1052,7 @@ func _on_fab_next() -> void:
 		"capital":
 			_on_capital_focus_requested(world.home_cell)
 		"event":
-			show_screen("pauta")
+			_open_event(next["id"])
 		"unit":
 			_on_unit_focus_requested(next["id"])
 
@@ -952,6 +1061,22 @@ func _on_fab_ready() -> void:
 	if not _decisions().is_empty():
 		return
 	_on_ready_pressed(_agenda.choices.duplicate())
+
+
+func _open_event(card_id: String) -> void:
+	if world == null:
+		return
+	for card in world.agenda:
+		if String(card.get("id", "")) == card_id and card.has("event_id"):
+			_event.show_event(card, String(_agenda.choices.get(card_id, "")))
+			show_screen("evento")
+			return
+	show_screen("pauta")
+
+
+func _on_event_choice_selected(card_id: String, option_id: String) -> void:
+	_agenda._on_option_pressed(card_id, option_id)
+	show_screen("pauta")
 
 
 func _flat(color: Color, margin: int) -> StyleBoxFlat:

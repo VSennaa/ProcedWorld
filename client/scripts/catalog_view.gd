@@ -13,6 +13,11 @@ var hash_text := ""
 var techs: Dictionary = {}       # id -> {id, name, cost, prerequisites, branch}
 var tech_order: Array[String] = []  # ids in the order the server listed them
 var unit_types: Dictionary = {}  # id -> {id, name, role, movement, strength}
+## Optional Entropy templates. Their display text is server-owned; an absent catalog remains valid.
+var event_templates: Dictionary = {}  # id -> {id, name, category, text, choices}
+## Optional terrain improvements. The server decides which ones are buildable; this catalog only
+## resolves their ids to display names.
+var improvements: Dictionary = {}  # id -> {id, name, ...}
 var _depth: Dictionary = {}
 
 
@@ -47,6 +52,20 @@ static func from_payload(payload: Dictionary) -> Dictionary:
 		for entry in unit_list:
 			if typeof(entry) == TYPE_DICTIONARY and typeof(entry.get("id")) == TYPE_STRING:
 				catalog.unit_types[entry["id"]] = entry
+	var event_list: Variant = payload.get("event_templates", payload.get("events", []))
+	if typeof(event_list) == TYPE_DICTIONARY:
+		event_list = event_list.get("templates", event_list.get("event_templates", []))
+	if typeof(event_list) == TYPE_ARRAY:
+		for entry in event_list:
+			if typeof(entry) == TYPE_DICTIONARY and typeof(entry.get("id")) == TYPE_STRING:
+				catalog.event_templates[entry["id"]] = entry
+	var improvement_list: Variant = payload.get("improvements", [])
+	if typeof(improvement_list) == TYPE_DICTIONARY:
+		improvement_list = improvement_list.get("improvements", improvement_list.get("items", []))
+	if typeof(improvement_list) == TYPE_ARRAY:
+		for entry in improvement_list:
+			if typeof(entry) == TYPE_DICTIONARY and typeof(entry.get("id")) == TYPE_STRING:
+				catalog.improvements[entry["id"]] = entry
 	for id in catalog.techs:
 		if catalog._has_cycle(id, {}):
 			return _fail("ciclo de pre-requisitos em %s" % id)
@@ -65,6 +84,15 @@ static func load_fixture(path: String) -> Dictionary:
 
 func tech_name(id: String) -> String:
 	return String(techs[id]["name"]) if techs.has(id) else id
+
+
+## The server may omit this catalog section while rolling out the Alfa mini contract.
+func event_template(id: String) -> Dictionary:
+	return event_templates.get(id, {})
+
+
+func improvement_name(id: String) -> String:
+	return String(improvements[id].get("name", id)) if improvements.has(id) else id
 
 
 ## Depth = longest prerequisite chain below the tech (0 for roots). Unknown prerequisites are ignored.
