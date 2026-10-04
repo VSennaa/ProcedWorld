@@ -29,7 +29,7 @@ A tela inicial pede a URL do servidor (padrão `ws://127.0.0.1:8100/ws`). **Cria
 `fixtures/state_snapshot.json` (escrito à mão) e "visão do servidor" abre `fixtures/server_view.json`
 e `fixtures/server_catalog.json`, no formato real de `view_for` e do frame `catalog`.
 
-Capturas em `client/docs/` (`inicio`, `pauta`, `pauta-unidades`, `mapa`, `mapa-pronto`, `pesquisa`, `evento`), geradas com
+Capturas em `client/docs/` (`inicio`, `pauta`, `pauta-unidades`, `mapa`, `mapa-pronto`, `pesquisa`, `sociedade`, `trabalhador`, `cidade`), geradas com
 `--write-movie <pasta existente>/frame.png --quit-after 20 --resolution 720x1280` e pegando o último quadro.
 
 ## O que é real

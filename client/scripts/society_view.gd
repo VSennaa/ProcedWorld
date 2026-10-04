@@ -64,7 +64,7 @@ func _add_pressure(parent: Control, values: Dictionary, scope: String, cohesion:
 		factors += " · S %d" % int(values["stability"])
 	var c := int(values.get("coesao", cohesion)) if cohesion < 0 else cohesion
 	if c >= 0:
-		factors += " · C %d (−(%d−50)/5 = %+.1f)" % [c, c, -float(c - 50) / 5.0]
+		factors += " · C %d (−(%d−50)/5 = %+d)" % [c, c, -int((c - 50) / 5)]
 	label.text = "P · Pressão de crise (%s): %d/100\nFatores recebidos: %s" % [scope, int(values.get("crisis_pressure", 0)), factors]
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	label.add_theme_font_size_override("font_size", 18)

@@ -330,6 +330,56 @@ static func resource_label(resource: String) -> String:
 	return RESOURCE_LABELS.get(resource, humanize(resource))
 
 
+## PT-BR names of the event catalog tags (engine ids are never shown raw when known).
+const TAG_LABELS := {
+	"autonomy.emergency": "autonomia de emergência",
+	"autonomy.negotiated": "autonomia negociada",
+	"biome.forest": "floresta",
+	"biome.plains": "planície",
+	"border.disputed": "fronteira disputada",
+	"border.sanctuary_claim": "santuário reivindicado",
+	"cism.forest_cult": "cisma do culto",
+	"cism.tolerated": "cisma tolerado",
+	"claim.metal": "veio reivindicado",
+	"crisis.administration_fractured": "administração fragmentada",
+	"diplomacy.misread_envoy": "mal-entendido diplomático",
+	"discovery.preservation_workshop": "oficina de conservação",
+	"entropy.appeasement": "rito de apaziguamento",
+	"entropy.appeasement_requested": "apaziguamento pedido",
+	"entropy.diversion_researched": "desvio pesquisado",
+	"entropy.forecast": "presságio",
+	"entropy.forecast_requested": "presságio pedido",
+	"event.drought": "seca",
+	"group.tension": "tensão de grupos",
+	"growth.suspended": "crescimento suspenso",
+	"harvest.preserved": "colheita protegida",
+	"health.water_risk": "risco na água",
+	"ledger.offense": "ofensa registrada",
+	"ledger.recent_offense": "ofensa recente",
+	"magic.ember_rain": "chuva de brasas",
+	"magic.moonlit_tide": "maré do luar",
+	"magic.whispering_grove": "bosque dos sussurros",
+	"repression.cism": "repressão ao cisma",
+	"repression.guard": "guarda imposta",
+	"research.forbidden": "pesquisa proibida",
+	"resource.metal_revealed": "metal revelado",
+	"revolt.assembly": "assembleia em revolta",
+	"revolt.tribute_refused": "tributo recusado",
+	"route.coastal": "rota costeira",
+	"route.crossing": "travessia",
+	"route.flooded": "rota alagada",
+	"route.rerouted": "rota desviada",
+	"storage.drawn": "estoques usados",
+	"storage.prepared": "estoques preparados",
+	"terrain.new_bank_settlement": "nova margem ocupada",
+	"terrain.prospectable": "terreno prospectável",
+	"terrain.protected": "terreno protegido",
+	"terrain.river_shifted": "rio desviado",
+	"trade.held": "comércio retido",
+	"trade.quarantined": "comércio em quarentena",
+}
+
+
 static func _describe_effects(effects: Array) -> String:
 	var parts: Array[String] = []
 	for effect in effects:
@@ -339,7 +389,8 @@ static func _describe_effects(effects: Array) -> String:
 			"adjust_resource":
 				parts.append("%s %+d" % [resource_label(String(effect.get("resource", "?"))), int(effect.get("amount", 0))])
 			"add_tag", "remove_tag":
-				parts.append(humanize(String(effect.get("tag", ""))))
+				var tag := String(effect.get("tag", effect.get("tag_id", "")))
+				parts.append(("+ " if effect.get("op") == "add_tag" else "− ") + String(TAG_LABELS.get(tag, humanize(tag))))
 			_:
 				parts.append(humanize(String(effect.get("op", ""))))
 	return ", ".join(parts)
