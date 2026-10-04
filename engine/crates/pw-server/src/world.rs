@@ -243,6 +243,15 @@ impl LiveWorld {
                     return Err(ErrorReason::InvalidSessionToken);
                 }
                 let token = new_token();
+                let mut tokens: BTreeMap<_, _> = self
+                    .seats
+                    .iter()
+                    .map(|(seat_civ, seat)| (*seat_civ, seat.token.clone()))
+                    .collect();
+                tokens.insert(civ, token.clone());
+                self.store
+                    .save_session_tokens(self.state.world_id, &tokens)
+                    .map_err(|_| ErrorReason::Internal)?;
                 self.seats.insert(
                     civ,
                     Seat {
@@ -253,7 +262,6 @@ impl LiveWorld {
                         generation: 0,
                     },
                 );
-                self.persist_sessions()?;
                 Ok(token)
             }
         }
@@ -476,7 +484,7 @@ impl LiveWorld {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::store::{InMemoryStore, WorldRecord};
+    use crate::store::{InMemoryStore, StoreError, WorldRecord, WorldStore};
     use pw_engine::world::{CommandLog, UnitOrder, UnitState, WorldSnapshot};
 
     fn live_with_idle_unit() -> LiveWorld {
@@ -512,6 +520,25 @@ mod tests {
             id,
             tx: tokio::sync::mpsc::channel(16).0,
         }
+    }
+
+    struct RejectSessionsStore;
+
+    impl WorldStore for RejectSessionsStore {
+        fn create(&self, _: WorldRecord) -> Result<(), StoreError> { Ok(()) }
+        fn append_command(&self, _: pw_engine::world::WorldId, _: &AcceptedCommand) -> Result<(), StoreError> { Ok(()) }
+        fn commit_turn(&self, _: pw_engine::world::WorldId, _: &[AcceptedCommand], _: pw_engine::ids::TurnNumber, _: pw_engine::hash::StateHash, _: &WorldState) -> Result<(), StoreError> { Ok(()) }
+        fn save_session_tokens(&self, _: pw_engine::world::WorldId, _: &BTreeMap<CivId, String>) -> Result<(), StoreError> { Err(StoreError::Io("disk unavailable".into())) }
+        fn load(&self, _: pw_engine::world::WorldId) -> Result<Option<WorldRecord>, StoreError> { Ok(None) }
+        fn list(&self) -> Result<Vec<pw_engine::world::WorldId>, StoreError> { Ok(Vec::new()) }
+    }
+
+    #[test]
+    fn join_does_not_claim_a_seat_when_token_persistence_fails() {
+        let (state, versions, homes) = pw_harness::initial_world(6, 2).expect("world builds");
+        let mut live = LiveWorld::new(state, versions, homes, Arc::new(RejectSessionsStore));
+        assert_eq!(live.join(CivId(0), None, conn(1)), Err(ErrorReason::Internal));
+        assert_eq!(live.join(CivId(0), None, conn(2)), Err(ErrorReason::Internal));
     }
 
     fn unit_json(live: &LiveWorld) -> Value {

@@ -1785,8 +1785,17 @@ mod tests {
         assert!(event["id"].is_string() && event["name"].is_string() && event["category"].is_string());
         let choice = events.iter().find_map(|e| e["choices"].as_array().and_then(|c| c.first())).expect("a template with choices");
         assert!(choice["id"].is_string() && choice["label"].is_string());
-        let improvement = &catalog["improvements"].as_array().expect("improvements")[0];
-        assert!(improvement["id"].is_string() && improvement["name"].is_string() && improvement["biomes"].is_array());
+        for event in events {
+            for choice in event["choices"].as_array().expect("event choices") {
+                assert!(choice["id"].is_string());
+                assert!(choice["label"].as_str().is_some_and(|label| !label.is_empty() && Some(label) != choice["id"].as_str()));
+            }
+        }
+        for improvement in catalog["improvements"].as_array().expect("improvements") {
+            assert!(improvement["id"].is_string() && improvement["name"].is_string() && improvement["biomes"].is_array());
+            assert!(improvement["cost"].is_object());
+            assert!(improvement["requires_technology"].is_string());
+        }
         assert!(catalog["versions"]["event_templates"].is_u64() && catalog["versions"]["improvements"].is_u64());
     }
 

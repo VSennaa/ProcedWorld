@@ -141,6 +141,13 @@ struct Metadata {
     session_tokens: BTreeMap<CivId, String>,
 }
 
+/// Mutable turn data is one file so a replacement never exposes a new log with an old snapshot.
+#[derive(Serialize, Deserialize)]
+struct TurnState {
+    log: CommandLog,
+    snapshot: WorldSnapshot,
+}
+
 impl FileStore {
     pub fn open(root: impl Into<PathBuf>) -> Result<Self, StoreError> {
         let root = root.into();
@@ -167,10 +174,12 @@ impl FileStore {
         let dir = self.world_dir(record.state.world_id);
         self.write_json(&dir.join("initial_snapshot.json"), &record.snapshot)?;
         self.write_json(
-            &dir.join("snapshot.json"),
-            &WorldSnapshot::new(record.state.clone(), record.snapshot.versions.clone()),
+            &dir.join("turn.json"),
+            &TurnState {
+                log: record.log.clone(),
+                snapshot: WorldSnapshot::new(record.state.clone(), record.snapshot.versions.clone()),
+            },
         )?;
-        self.write_json(&dir.join("commands.json"), &record.log)?;
         self.write_json(
             &dir.join("metadata.json"),
             &Metadata {
@@ -199,7 +208,13 @@ impl WorldStore for FileStore {
     fn append_command(&self, world: WorldId, command: &AcceptedCommand) -> Result<(), StoreError> {
         let mut record = self.load(world)?.ok_or(StoreError::NotFound)?;
         record.log.append(command.clone());
-        self.write_json(&self.world_dir(world).join("commands.json"), &record.log)
+        self.write_json(
+            &self.world_dir(world).join("turn.json"),
+            &TurnState {
+                log: record.log,
+                snapshot: WorldSnapshot::new(record.state, record.snapshot.versions),
+            },
+        )
     }
     fn commit_turn(
         &self,
@@ -215,10 +230,12 @@ impl WorldStore for FileStore {
         }
         record.log.record_turn(sealed_turn, hash);
         record.state = next.clone();
-        self.write_json(&self.world_dir(world).join("commands.json"), &record.log)?;
         self.write_json(
-            &self.world_dir(world).join("snapshot.json"),
-            &WorldSnapshot::new(next.clone(), record.snapshot.versions.clone()),
+            &self.world_dir(world).join("turn.json"),
+            &TurnState {
+                log: record.log,
+                snapshot: WorldSnapshot::new(next.clone(), record.snapshot.versions),
+            },
         )
     }
     fn save_session_tokens(
@@ -241,8 +258,9 @@ impl WorldStore for FileStore {
             return Ok(None);
         }
         let snapshot: WorldSnapshot = self.read_json(&dir.join("initial_snapshot.json"))?;
-        let head: WorldSnapshot = self.read_json(&dir.join("snapshot.json"))?;
-        let log: CommandLog = self.read_json(&dir.join("commands.json"))?;
+        let turn: TurnState = self.read_json(&dir.join("turn.json"))?;
+        let head = turn.snapshot;
+        let log = turn.log;
         let metadata: Metadata = self.read_json(&dir.join("metadata.json"))?;
         if snapshot.state.world_id != world || head.state.world_id != world {
             return Err(StoreError::Invalid(
@@ -284,7 +302,9 @@ impl WorldStore for FileStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pw_engine::{hash::StateHash, world::step};
+    use pw_engine::{
+        world::{step, AcceptedCommand, CommandKind, CommandOrigin, CommandPayload},
+    };
 
     fn test_dir(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!("pw-server-{name}-{}", std::process::id()))
@@ -304,6 +324,22 @@ mod tests {
         )
     }
 
+    fn end_turn(world: WorldId, turn: TurnNumber, actor: CivId) -> AcceptedCommand {
+        AcceptedCommand {
+            command_id: 1,
+            world_id: world,
+            turn,
+            accepted_sequence: 1,
+            actor_id: actor,
+            origin: CommandOrigin::Player,
+            kind: CommandKind::EndTurn,
+            payload: CommandPayload::EndTurn,
+            grounding: Vec::new(),
+            intent_evidence: None,
+            mandate: None,
+        }
+    }
+
     #[test]
     fn file_store_reloads_the_same_turn_and_hash() {
         let root = test_dir("reload");
@@ -311,12 +347,13 @@ mod tests {
         let store = FileStore::open(&root).unwrap();
         let (record, versions) = record(91);
         let world = record.state.world_id;
-        let result = step(&record.state, &[], record.state.seed, &versions);
+        let command = end_turn(world, TurnNumber::ZERO, CivId(0));
+        let result = step(&record.state, &[command.clone()], record.state.seed, &versions);
         store.create(record).unwrap();
         store
             .commit_turn(
                 world,
-                &[],
+                &[command],
                 TurnNumber::ZERO,
                 result.state_hash,
                 &result.state,
@@ -332,25 +369,49 @@ mod tests {
     }
 
     #[test]
-    fn file_store_refuses_a_divergent_replay() {
+    fn file_store_recovers_from_interrupted_turn_replacement() {
         let root = test_dir("divergent");
         let _ = fs::remove_dir_all(&root);
         let store = FileStore::open(&root).unwrap();
         let (record, versions) = record(92);
         let world = record.state.world_id;
-        let result = step(&record.state, &[], record.state.seed, &versions);
+        let command = end_turn(world, TurnNumber::ZERO, CivId(0));
+        let result = step(&record.state, &[command.clone()], record.state.seed, &versions);
         store.create(record).unwrap();
         store
             .commit_turn(
                 world,
-                &[],
+                &[command],
                 TurnNumber::ZERO,
-                StateHash(result.state_hash.0.wrapping_add(1)),
+                result.state_hash,
                 &result.state,
             )
             .unwrap();
+        fs::write(store.world_dir(world).join("turn.tmp"), b"incomplete replacement").unwrap();
+        let loaded = store.load(world).unwrap().expect("last complete turn survives");
+        assert_eq!(loaded.state.state_hash(), result.state_hash);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn file_store_refuses_snapshot_that_differs_from_replay() {
+        let root = test_dir("snapshot-divergent");
+        let _ = fs::remove_dir_all(&root);
+        let store = FileStore::open(&root).unwrap();
+        let (record, versions) = record(93);
+        let world = record.state.world_id;
+        let initial = record.state.clone();
+        let command = end_turn(world, TurnNumber::ZERO, CivId(0));
+        let result = step(&initial, &[command.clone()], initial.seed, &versions);
+        store.create(record).unwrap();
+        store
+            .commit_turn(world, &[command], TurnNumber::ZERO, result.state_hash, &result.state)
+            .unwrap();
+        let mut turn: TurnState = store.read_json(&store.world_dir(world).join("turn.json")).unwrap();
+        turn.snapshot = WorldSnapshot::new(initial, versions);
+        store.write_json(&store.world_dir(world).join("turn.json"), &turn).unwrap();
         assert!(
-            matches!(store.load(world), Err(StoreError::Invalid(message)) if message.contains("replay rejected"))
+            matches!(store.load(world), Err(StoreError::Invalid(message)) if message.contains("replay hash differs from snapshot"))
         );
         let _ = fs::remove_dir_all(&root);
     }

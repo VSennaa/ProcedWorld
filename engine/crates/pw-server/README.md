@@ -10,8 +10,8 @@ civilizations without a present human (bots, absent humans) are played by their 
 `PW_SERVER_BIND` (default `127.0.0.1:8100`, never `0.0.0.0` by default), `PW_RECONNECT_GRACE_SECS`
 (default 60, technical grace, not a game clock), `PW_MAX_WORLDS` (16), `PW_MAX_CIVS` (16), and optional
 `PW_DATA_DIR`. Without `PW_DATA_DIR`, worlds remain in memory only. With it, each world is stored in
-its own directory as `snapshot.json`, `initial_snapshot.json`, `commands.json`, and `metadata.json`; files are replaced via a
-temporary sibling and rename. Startup replays every sealed log and refuses any world whose replay
+its own directory as `initial_snapshot.json`, `turn.json`, and `metadata.json`; `turn.json` contains
+the log and its resulting snapshot as one unit, replaced via a temporary sibling and rename. Startup replays every sealed log and refuses any world whose replay
 does not match its sealed hash. Session tokens are stored in that same world metadata, so `Entrar`
 can resume a seat after a restart.
 
