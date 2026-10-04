@@ -1363,11 +1363,15 @@ fn resolve_economy(state: &mut WorldState, seed: u64) {
         claimed.extend(workplaces.iter().copied());
         allocations.insert(*city_id, workplaces);
     }
-    // Income assumes every improvement is active; an improvement left unpaid below loses its bonus.
+    // Income before improvements: only base yields. An improvement's own bonus is earned only after
+    // its maintenance is paid, so it can never fund its own upkeep.
     let mut wealth_by_civ: BTreeMap<CivId, u32> = BTreeMap::new();
+    let mut worked_by: BTreeMap<TileIndex, CivId> = BTreeMap::new();
     for (city_id, workplaces) in &allocations {
-        let wealth: u32 = workplaces.iter().map(|tile| u32::from(crate::improvements::tile_output(&state.tiles[tile.0 as usize]).wealth)).sum();
-        *wealth_by_civ.entry(state.cities[city_id].owner).or_default() += wealth;
+        let owner = state.cities[city_id].owner;
+        let wealth: u32 = workplaces.iter().map(|tile| u32::from(crate::improvements::base_output(&state.tiles[tile.0 as usize]).wealth)).sum();
+        *wealth_by_civ.entry(owner).or_default() += wealth;
+        worked_by.extend(workplaces.iter().map(|tile| (*tile, owner)));
     }
     let mut available_wealth: BTreeMap<_, _> = state.civilizations.iter().map(|(id, civ)| {
         (*id, civ.treasury_wealth.saturating_add(wealth_by_civ.get(id).copied().unwrap_or(0)))
@@ -1380,20 +1384,13 @@ fn resolve_economy(state: &mut WorldState, seed: u64) {
         if *available < maintenance { unpaid_cities.insert(*city_id); }
         *available = available.saturating_sub(maintenance);
     }
-    let suspended = crate::improvements::pay_upkeep(state, &mut available_wealth);
+    let suspended = crate::improvements::pay_upkeep(state, &worked_by, &mut available_wealth);
     let mut city_yields = BTreeMap::new();
     for (city_id, workplaces) in allocations {
-        let owner = state.cities[&city_id].owner;
         let mut total = TileYields::default();
         for tile in &workplaces {
             let data = &state.tiles[tile.0 as usize];
-            let yields = if suspended.contains(tile) {
-                // A suspended improvement produces nothing, including the wealth already counted.
-                let lost = crate::improvements::tile_output(data).wealth.saturating_sub(crate::improvements::base_output(data).wealth);
-                let available = available_wealth.entry(owner).or_default();
-                *available = available.saturating_sub(u32::from(lost));
-                crate::improvements::base_output(data)
-            } else { crate::improvements::tile_output(data) };
+            let yields = if suspended.contains(tile) { crate::improvements::base_output(data) } else { crate::improvements::tile_output(data) };
             total.food = total.food.saturating_add(yields.food);
             total.production = total.production.saturating_add(yields.production);
             total.wealth = total.wealth.saturating_add(yields.wealth);

@@ -207,6 +207,9 @@ pub fn check_build(state: &WorldState, unit_id: UnitId, improvement_id: &str) ->
     if !allowed_on_terrain(definition, tile.terrain) { return Err(RejectionReason::ImprovementTerrainInvalid); }
     if tile.improvement.is_some() { return Err(RejectionReason::TileAlreadyImproved); }
     if state.cities.values().any(|city| city.tile == unit.tile) { return Err(RejectionReason::CityTileNotImprovable); }
+    // A work with an active builder blocks every other order on the tile. An abandoned work (no unit
+    // building it) is resumed by an order for the same improvement and replaced, losing its
+    // progress, by an order for a different one (docs/sdd/15 section 4.2.2).
     if state.units.iter().any(|(id, other)| *id != unit_id && other.tile == unit.tile && matches!(other.order, UnitOrder::Build { .. })) {
         return Err(RejectionReason::TileWorkInProgress);
     }
@@ -251,16 +254,24 @@ pub(crate) fn resolve_works(state: &mut WorldState) {
 
 /// Pays improvement maintenance after essential city upkeep (GDD 03 priority: city sustenance,
 /// then improvements by stable id = tile index). The payer is the tile's territory owner; neutral
-/// improvements are dormant (nobody works them) and cost nothing. Returns the tiles whose bonus is
-/// suspended this turn because the payer could not cover the maintenance.
-pub(crate) fn pay_upkeep(state: &WorldState, available: &mut BTreeMap<CivId, u32>) -> BTreeSet<TileIndex> {
+/// improvements are dormant (nobody works them) and cost nothing. `available` holds only base
+/// income: a paid, worked improvement then credits its wealth bonus to the civilization working the
+/// tile (`worked_by`), so it can fund improvements with a higher tile index but never its own
+/// upkeep. Returns the tiles whose bonus is suspended this turn.
+pub(crate) fn pay_upkeep(state: &WorldState, worked_by: &BTreeMap<TileIndex, CivId>, available: &mut BTreeMap<CivId, u32>) -> BTreeSet<TileIndex> {
     let mut suspended = BTreeSet::new();
     for (index, tile) in state.tiles.iter().enumerate() {
         let Some(definition) = tile.improvement.as_deref().and_then(improvement) else { continue };
         let tile_index = TileIndex(index as u32);
         let Some(payer) = territory_owner(state, tile_index) else { continue };
         let Some(funds) = available.get_mut(&payer) else { continue };
-        if *funds >= definition.upkeep() { *funds -= definition.upkeep(); } else { suspended.insert(tile_index); }
+        if *funds < definition.upkeep() { suspended.insert(tile_index); continue; }
+        *funds -= definition.upkeep();
+        if let Some(worker) = worked_by.get(&tile_index) {
+            let bonus = tile_output(tile).wealth.saturating_sub(base_output(tile).wealth);
+            let funds = available.entry(*worker).or_default();
+            *funds = funds.saturating_add(u32::from(bonus));
+        }
     }
     suspended
 }
@@ -449,6 +460,24 @@ mod tests {
     }
 
     #[test]
+    fn an_actively_built_tile_rejects_other_orders_but_an_abandoned_work_can_be_replaced() {
+        let mut state = world();
+        state.units.get_mut(&UnitId(1)).unwrap().order = UnitOrder::Build { improvement: "improvement.farm".into() };
+        state.tiles[east(1) as usize].build = Some(TileBuild { improvement: "improvement.farm".into(), progress: 4 });
+        // A second worker on the same tile (only constructible directly; movement forbids stacking).
+        state.units.insert(UnitId(2), unit(1, east(1), "unit.worker"));
+        assert_eq!(check_build(&state, UnitId(2), "improvement.pasture").err(), Some(RejectionReason::TileWorkInProgress));
+        assert_eq!(check_build(&state, UnitId(2), "improvement.farm").err(), Some(RejectionReason::TileWorkInProgress));
+        // Abandoned (no active builder): the same improvement resumes, a different one replaces it.
+        state.units.get_mut(&UnitId(1)).unwrap().order = UnitOrder::Idle;
+        state.units.remove(&UnitId(2));
+        let resumed = step(&state, &[build(1, 1, 1, "improvement.farm", 0)], state.seed, &versions(&state)).state;
+        assert_eq!(resumed.tiles[east(1) as usize].build, Some(TileBuild { improvement: "improvement.farm".into(), progress: 6 }));
+        let replaced = step(&state, &[build(1, 1, 1, "improvement.pasture", 0)], state.seed, &versions(&state)).state;
+        assert_eq!(replaced.tiles[east(1) as usize].build, Some(TileBuild { improvement: "improvement.pasture".into(), progress: 2 }));
+    }
+
+    #[test]
     fn an_order_that_became_illegal_returns_to_idle_without_progress() {
         let mut state = world();
         state.units.get_mut(&UnitId(1)).unwrap().order = UnitOrder::Build { improvement: "improvement.farm".into() };
@@ -506,6 +535,30 @@ mod tests {
         assert_eq!(city.last_yields.food, 2, "suspended farm yields only the base");
         assert_eq!(next.civilizations[&CivId(1)].treasury_wealth, 0);
         assert_eq!(next.tiles[east(1) as usize].improvement.as_deref(), Some("improvement.farm"), "suspension is not removal");
+    }
+
+    /// A worked desert saltworks (+1 wealth, upkeep 1) next to a city of population 1 (upkeep 2).
+    fn saltworks_world(treasury: u32) -> WorldState {
+        let mut state = economy_world(treasury);
+        let tile = &mut state.tiles[east(1) as usize];
+        tile.terrain = TERRAIN_DESERT;
+        tile.improvement = Some("improvement.saltworks".into());
+        state
+    }
+
+    #[test]
+    fn a_saltworks_cannot_pay_its_own_upkeep_with_its_own_wealth() {
+        // Base income 2 + treasury 0 covers exactly the essential upkeep: nothing left for the
+        // saltworks, whose own +1 must not count before it is paid.
+        let next = step(&saltworks_world(0), &[], 5, &versions(&saltworks_world(0))).state;
+        let city = &next.cities[&CityId(1)];
+        assert!(!city.essential_maintenance_unpaid);
+        assert_eq!(city.last_yields.wealth, 2, "suspended saltworks yields only the base wealth");
+        assert_eq!(next.civilizations[&CivId(1)].treasury_wealth, 0);
+        // One more wealth in the treasury pays it; the bonus then arrives: 1 + 2 - 2 - 1 + 1.
+        let paid = step(&saltworks_world(1), &[], 5, &versions(&saltworks_world(1))).state;
+        assert_eq!(paid.cities[&CityId(1)].last_yields.wealth, 3);
+        assert_eq!(paid.civilizations[&CivId(1)].treasury_wealth, 1);
     }
 
     #[test]
