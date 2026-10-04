@@ -30,12 +30,15 @@ pub fn view_for(state: &WorldState, civ: CivId, home: Option<TileIndex>, pending
             let tile = state.tiles.get(index.0 as usize)?;
             // `yields` is the effective per-worker output (base + improvement, 0-6); `biome` is the
             // catalog biome of the terrain, matching `improvements[].biomes` in the catalog.
+            // Improvements, works and effective yields change over time: they are only sent for
+            // tiles in sight. Remembered tiles show the base terrain (SDD 16, no fog leak).
+            let visible = *v == Visibility::Visible;
             Some(json!({
                 "tile": index, "visibility": v, "terrain": tile.terrain,
                 "biome": improvements::terrain_biome(tile.terrain),
-                "river": tile.river, "yields": improvements::tile_output(tile), "owner": state.control.get(index),
-                "improvement": tile.improvement,
-                "build_progress": tile.build.as_ref().map(|build| json!({
+                "river": tile.river, "yields": if visible { improvements::tile_output(tile) } else { tile.yields }, "owner": state.control.get(index),
+                "improvement": tile.improvement.as_ref().filter(|_| visible),
+                "build_progress": tile.build.as_ref().filter(|_| visible).map(|build| json!({
                     "improvement": build.improvement, "progress": build.progress,
                     "required": improvements::improvement(&build.improvement).map(|definition| definition.work_required()),
                 })),
@@ -126,13 +129,17 @@ mod tests {
         state.tiles[0].improvement = Some("improvement.farm".into());
         state.tiles[0].yields.food = 2;
         state.tiles[1].build = Some(TileBuild { improvement: "improvement.farm".into(), progress: 2 });
+        state.visibility.get_mut(&civ).unwrap().insert(TileIndex(2), Visibility::Visible);
+        state.tiles[2].build = Some(TileBuild { improvement: "improvement.farm".into(), progress: 2 });
         let view = view_for(&state, civ, None, &[]);
         let tiles = view["tiles"].as_array().expect("tiles");
         assert_eq!(tiles[0]["improvement"], json!("improvement.farm"));
         assert_eq!(tiles[0]["build_progress"], Value::Null);
         assert_eq!(tiles[0]["yields"]["food"], json!(3));
+        assert_eq!(tiles[2]["build_progress"], json!({ "improvement": "improvement.farm", "progress": 2, "required": 8 }));
+        // Fog: a remembered tile never reveals its current work or improvement.
         assert_eq!(tiles[1]["improvement"], Value::Null);
-        assert_eq!(tiles[1]["build_progress"], json!({ "improvement": "improvement.farm", "progress": 2, "required": 8 }));
+        assert_eq!(tiles[1]["build_progress"], Value::Null);
         assert!(tiles[0]["biome"].is_string());
     }
 }
