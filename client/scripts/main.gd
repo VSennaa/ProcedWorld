@@ -44,13 +44,34 @@ const PLACEHOLDERS := {
 	"cronica": "O que aconteceu e quanto custou a IA: fatos, narrativa e consumo.",
 }
 const ENGINE_REASON_TEXT := {
-	"CityAlreadyExists": "Esse identificador de cidade já existe.",
-	"CityTileOccupied": "Já existe uma cidade nesse tile.",
-	"MissingSettler": "É preciso um colono nesse tile para fundar uma cidade.",
-	"UnitTechnologyNotResearched": "A tecnologia dessa unidade ainda não foi dominada.",
-	"UnknownCity": "Cidade desconhecida.",
-	"NotCommandOwner": "Essa cidade não é sua.",
-	"InvalidQueueIndex": "Esse item não está mais na fila.",
+	"wrong_turn": "Essa ordem é de um turno que já passou.",
+	"unknown_civilization": "Civilização desconhecida.",
+	"unknown_unit": "Essa unidade não existe mais.",
+	"unknown_city": "Cidade desconhecida.",
+	"not_command_owner": "Isso não pertence à sua civilização.",
+	"invalid_tile": "Tile inválido para essa ordem.",
+	"destination_occupied": "O destino está ocupado.",
+	"city_already_exists": "Esse identificador de cidade já existe.",
+	"city_tile_occupied": "Já existe uma cidade nesse tile.",
+	"missing_settler": "É preciso um colono nesse tile para fundar uma cidade.",
+	"civilization_frozen": "Sua civilização está congelada e não pode agir.",
+	"unknown_technology": "Tecnologia desconhecida.",
+	"missing_technology_prerequisite": "Faltam pré-requisitos para essa tecnologia.",
+	"invalid_research_investment": "Esse percentual de investimento não é permitido.",
+	"unknown_practice": "Prática desconhecida.",
+	"practice_technology_not_researched": "A tecnologia dessa prática ainda não foi dominada.",
+	"practice_limit_reached": "O limite de práticas ativas foi atingido.",
+	"unknown_unit_type": "Tipo de unidade desconhecido.",
+	"unit_technology_not_researched": "A tecnologia dessa unidade ainda não foi dominada.",
+	"unit_already_reserved": "Essa unidade já está reservada na fila.",
+	"invalid_queue_index": "Esse item não está mais na fila.",
+	"attack_not_hostile": "Esse alvo não é hostil: não é possível atacá-lo.",
+	"attack_out_of_range": "O alvo está fora de alcance.",
+	"unit_id_exhausted": "Não é possível criar mais unidades.",
+	"turn_overflow": "O mundo atingiu o limite de turnos.",
+	"event_choice_invalid": "Essa resposta não é válida para o evento.",
+	"event_unaffordable": "Sua civilização não pode pagar essa resposta.",
+	"event_unknown": "Esse evento não existe mais.",
 	"not_a_worker": "Apenas trabalhadores podem construir melhorias.",
 	"unknown_improvement": "Essa melhoria é desconhecida.",
 	"improvement_technology_not_researched": "A tecnologia dessa melhoria ainda não foi dominada.",
@@ -626,6 +647,7 @@ func _populate(first: bool) -> void:
 		_agenda.set_status("")
 	else:
 		_agenda.set_status("Demonstração (arquivo de exemplo): sem conexão com o servidor.")
+	_map.catalog = _catalog
 	_map.set_view(world, first)
 	_map.set_selected_unit(_selected_unit if not world.unit_by_id(_selected_unit).is_empty() else -1)
 	_refresh_tech()
@@ -687,6 +709,7 @@ func _idle_entries() -> Array:
 func _refresh_units() -> void:
 	_agenda.set_idle_units(_idle_entries())
 	_refresh_capital_card()
+	_map.catalog = _catalog
 	_map.set_view(world, false)
 	_map.set_selected_unit(_selected_unit)
 	_refresh_panels()
@@ -703,7 +726,7 @@ func _refresh_panels() -> void:
 	if _selected_unit >= 0 and not world.unit_by_id(_selected_unit).is_empty():
 		var unit: Dictionary = world.unit_by_id(_selected_unit)
 		var tile: Dictionary = world.tile_at(unit["cell"])
-		_unit_panel.show_unit(unit, world.turn, tile, _attack_targets(unit), _build_options(unit, tile))
+		_unit_panel.show_unit(unit, world.turn, tile, _attack_targets(unit), _build_options(unit, tile), _catalog)
 	if _selected_city >= 0:
 		var city: Dictionary = world.city_by_id(_selected_city)
 		if city.is_empty() or not city["own"]:
@@ -797,7 +820,7 @@ func _select_unit(unit_id: int) -> void:
 	_clear_city_selection()
 	_selected_unit = unit_id
 	var tile: Dictionary = world.tile_at(unit["cell"])
-	_unit_panel.show_unit(unit, world.turn, tile, _attack_targets(unit), _build_options(unit, tile))
+	_unit_panel.show_unit(unit, world.turn, tile, _attack_targets(unit), _build_options(unit, tile), _catalog)
 	_map.set_selected_unit(unit_id)
 
 

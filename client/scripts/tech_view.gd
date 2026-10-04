@@ -53,6 +53,9 @@ func build(catalog: RefCounted, research: Dictionary) -> void:
 		investment.set_item_metadata(investment.item_count - 1, int(percent))
 		if int(percent) == int(research.get("investment", 0)):
 			investment.select(investment.item_count - 1)
+	investment.custom_minimum_size = Vector2(120, 48)
+	investment.add_theme_font_size_override("font_size", 20)
+	investment.get_popup().add_theme_font_size_override("font_size", 20)
 	investment.item_selected.connect(func(index: int) -> void: investment_requested.emit(int(investment.get_item_metadata(index))))
 	investment_row.add_child(investment)
 	root.add_child(investment_row)
@@ -93,8 +96,18 @@ static func summary_text(catalog: RefCounted, research: Dictionary) -> String:
 		text += "Nenhuma pesquisa em andamento."
 	if current != "" and catalog.techs.has(current):
 		var estimate := estimate_turns(catalog, current, research)
-		text += " " + ("Estimativa: %d turnos." % estimate if estimate >= 0 else "sem investimento: escolha 10% ou 20%.")
+		text += " " + estimate_text(estimate, research)
 	return text
+
+
+static func estimate_text(estimate: int, research: Dictionary) -> String:
+	if research.get("investment_local", false):
+		return "Estimativa: aguardando o próximo turno."
+	if estimate >= 0:
+		return "Estimativa: %d %s." % [estimate, "turno" if estimate == 1 else "turnos"]
+	if int(research.get("investment", 0)) > 0:
+		return "Estimativa: sem produção nas cidades."
+	return "sem investimento: escolha 10% ou 20%."
 
 
 ## An estimate from the rate the current projection exposes; it never changes game state.

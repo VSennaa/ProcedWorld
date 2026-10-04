@@ -5,8 +5,14 @@ extends MarginContainer
 signal choice_selected(card_id: String, option_id: String)
 signal back_requested
 
+const ServerView := preload("res://scripts/server_view.gd")
 const MUTED_COLOR := Color("b9c1c8")
 const CARD_BG := Color("223140")
+
+
+static func deadline_text(card: Dictionary) -> String:
+	var turns := int(card.get("deadline_turns", 0))
+	return "EVENTO · %s · prazo: %d %s" % [ServerView.category_label(String(card.get("category", ""))), turns, "turno" if turns == 1 else "turnos"]
 
 
 func show_event(card: Dictionary, selected_choice: String = "") -> void:
@@ -42,7 +48,7 @@ func show_event(card: Dictionary, selected_choice: String = "") -> void:
 	box.add_theme_constant_override("separation", 10)
 	panel.add_child(box)
 	var category := Label.new()
-	category.text = "EVENTO · %s · prazo: %d turnos" % [String(card.get("category", "?")), int(card.get("deadline_turns", 0))]
+	category.text = deadline_text(card)
 	category.add_theme_font_size_override("font_size", 18)
 	category.add_theme_color_override("font_color", Color("e69f00"))
 	category.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
