@@ -218,7 +218,7 @@ fn identifier(map: &Map<String, Value>, key: &str, path: &str, diagnostics: &mut
 
 fn parse_template(value: &Value, path: &str, diagnostics: &mut Vec<Diagnostic>) -> Option<Template> {
     let map = object(value, path, diagnostics)?;
-    check_keys(map, &["id", "name", "category", "reference_event", "tension_cost", "duration_turns", "when", "targets", "effects", "choices", "interference", "cooldown_turns"], path, diagnostics);
+    check_keys(map, &["id", "name", "category", "reference_event", "tension_cost", "duration_turns", "when", "targets", "effects", "choices", "interference", "cooldown_turns", "narrative"], path, diagnostics);
     let before = diagnostics.len();
     let id = identifier(map, "id", path, diagnostics);
     let category = identifier(map, "category", path, diagnostics);
@@ -246,7 +246,8 @@ fn parse_template(value: &Value, path: &str, diagnostics: &mut Vec<Diagnostic>) 
             for (index, item) in items.iter().enumerate() {
                 let choice_path = format!("{path}.choices[{index}]");
                 let Some(choice) = object(item, &choice_path, diagnostics) else { continue; };
-                check_keys(choice, &["id", "effects"], &choice_path, diagnostics);
+                // `label` is display text for the client only; it never reaches effects.
+                check_keys(choice, &["id", "effects", "label"], &choice_path, diagnostics);
                 let choice_id = identifier(choice, "id", &choice_path, diagnostics);
                 let choice_effects = parse_effects(choice.get("effects"), &format!("{choice_path}.effects"), diagnostics);
                 if let (Some(choice_id), Some(choice_effects)) = (choice_id, choice_effects) { choices.push(EventChoice { id: choice_id, effects: choice_effects }); }

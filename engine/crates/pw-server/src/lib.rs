@@ -10,5 +10,5 @@ pub mod world;
 pub mod ws;
 
 pub use config::ServerConfig;
-pub use store::{InMemoryStore, WorldRecord, WorldStore};
+pub use store::{FileStore, InMemoryStore, WorldRecord, WorldStore};
 pub use ws::{build_app, AppState};

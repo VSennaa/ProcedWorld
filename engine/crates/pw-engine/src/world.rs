@@ -679,12 +679,16 @@ pub(crate) fn next_technology(researched: &BTreeSet<String>) -> Option<String> {
 
 const TECH_CATALOG_JSON: &str = include_str!("../../../../data/catalogs/tech_tree.json");
 const UNIT_CATALOG_JSON: &str = include_str!("../../../../data/catalogs/units.json");
+const EVENT_TEMPLATES_CATALOG_JSON: &str = include_str!("../../../../data/catalogs/event_templates.json");
+const IMPROVEMENTS_CATALOG_JSON: &str = include_str!("../../../../data/catalogs/improvements.json");
 
 /// Technology tree and unit types for clients (docs/sdd/10 section 5.2). `hash` identifies the
 /// exact bundled catalog data so a client can cache it.
 pub fn client_catalog() -> serde_json::Value {
     let mut bytes = TECH_CATALOG_JSON.as_bytes().to_vec();
     bytes.extend_from_slice(UNIT_CATALOG_JSON.as_bytes());
+    bytes.extend_from_slice(EVENT_TEMPLATES_CATALOG_JSON.as_bytes());
+    bytes.extend_from_slice(IMPROVEMENTS_CATALOG_JSON.as_bytes());
     let version = |raw: &str| serde_json::from_str::<serde_json::Value>(raw).ok().and_then(|value| value.get("catalog_version").and_then(serde_json::Value::as_u64));
     let technologies: Vec<serde_json::Value> = tech_catalog().technologies.into_iter().map(|technology| serde_json::json!({
         "id": technology.id, "name": technology.name, "branch": technology.branch,
@@ -695,12 +699,33 @@ pub fn client_catalog() -> serde_json::Value {
         "strength": unit.strength, "requires_technology": unit.requires_technology,
         "cost": unit.cost,
     })).collect();
+    // Choice labels come from the catalog; the id is the fallback until every template carries one.
+    let event_templates = catalog_entries(EVENT_TEMPLATES_CATALOG_JSON, "templates", |entry| serde_json::json!({
+        "id": entry["id"], "name": entry["name"], "category": entry["category"],
+        "narrative": entry.get("narrative").cloned(),
+        "choices": entry.get("choices").and_then(serde_json::Value::as_array).map(|choices| choices.iter().map(|choice| serde_json::json!({
+            "id": choice["id"], "label": choice.get("label").cloned().unwrap_or_else(|| choice["id"].clone()),
+        })).collect::<Vec<_>>()).unwrap_or_default(),
+    }));
+    let improvements = catalog_entries(IMPROVEMENTS_CATALOG_JSON, "improvements", |entry| serde_json::json!({
+        "id": entry["id"], "name": entry["name"], "cost": entry["cost"],
+        "requires_technology": entry["requires_technology"], "biomes": entry["biomes"],
+    }));
     serde_json::json!({
         "hash": format!("{:016x}", crate::hash::fnv1a(&bytes)),
-        "versions": { "tech_tree": version(TECH_CATALOG_JSON), "units": version(UNIT_CATALOG_JSON) },
+        "versions": { "tech_tree": version(TECH_CATALOG_JSON), "units": version(UNIT_CATALOG_JSON), "event_templates": version(EVENT_TEMPLATES_CATALOG_JSON), "improvements": version(IMPROVEMENTS_CATALOG_JSON) },
         "technologies": technologies,
         "units": units,
+        "event_templates": event_templates,
+        "improvements": improvements,
     })
+}
+
+/// Maps each entry of the array `field` of a bundled catalog; a malformed catalog yields no entries.
+fn catalog_entries(raw: &str, field: &str, map: impl Fn(&serde_json::Value) -> serde_json::Value) -> Vec<serde_json::Value> {
+    serde_json::from_str::<serde_json::Value>(raw).ok()
+        .and_then(|catalog| catalog.get(field).and_then(serde_json::Value::as_array).cloned())
+        .unwrap_or_default().iter().map(map).collect()
 }
 
 fn unit_catalog() -> UnitCatalog {
@@ -1749,6 +1774,20 @@ mod tests {
 
     fn command(id: u64, sequence: u64, actor: CivId, payload: CommandPayload) -> AcceptedCommand {
         AcceptedCommand { command_id: id, world_id: WorldId(9), turn: TurnNumber::ZERO, accepted_sequence: sequence, actor_id: actor, origin: CommandOrigin::Player, kind: payload.kind(), payload, grounding: Vec::new(), intent_evidence: None, mandate: None }
+    }
+
+    #[test]
+    fn client_catalog_includes_event_and_improvement_fields() {
+        let catalog = client_catalog();
+        let events = catalog["event_templates"].as_array().expect("event templates");
+        assert!(events.len() >= 20, "expected the bundled templates, got {}", events.len());
+        let event = &events[0];
+        assert!(event["id"].is_string() && event["name"].is_string() && event["category"].is_string());
+        let choice = events.iter().find_map(|e| e["choices"].as_array().and_then(|c| c.first())).expect("a template with choices");
+        assert!(choice["id"].is_string() && choice["label"].is_string());
+        let improvement = &catalog["improvements"].as_array().expect("improvements")[0];
+        assert!(improvement["id"].is_string() && improvement["name"].is_string() && improvement["biomes"].is_array());
+        assert!(catalog["versions"]["event_templates"].is_u64() && catalog["versions"]["improvements"].is_u64());
     }
 
     #[test]
