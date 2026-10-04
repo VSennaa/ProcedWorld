@@ -4,7 +4,7 @@
 
 ## Agora
 
-Agente ativo: alfa mini (2026-10-03) — Codex A1 (`feat/back/alpha-server`, `engine/crates/pw-server`), Opus A2 (`feat/engine/improvements`, `engine/`), Codex A3a–c (`feat/front/alpha-client`, `client/`); worktrees em `D:/PW-wt/`
+Agente ativo: nenhum (2026-10-03 22:10, após o alfa mini)
 
 - **Fase**: **3 — Alfa**. Fase 2 mergeada em `develop` (tag `v0.1.0-indev.1` aguarda o usuário).
 - **`feat/ai/phase3-core`** (98 testes na VPS: 81 motor, 11 harness, 6 servidor), feito em 2026-10-02 com
@@ -36,6 +36,23 @@ Agente ativo: alfa mini (2026-10-03) — Codex A1 (`feat/back/alpha-server`, `en
   - testes: Rust 114 na VPS (`VPS_EXIT=0`), cliente 475 + 33 ao vivo, ponta a ponta contra servidor
     real na VPS 15/15 (`client/tests/real_server.gd`: funda capital, produz batedor no turno 8, ordena);
   - builds na VPS serializados com `flock` (corrida no volume de target compartilhado).
+- **2026-10-03 — alfa mini jogável** (`feat/ai/phase3-core`), com juiz de qualidade por entrega
+  (modelo escolhido pelo Jev; Sonnet quando a cota do Codex acabou):
+  - A1 persistência em disco (`PW_DATA_DIR`: snapshot + log por turno, gravação atômica, recarga com
+    verificação por replay, tokens sobrevivem) e catálogo com eventos (texto e escolhas PT-BR) e
+    melhorias — juiz 5 → 6, bloqueante restante rejeitado pelo supervisor (rename no Windows substitui);
+  - A2 melhorias de terreno (Opus): ordem `Build`, trabalho 2/turno, efeitos com limite 6, manutenção sem
+    autofinanciamento, bots constroem com regra de renda, `buildable` por trabalhador, névoa sem vazamento
+    — juiz 6 → 5 → 8,5 (aprovado com ressalvas);
+  - A3 cliente (Codex + Sonnet): escolher pesquisa e investimento (taxa real `research_per_turn`), tela
+    Sociedade, eventos legíveis, Atacar, Construir melhoria, textos PT-BR — juiz 5 → 6 → 7,5;
+  - testes: Rust 116 + 12 + 8 + 7 na VPS; cliente 637 + 63 ao vivo; e2e real 15/15; reinício do servidor
+    com retomada do mundo verificado (`client/tests/rejoin_check.gd`); `play-vps.sh` guarda os mundos.
+- **Pendências do alfa mini**: tokens de sessão em texto claro no disco; `max_worlds` não limita mundos
+  restaurados; criação de mundo não atômica; dono de tile lembrado mostra o atual (névoa) e tile lembrado
+  não guarda melhoria vista; custo O(T·C) das melhorias; efeitos `AddTag` de melhorias sem regra;
+  pedreira inviável (sem bioma de montanha); `real_server.gd` não cobre pesquisa/ataque/obra; Relações,
+  Crônica e Mandato ainda sem tela.
 - **Próximo**: teste do `.exe` Windows do cliente (Smart App Control); servidor publicado na VPS atrás
   do proxy (precisa de aprovação do usuário); foco de cidade e escolha de pesquisa no cliente.
 - **Para o usuário**: aprovar a tag `v0.1.0-indev.1`; revisar `feat/ai/phase3-core` antes do merge em `develop`.
