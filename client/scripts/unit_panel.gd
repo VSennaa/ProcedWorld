@@ -81,7 +81,7 @@ static func legal_actions(unit: Dictionary, tile: Dictionary = {}, has_attack_ta
 	return result
 
 
-static func order_label(unit: Dictionary) -> String:
+static func order_label(unit: Dictionary, catalog: RefCounted = null) -> String:
 	if unit.get("founding", false):
 		return "fundando uma cidade"
 	match String(unit.get("order", "")):
@@ -97,11 +97,14 @@ static func order_label(unit: Dictionary) -> String:
 			var target: Vector2i = unit.get("order_target", Vector2i(-1, -1))
 			return "indo para (%d, %d)" % [target.x, target.y]
 		"Build":
-			return "construindo %s" % String(unit.get("order_improvement", "melhoria"))
+			var improvement := String(unit.get("order_improvement", ""))
+			if improvement.is_empty():
+				return "construindo melhoria"
+			return "construindo %s" % (catalog.improvement_name(improvement) if catalog != null else improvement)
 	return "ordem desconhecida"
 
 
-func show_unit(unit: Dictionary, turn: int, tile: Dictionary = {}, attack_targets: Array = [], improvement_options: Array = []) -> void:
+func show_unit(unit: Dictionary, turn: int, tile: Dictionary = {}, attack_targets: Array = [], improvement_options: Array = [], catalog: RefCounted = null) -> void:
 	_unit_id = unit["id"]
 	var own: bool = unit["own"]
 	_title.text = "%s%s" % [unit["name"], "" if own else " (de outra civilização)"]
@@ -110,7 +113,7 @@ func show_unit(unit: Dictionary, turn: int, tile: Dictionary = {}, attack_target
 		movement += "/%d" % unit["movement_max"]
 	var line := "Vida %d · movimento %s" % [unit["hp"], movement]
 	if own:
-		line += " · %s" % order_label(unit)
+		line += " · %s" % order_label(unit, catalog)
 		if unit.get("skipped_turn", -1) == turn:
 			line += " (pulada neste turno)"
 	_details.text = line

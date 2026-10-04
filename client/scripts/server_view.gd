@@ -307,9 +307,27 @@ static func _event_card(entry: Dictionary, turn: int, catalog: RefCounted = null
 	var card := {
 		"id": "event-%d" % event_id, "event_id": event_id, "severity": "important",
 		"title": String(template_data.get("name", humanize(template))), "category": category,
-		"cause": "Categoria: %s" % category, "effect": narrative, "risk": "", "deadline_turns": maxi(0, int(event.get("expires", turn)) - turn), "options": options,
+		"cause": "Categoria: %s" % category_label(category), "effect": narrative, "risk": "", "deadline_turns": maxi(0, int(event.get("expires", turn)) - turn), "options": options,
 	}
 	return {"card": card, "title_id": template, "raw_choices": raw_choices}
+
+
+const CATEGORY_LABELS := {
+	"climate": "clima", "collapse": "colapso", "diplomacy": "diplomacia", "discovery": "descoberta",
+	"epidemic": "epidemia", "interference": "interferência", "magic": "magia", "renewal": "renovação",
+	"revolt": "revolta", "social": "social", "technology": "tecnologia", "terrain": "terreno",
+}
+const RESOURCE_LABELS := {
+	"food": "comida", "production": "produção", "wealth": "riqueza", "knowledge": "conhecimento", "culture": "cultura",
+}
+
+
+static func category_label(category: String) -> String:
+	return CATEGORY_LABELS.get(category, humanize(category) if not category.is_empty() else "evento")
+
+
+static func resource_label(resource: String) -> String:
+	return RESOURCE_LABELS.get(resource, humanize(resource))
 
 
 static func _describe_effects(effects: Array) -> String:
@@ -319,7 +337,7 @@ static func _describe_effects(effects: Array) -> String:
 			continue
 		match String(effect.get("op", "")):
 			"adjust_resource":
-				parts.append("%s %+d" % [String(effect.get("resource", "?")), int(effect.get("amount", 0))])
+				parts.append("%s %+d" % [resource_label(String(effect.get("resource", "?"))), int(effect.get("amount", 0))])
 			"add_tag", "remove_tag":
 				parts.append(humanize(String(effect.get("tag", ""))))
 			_:

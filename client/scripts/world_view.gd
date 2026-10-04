@@ -131,6 +131,7 @@ func apply_local_research(research_id: String) -> void:
 ## Optimistic display only after SetResearchInvestment is accepted.
 func apply_local_research_investment(percent: int) -> void:
 	research["investment"] = percent
+	research["investment_local"] = true  # the projected rate still belongs to the old percentage
 
 
 ## Remaining decisions in the stable order the compact Pronto button walks: the capital card first,

@@ -16,6 +16,8 @@ const SocietyView := preload("res://scripts/society_view.gd")
 const ConnectView := preload("res://scripts/connect_view.gd")
 const ReadyFab := preload("res://scripts/ready_fab.gd")
 const EventView := preload("res://scripts/event_view.gd")
+const MapView := preload("res://scripts/map_view.gd")
+const MainScript := preload("res://scripts/main.gd")
 
 const SERVER_VIEW := "res://fixtures/server_view.json"
 const SERVER_CATALOG := "res://fixtures/server_catalog.json"
@@ -267,7 +269,7 @@ func test_server_view_adapter() -> void:
 	check(view.agenda.size() == 1 and view.agenda[0]["event_id"] == 7 and view.agenda[0]["options"].size() == 2, "pending event becomes an agenda card with its choices")
 	check(view.agenda[0]["title"] == "Estiagem do vale" and view.agenda[0]["category"] == "Clima" and view.agenda[0]["effect"].contains("colheita"), "event uses readable name, category and text from catalog")
 	check(view.agenda[0]["options"][0]["label"] == "Racionar alimentos", "event choice uses the catalog PT-BR label")
-	check(view.agenda[0]["deadline_turns"] == 3 and view.agenda[0]["options"][1]["sacrifice"] == "wealth -3", "event deadline and choice effects")
+	check(view.agenda[0]["deadline_turns"] == 3 and view.agenda[0]["options"][1]["sacrifice"] == "riqueza -3", "event deadline and choice effects")
 	check(view.pending_events.size() == 1, "pending events are kept for the response command")
 
 
@@ -413,6 +415,33 @@ func test_catalog_layout() -> void:
 	check(TechView.summary_text(catalog, {"current": "", "done": [], "progress": {}}).contains("Nenhuma pesquisa em andamento"), "summary without current research")
 	check(TechView.estimate_turns(catalog, "tech.storage", {"progress": {"tech.storage": 6}, "per_turn": 2}) == 4, "research turn estimate uses projection rate")
 	check(TechView.estimate_turns(catalog, "tech.storage", {"progress": {"tech.storage": 6}, "per_turn": 0}) == -1, "zero engine rate has no numeric estimate")
+	var paid := {"current": "tech.storage", "done": [], "progress": {"tech.storage": 6}, "per_turn": 0, "investment": 10}
+	check(TechView.summary_text(catalog, paid).ends_with("sem produção nas cidades."), "investment without production does not ask for investment")
+	check(not TechView.summary_text(catalog, paid).contains("escolha"), "paid investment never repeats the invitation")
+	paid["investment_local"] = true
+	check(TechView.summary_text(catalog, paid).ends_with("aguardando o próximo turno."), "local investment change waits for the next turn")
+	check(TechView.estimate_text(1, {}) == "Estimativa: 1 turno.", "estimate singular")
+	check(TechView.estimate_text(3, {}) == "Estimativa: 3 turnos.", "estimate plural")
+	var local_view := WorldView.new()
+	local_view.apply_local_research_investment(20)
+	check(local_view.research["investment_local"] == true, "local investment is flagged")
+	check(ServerView.category_label("climate") == "clima" and ServerView.category_label("epidemic") == "epidemia" and ServerView.category_label("revolt") == "revolta", "event categories are translated")
+	check(ServerView.category_label("new_thing") == "New thing" or ServerView.category_label("new_thing") == "new thing" or ServerView.category_label("new_thing").to_lower() == "new thing", "unknown category is humanized")
+	for category in ["climate", "collapse", "diplomacy", "discovery", "epidemic", "interference", "magic", "renewal", "revolt", "social", "technology", "terrain"]:
+		check(ServerView.CATEGORY_LABELS.has(category), "category label exists for %s" % category)
+	check(ServerView._describe_effects([{"op": "adjust_resource", "resource": "food", "amount": -2}, {"op": "adjust_resource", "resource": "wealth", "amount": 3}]) == "comida -2, riqueza +3", "effect resources are PT-BR")
+	check(ServerView.resource_label("production") == "produção" and ServerView.resource_label("knowledge") == "conhecimento" and ServerView.resource_label("culture") == "cultura", "resource labels")
+	check(EventView.deadline_text({"category": "climate", "deadline_turns": 1}) == "EVENTO · clima · prazo: 1 turno", "deadline singular")
+	check(EventView.deadline_text({"category": "climate", "deadline_turns": 2}) == "EVENTO · clima · prazo: 2 turnos", "deadline plural")
+	var name_catalog := CatalogView.new()
+	name_catalog.improvements["improvement.farm"] = {"id": "improvement.farm", "name": "Fazenda"}
+	check(UnitPanel.order_label({"order": "Build", "order_improvement": "improvement.farm"}, name_catalog) == "construindo Fazenda", "build order shows the catalog name")
+	check(MapView.improvement_initial("improvement.farm", name_catalog) == "F", "map marker uses the catalog name initial")
+	var reason_text: Dictionary = MainScript.ENGINE_REASON_TEXT
+	for reason in ["attack_out_of_range", "attack_not_hostile", "unit_already_reserved", "missing_settler", "city_tile_occupied", "not_command_owner", "invalid_queue_index", "unit_technology_not_researched", "tile_outside_territory"]:
+		check(reason_text.has(reason), "engine reason text for %s" % reason)
+	for key in reason_text:
+		check(String(key) == String(key).to_lower(), "engine reason key %s is snake_case" % key)
 
 
 func test_research_selection() -> void:
@@ -429,6 +458,7 @@ func test_research_selection() -> void:
 	check(buttons.size() == 4, "one selectable button per available technology")
 	var selectors: Array = tech.find_children("*", "OptionButton", true, false)
 	check(selectors.size() == 1 and selectors[0].item_count == 3, "research investment options come from server percentages")
+	check(selectors[0].custom_minimum_size.y >= 44, "investment selector is a touch target")
 	selectors[0].select(2)
 	selectors[0].item_selected.emit(2)
 	check(investments == [20], "investment selector emits selected server percentage")

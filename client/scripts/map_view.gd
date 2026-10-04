@@ -22,6 +22,7 @@ const CITY_COLOR := Color("f4f0da")
 const SELECT_COLOR := Color("e69f00")
 
 var view: RefCounted
+var catalog: RefCounted  # CatalogView, optional: names for improvement markers
 var camera := Vector2.ZERO
 var zoom := 0.6
 var selected := Vector2i(-1, -1)
@@ -185,13 +186,19 @@ func _draw_tile(screen: Vector2, tile_size: Vector2, tile: Dictionary, cell: Vec
 
 ## Improvements are catalog ids in the projection. A small blue marker keeps them distinct from
 ## resources; an amber hammer/progress label marks an unfinished work without inventing a rate.
+## First letter of the catalog name (or of the id's last segment without a catalog).
+static func improvement_initial(id: String, catalog: RefCounted = null) -> String:
+	var label: String = catalog.improvement_name(id) if catalog != null else id.get_slice(".", id.get_slice_count(".") - 1)
+	return label.left(1).to_upper()
+
+
 func _draw_improvement(screen: Vector2, tile: Dictionary) -> void:
 	if tile.has("improvement"):
 		var marker := Rect2(screen + Vector2(-15, 20) * zoom, Vector2(30, 14) * zoom)
 		draw_rect(marker, Color("56b4e9"), true)
 		draw_rect(marker, Color("17212b"), false, 2.0)
 		var id := String(tile["improvement"])
-		var text := id.get_slice(".", id.get_slice_count(".") - 1).left(3).to_upper()
+		var text := improvement_initial(id, catalog)
 		draw_string(ThemeDB.fallback_font, marker.position + Vector2(2, marker.size.y - 2), text, HORIZONTAL_ALIGNMENT_LEFT, marker.size.x - 2, int(10 * zoom + 4), Color("17212b"))
 	if tile.has("build_progress"):
 		var progress: Variant = tile["build_progress"]
