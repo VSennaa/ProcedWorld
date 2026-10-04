@@ -41,6 +41,12 @@ pub struct TileState {
     /// A river increases the cost of entering this tile until bridge rules exist.
     pub river: bool,
     pub yields: TileYields,
+    /// Finished terrain improvement (catalog id), at most one per tile (GDD 02).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub improvement: Option<String>,
+    /// Construction in progress on this tile (docs/sdd/15 section 4.2.2).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build: Option<crate::improvements::TileBuild>,
 }
 
 pub const TERRAIN_PLAINS: u8 = 0;
@@ -88,7 +94,7 @@ pub struct TileYields {
 }
 
 impl TileYields {
-    fn capped(self) -> Self {
+    pub(crate) fn capped(self) -> Self {
         Self { food: self.food.min(6), production: self.production.min(6), wealth: self.wealth.min(6), knowledge: self.knowledge.min(6), culture: self.culture.min(6) }
     }
 }
@@ -176,7 +182,7 @@ pub struct CityState {
 
 /// Persistent order of a unit (docs/sdd/15 section 4.3). `MoveTo` and `Explore` run during
 /// movement resolution of every turn; `Fortify` only ends with a new order.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "type", content = "data")]
 pub enum UnitOrder {
     #[default]
@@ -186,6 +192,8 @@ pub enum UnitOrder {
     MoveTo { target: TileIndex },
     /// Prontidao: parked outside the idle queue until a foreign unit comes into sight.
     Sentry,
+    /// Worker builds `improvement` (catalog id) on its current tile; returns to `Idle` when done.
+    Build { improvement: String },
 }
 
 /// Minimal unit state.
@@ -253,6 +261,12 @@ impl WorldState {
             hasher.write_u8(tile.terrain);
             hasher.write_bool(tile.river);
             write_yields(&mut hasher, tile.yields);
+            write_option_string(&mut hasher, tile.improvement.as_deref());
+            hasher.write_bool(tile.build.is_some());
+            if let Some(build) = &tile.build {
+                write_string(&mut hasher, &build.improvement);
+                hasher.write_u32(build.progress);
+            }
         }
 
         hasher.write_u64(self.civilizations.len() as u64);
@@ -323,12 +337,13 @@ impl WorldState {
             hasher.write_u8(unit.hit_points);
             hasher.write_u8(unit.movement_left);
             hasher.write_bool(unit.explored);
-            match unit.order {
+            match &unit.order {
                 UnitOrder::Idle => hasher.write_u8(0),
                 UnitOrder::Fortify => hasher.write_u8(1),
                 UnitOrder::Explore => hasher.write_u8(2),
                 UnitOrder::MoveTo { target } => { hasher.write_u8(3); hasher.write_u32(target.0); }
                 UnitOrder::Sentry => hasher.write_u8(4),
+                UnitOrder::Build { improvement } => { hasher.write_u8(5); write_string(&mut hasher, improvement); }
             }
             hasher.write_bool(unit.skipped_turn.is_some());
             hasher.write_u32(unit.skipped_turn.unwrap_or(0));
@@ -629,6 +644,14 @@ pub enum RejectionReason {
     EventUnknown,
     EventChoiceInvalid,
     EventUnaffordable,
+    NotAWorker,
+    UnknownImprovement,
+    ImprovementTechnologyNotResearched,
+    ImprovementTerrainInvalid,
+    TileAlreadyImproved,
+    TileWorkInProgress,
+    TileOutsideTerritory,
+    CityTileNotImprovable,
 }
 
 #[derive(Deserialize)]
@@ -784,6 +807,7 @@ pub fn step(
 
     resolve_movement(&mut next, seed);
     resolve_conflicts(&mut next, seed);
+    crate::improvements::resolve_works(&mut next);
     resolve_visibility(&mut next);
     resolve_sentries(&mut next);
     resolve_economy(&mut next, seed);
@@ -982,9 +1006,13 @@ fn apply_command(state: &mut WorldState, command: &AcceptedCommand, events: &mut
                 UnitOrder::Explore => {
                     if state.attacks.contains_key(unit_id) { return Err(RejectionReason::UnitAlreadyReserved); }
                 }
+                UnitOrder::Build { improvement } => {
+                    if state.attacks.contains_key(unit_id) { return Err(RejectionReason::UnitAlreadyReserved); }
+                    crate::improvements::check_build(state, *unit_id, improvement)?;
+                }
                 UnitOrder::Idle | UnitOrder::Fortify | UnitOrder::Sentry => {}
             }
-            state.units.get_mut(unit_id).expect("unit was checked above").order = *order;
+            state.units.get_mut(unit_id).expect("unit was checked above").order = order.clone();
             Ok(())
         }
         CommandPayload::SkipUnit { unit_id } => {
@@ -1037,7 +1065,7 @@ fn ensure_tile(state: &WorldState, tile: TileIndex) -> Result<(), RejectionReaso
     }
 }
 
-fn grid_for(state: &WorldState) -> Result<Grid, RejectionReason> {
+pub(crate) fn grid_for(state: &WorldState) -> Result<Grid, RejectionReason> {
     let height = (state.tiles.len() as u32).checked_div(state.map_width).ok_or(RejectionReason::InvalidTile)?;
     Grid::new(state.map_width, height).map_err(|_| RejectionReason::InvalidTile)
 }
@@ -1079,12 +1107,15 @@ fn reset_unit_movement(state: &mut WorldState) {
 
 /// Role of a unit type in the catalog (`exploration`, `defense`, `settler`, ...).
 pub(crate) fn unit_role(unit_type: &str) -> String {
-    unit_definition(unit_type).map_or_else(String::new, |definition| definition.role)
+    // Cached: the T0 bot asks for roles of every unit and queue item each turn.
+    static ROLES: std::sync::OnceLock<BTreeMap<String, String>> = std::sync::OnceLock::new();
+    ROLES.get_or_init(|| unit_catalog().units.into_iter().map(|unit| (unit.id, unit.role)).collect())
+        .get(unit_type).cloned().unwrap_or_default()
 }
 
 /// Straight-line route (excluding the start) whose every single step is affordable with the full
 /// movement allowance. `None` when a step can never be paid, so the target is unreachable.
-fn unit_route(state: &WorldState, from: TileIndex, to: TileIndex, movement: u8) -> Option<Vec<TileIndex>> {
+pub(crate) fn unit_route(state: &WorldState, from: TileIndex, to: TileIndex, movement: u8) -> Option<Vec<TileIndex>> {
     let grid = grid_for(state).ok()?;
     let line = grid.line(grid.cell(from).ok()?, grid.cell(to).ok()?).ok()?;
     let mut tiles = Vec::new();
@@ -1146,7 +1177,7 @@ pub fn idle_units_with(state: &WorldState, civ: CivId, pending: &[AcceptedComman
         // leftover, because commands only spend movement when the turn resolves.
         .filter(|(_, unit)| unit.owner == civ)
         .filter(|(id, unit)| {
-            let (order, skipped) = effective.get(*id).copied().unwrap_or((unit.order, unit.skipped_turn));
+            let (order, skipped) = effective.get(*id).cloned().unwrap_or((unit.order.clone(), unit.skipped_turn));
             order == UnitOrder::Idle && skipped != Some(state.turn.0)
         })
         .map(|(id, _)| *id)
@@ -1160,17 +1191,17 @@ pub fn effective_unit_orders(state: &WorldState, civ: CivId, pending: &[Accepted
         match &command.payload {
             CommandPayload::SetUnitOrder { unit_id, order } => {
                 let Some(unit) = state.units.get(unit_id).filter(|unit| unit.owner == civ) else { continue };
-                effective.entry(*unit_id).or_insert((unit.order, unit.skipped_turn)).0 = *order;
+                effective.entry(*unit_id).or_insert((unit.order.clone(), unit.skipped_turn)).0 = order.clone();
             }
             CommandPayload::SkipUnit { unit_id } => {
                 let Some(unit) = state.units.get(unit_id).filter(|unit| unit.owner == civ) else { continue };
-                effective.entry(*unit_id).or_insert((unit.order, unit.skipped_turn)).1 = Some(state.turn.0);
+                effective.entry(*unit_id).or_insert((unit.order.clone(), unit.skipped_turn)).1 = Some(state.turn.0);
             }
             // A one-turn action already accepted for this unit counts as its order for the turn.
             CommandPayload::MoveUnit { unit_id, .. } | CommandPayload::Explore { unit_id }
             | CommandPayload::DeclareAttack { attacker: unit_id, .. } => {
                 let Some(unit) = state.units.get(unit_id).filter(|unit| unit.owner == civ) else { continue };
-                effective.entry(*unit_id).or_insert((unit.order, unit.skipped_turn)).1 = Some(state.turn.0);
+                effective.entry(*unit_id).or_insert((unit.order.clone(), unit.skipped_turn)).1 = Some(state.turn.0);
             }
             // The settler standing on the founding tile is consumed when the turn resolves, so it
             // must not keep blocking the Ready gate.
@@ -1179,7 +1210,7 @@ pub fn effective_unit_orders(state: &WorldState, civ: CivId, pending: &[Accepted
                     .find_map(|(id, unit)| (unit.owner == civ && unit.tile == *target && unit.unit_type == "unit.settler").then_some(*id));
                 let Some(unit_id) = settler else { continue };
                 let unit = &state.units[&unit_id];
-                effective.entry(unit_id).or_insert((unit.order, unit.skipped_turn)).1 = Some(state.turn.0);
+                effective.entry(unit_id).or_insert((unit.order.clone(), unit.skipped_turn)).1 = Some(state.turn.0);
             }
             _ => {}
         }
@@ -1196,8 +1227,8 @@ fn resolve_movement(state: &mut WorldState, seed: u64) {
 
 fn execute_order(state: &mut WorldState, id: UnitId) {
     let Some(unit) = state.units.get(&id) else { return };
-    let order = unit.order;
-    if matches!(order, UnitOrder::Idle | UnitOrder::Fortify | UnitOrder::Sentry) || state.attacks.contains_key(&id) { return; }
+    let order = unit.order.clone();
+    if matches!(order, UnitOrder::Idle | UnitOrder::Fortify | UnitOrder::Sentry | UnitOrder::Build { .. }) || state.attacks.contains_key(&id) { return; }
     let (from, movement) = (unit.tile, unit_movement(&unit.unit_type));
     let mut left = unit.movement_left;
     let mut at = from;
@@ -1230,7 +1261,7 @@ fn execute_order(state: &mut WorldState, id: UnitId) {
                 left -= cost as u8;
             }
         }
-        UnitOrder::Idle | UnitOrder::Fortify | UnitOrder::Sentry => return,
+        UnitOrder::Idle | UnitOrder::Fortify | UnitOrder::Sentry | UnitOrder::Build { .. } => return,
     }
     let unit = state.units.get_mut(&id).expect("unit was checked above");
     if at != from { unit.explored = true; }
@@ -1300,38 +1331,58 @@ fn distribute_loss(units: &[UnitId], mut remaining: u32, state: &WorldState, los
 }
 fn resolve_economy(state: &mut WorldState, seed: u64) {
     let _rng = Rng::derive(seed, "economy");
-    let mut city_yields = BTreeMap::new();
+    let mut allocations: BTreeMap<CityId, Vec<TileIndex>> = BTreeMap::new();
     let mut claimed = BTreeSet::new();
     for (city_id, city) in &state.cities {
         let workplaces = allocate_workplaces(state, city, &claimed);
+        claimed.extend(workplaces.iter().copied());
+        allocations.insert(*city_id, workplaces);
+    }
+    // Income assumes every improvement is active; an improvement left unpaid below loses its bonus.
+    let mut wealth_by_civ: BTreeMap<CivId, u32> = BTreeMap::new();
+    for (city_id, workplaces) in &allocations {
+        let wealth: u32 = workplaces.iter().map(|tile| u32::from(crate::improvements::tile_output(&state.tiles[tile.0 as usize]).wealth)).sum();
+        *wealth_by_civ.entry(state.cities[city_id].owner).or_default() += wealth;
+    }
+    let mut available_wealth: BTreeMap<_, _> = state.civilizations.iter().map(|(id, civ)| {
+        (*id, civ.treasury_wealth.saturating_add(wealth_by_civ.get(id).copied().unwrap_or(0)))
+    }).collect();
+    // Payment priority (GDD 03): city sustenance first, in city-id order; then improvements.
+    let mut unpaid_cities = BTreeSet::new();
+    for (city_id, city) in &state.cities {
+        let maintenance = 1 + (city.population + 3) / 4;
+        let available = available_wealth.entry(city.owner).or_default();
+        if *available < maintenance { unpaid_cities.insert(*city_id); }
+        *available = available.saturating_sub(maintenance);
+    }
+    let suspended = crate::improvements::pay_upkeep(state, &mut available_wealth);
+    let mut city_yields = BTreeMap::new();
+    for (city_id, workplaces) in allocations {
+        let owner = state.cities[&city_id].owner;
         let mut total = TileYields::default();
         for tile in &workplaces {
-            let yields = state.tiles[tile.0 as usize].yields.capped();
+            let data = &state.tiles[tile.0 as usize];
+            let yields = if suspended.contains(tile) {
+                // A suspended improvement produces nothing, including the wealth already counted.
+                let lost = crate::improvements::tile_output(data).wealth.saturating_sub(crate::improvements::base_output(data).wealth);
+                let available = available_wealth.entry(owner).or_default();
+                *available = available.saturating_sub(u32::from(lost));
+                crate::improvements::base_output(data)
+            } else { crate::improvements::tile_output(data) };
             total.food = total.food.saturating_add(yields.food);
             total.production = total.production.saturating_add(yields.production);
             total.wealth = total.wealth.saturating_add(yields.wealth);
             total.knowledge = total.knowledge.saturating_add(yields.knowledge);
             total.culture = total.culture.saturating_add(yields.culture);
         }
-        claimed.extend(workplaces.iter().copied());
-        city_yields.insert(*city_id, (workplaces, total));
+        city_yields.insert(city_id, (workplaces, total));
     }
-    let mut wealth_by_civ: BTreeMap<CivId, u32> = BTreeMap::new();
-    for (city_id, (_, yields)) in &city_yields {
-        *wealth_by_civ.entry(state.cities[city_id].owner).or_default() += u32::from(yields.wealth);
-    }
-    let mut available_wealth: BTreeMap<_, _> = state.civilizations.iter().map(|(id, civ)| {
-        (*id, civ.treasury_wealth.saturating_add(wealth_by_civ.get(id).copied().unwrap_or(0)))
-    }).collect();
     for (city_id, city) in &mut state.cities {
         let (workplaces, yields) = city_yields.remove(city_id).expect("all cities were allocated");
         city.workplaces = workplaces;
         city.last_yields = yields;
         city.food_stock = city.food_stock.saturating_add(u32::from(yields.food));
-        let maintenance = 1 + (city.population + 3) / 4;
-        let available = available_wealth.entry(city.owner).or_default();
-        city.essential_maintenance_unpaid = *available < maintenance;
-        *available = available.saturating_sub(maintenance);
+        city.essential_maintenance_unpaid = unpaid_cities.contains(city_id);
         let demand = city.population;
         let consumed = city.food_stock.min(demand);
         city.food_stock -= consumed;
@@ -1341,9 +1392,8 @@ fn resolve_economy(state: &mut WorldState, seed: u64) {
         city.food_stock = city.food_stock.min(3u32.saturating_mul(city.population).saturating_add(4));
     }
     for (civ_id, civilization) in &mut state.civilizations {
-        let income = wealth_by_civ.remove(civ_id).unwrap_or(0);
-        let maintenance: u32 = state.cities.values().filter(|city| city.owner == *civ_id).map(|city| 1 + (city.population + 3) / 4).sum();
-        civilization.treasury_wealth = civilization.treasury_wealth.saturating_add(income).saturating_sub(maintenance);
+        // Treasury plus income minus every maintenance actually paid (never negative).
+        civilization.treasury_wealth = available_wealth.get(civ_id).copied().unwrap_or(civilization.treasury_wealth);
         let population: u32 = state.cities.values().filter(|city| city.owner == *civ_id).map(|city| city.population).sum();
         civilization.treasury_wealth = civilization.treasury_wealth.min(6u32.saturating_mul(population).saturating_add(12));
         civilization.knowledge = civilization.knowledge.saturating_add(state.cities.values().filter(|city| city.owner == *civ_id).map(|city| u32::from(city.last_yields.knowledge)).sum());
@@ -1472,11 +1522,11 @@ fn allocate_workplaces(state: &WorldState, city: &CityState, claimed: &BTreeSet<
         .collect();
     let mut selected = Vec::new();
     let mut food_candidates = candidates.clone();
-    food_candidates.sort_unstable_by_key(|tile| (std::cmp::Reverse(state.tiles[tile.0 as usize].yields.capped().food), tile.0));
+    food_candidates.sort_unstable_by_key(|tile| (std::cmp::Reverse(crate::improvements::tile_output(&state.tiles[tile.0 as usize]).food), tile.0));
     let mut food = 0u32;
     for tile in food_candidates {
         if food >= city.population || selected.len() >= city.population as usize { break; }
-        let yield_food = u32::from(state.tiles[tile.0 as usize].yields.capped().food);
+        let yield_food = u32::from(crate::improvements::tile_output(&state.tiles[tile.0 as usize]).food);
         if yield_food == 0 { break; }
         food += yield_food;
         selected.push(tile);
@@ -1484,18 +1534,18 @@ fn allocate_workplaces(state: &WorldState, city: &CityState, claimed: &BTreeSet<
     let mut remaining: Vec<_> = candidates.into_iter().filter(|tile| !selected.contains(tile)).collect();
     // Essential upkeep precedes the discretionary focus (GDD 04).
     let maintenance = 1 + (city.population + 3) / 4;
-    let mut wealth: u32 = selected.iter().map(|tile| u32::from(state.tiles[tile.0 as usize].yields.capped().wealth)).sum();
-    remaining.sort_unstable_by_key(|tile| (std::cmp::Reverse(state.tiles[tile.0 as usize].yields.capped().wealth), tile.0));
+    let mut wealth: u32 = selected.iter().map(|tile| u32::from(crate::improvements::tile_output(&state.tiles[tile.0 as usize]).wealth)).sum();
+    remaining.sort_unstable_by_key(|tile| (std::cmp::Reverse(crate::improvements::tile_output(&state.tiles[tile.0 as usize]).wealth), tile.0));
     for tile in &remaining {
         if wealth >= maintenance || selected.len() >= city.population as usize { break; }
-        let output = u32::from(state.tiles[tile.0 as usize].yields.capped().wealth);
+        let output = u32::from(crate::improvements::tile_output(&state.tiles[tile.0 as usize]).wealth);
         if output == 0 { break; }
         wealth += output;
         selected.push(*tile);
     }
     remaining.retain(|tile| !selected.contains(tile));
     remaining.sort_unstable_by_key(|tile| {
-        let yields = state.tiles[tile.0 as usize].yields.capped();
+        let yields = crate::improvements::tile_output(&state.tiles[tile.0 as usize]);
         let primary = match city.focus { CityFocus::Supply => yields.food, CityFocus::Build => yields.production, CityFocus::Diversify => yields.food.saturating_add(yields.production).saturating_add(yields.wealth).saturating_add(yields.knowledge).saturating_add(yields.culture) };
         (std::cmp::Reverse(primary), std::cmp::Reverse(yields.food), tile.0)
     });

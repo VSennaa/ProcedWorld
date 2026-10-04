@@ -631,7 +631,7 @@ mod tests {
         let yields = TileYields { food: 2, production: 1, wealth: 1, knowledge: 0, culture: 0 };
         let mut state = WorldState {
             world_id: WorldId(1), turn: TurnNumber(turn), seed: 7, ruleset: RulesetRef { id: "test".into(), version: "1".into(), content_hash: 1 }, schema_version: 1, map_width: 2,
-            tiles: vec![TileState { terrain: TERRAIN_PLAINS, river: false, yields }; 4],
+            tiles: vec![TileState { terrain: TERRAIN_PLAINS, river: false, yields, ..Default::default() }; 4],
             civilizations: BTreeMap::from([(CivId(1), CivilizationState::default()), (CivId(2), CivilizationState::default())]),
             cities: BTreeMap::new(), units: BTreeMap::new(), attacks: BTreeMap::new(), control: BTreeMap::new(), visibility: BTreeMap::new(), diplomacy: Default::default(), entropy: EntropyState::default(),
         };
