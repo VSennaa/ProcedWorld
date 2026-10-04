@@ -204,9 +204,11 @@ Correção de alinhamento com a fórmula compartilhada do GDD 12, aplicada em 20
   `not_a_worker`, `unknown_improvement`, `improvement_technology_not_researched`,
   `improvement_terrain_invalid`, `tile_already_improved`, `city_tile_not_improvable`,
   `tile_work_in_progress`, `tile_outside_territory`. Estado do tile: `improvement` e
-  `build { improvement, progress }`, ambos no hash. A obra fica no tile se o trabalhador sair; ordem
-  para a mesma melhoria retoma, para outra recomeça do zero. Ordem que deixa de ser legal volta a `Idle`
-  sem progresso.
+  `build { improvement, progress }`, ambos no hash. Obra com trabalhador ativo (ordem `Build` no tile)
+  bloqueia qualquer outra ordem no tile (`tile_work_in_progress`). Obra **abandonada** (trabalhador saiu
+  ou mudou de ordem) fica no tile: ordem para a mesma melhoria retoma o progresso; ordem para outra
+  melhoria **substitui** a obra e descarta o progresso anterior. Ordem que deixa de ser legal volta a
+  `Idle` sem progresso.
 - **Simplificações provisórias** (registradas também em `engine/DIAGNOSTICO-P7.md`, "Melhorias"):
   - *Bioma*: o tile do motor guarda só o código de terreno; cada terreno corresponde a **um** bioma do
     catálogo (planície→`plains`, floresta→`forest`, selva→`jungle`, pântano→`swamp`,
@@ -224,8 +226,9 @@ Correção de alinhamento com a fórmula compartilhada do GDD 12, aplicada em 20
   - *Efeitos*: só `AdjustResource` no tile soma rendimento (depois limitado a 0–6); efeitos `AddTag`
     (mina, jardim de especiarias, cisterna, proteção do campo irrigado) ainda não têm regra no motor.
   - *Manutenção*: em riqueza, paga pelo dono do território do tile, depois do sustento das cidades,
-    por índice de tile. Sem saldo, o bônus fica suspenso **só naquele turno** (inclusive a riqueza que
-    a própria melhoria daria); marcar suspensão e reparo com produção ainda não existem. Melhoria em
+    por índice de tile. O saldo disponível conta só a renda base (sem bônus de melhorias); o bônus de
+    riqueza de uma melhoria entra só depois de ela ser paga, então nunca paga a própria manutenção
+    (pode ajudar melhorias de índice maior). Sem saldo, o bônus fica suspenso **só naquele turno**; marcar suspensão e reparo com produção ainda não existem. Melhoria em
     terra neutra fica dormente (ninguém trabalha, ninguém paga).
 - Visão (`pw-server`): tile com `improvement`, `build_progress` (`{improvement, progress, required}`
   ou `null`), `biome` e `yields` efetivos (base + melhoria, 0–6); trabalhador próprio traz `buildable`
