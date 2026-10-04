@@ -81,6 +81,8 @@ var _url := NetClient.DEFAULT_URL
 var _pending_action: Dictionary = {}
 var _joined := false
 var _session: Dictionary = {}
+## Tests can use a project-local ConfigFile when their sandbox cannot write user://.
+var _session_store_path := SessionStore.DEFAULT_PATH
 var _inflight: Dictionary = {}  # request id -> {kind, unit_id, order_kind, order_target, ...}
 var _overrides: Array = []      # accepted local orders of the open turn, re-applied on refresh
 var _overrides_turn := -1
@@ -113,7 +115,7 @@ var _current_screen := ""
 func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
 	_build_shell()
-	var last := SessionStore.load_last(_url)
+	var last := SessionStore.load_last(_url, _session_store_path)
 	_url = last["url"]
 	for arg in args:
 		if arg.begins_with("--server="):
@@ -397,7 +399,7 @@ func _run_pending_action() -> void:
 	else:
 		_connect.set_status("Entrando no mundo…")
 		var payload := {"world_id": action["world_id"], "civ": action["civ"]}
-		var token := SessionStore.load_token(action["world_id"], action["civ"])
+		var token := SessionStore.load_token(action["world_id"], action["civ"], _session_store_path)
 		if not token.is_empty():
 			payload["session_token"] = token
 		_inflight[net.send_request("join", payload)] = {"kind": "join"}
@@ -407,7 +409,7 @@ func _on_connection_lost(was_open: bool) -> void:
 	var text := "Conexão com o servidor perdida. Use Entrar para retomar a mesma civilização." if was_open else "Não foi possível conectar a %s." % _url
 	_close_connection()
 	_inflight.clear()
-	var last := SessionStore.load_last(_url)
+	var last := SessionStore.load_last(_url, _session_store_path)
 	_connect.build(_url, last["world_id"], last["civ"])
 	_connect.set_status(text, true)
 	_show_connect()
@@ -423,7 +425,7 @@ func _on_leave_pressed() -> void:
 	_selected_city = -1
 	_founding_selected = false
 	_set_move_mode(false)
-	var last := SessionStore.load_last(_url)
+	var last := SessionStore.load_last(_url, _session_store_path)
 	_connect.build(_url, last["world_id"], last["civ"])
 	_show_connect()
 
@@ -445,8 +447,8 @@ func _on_envelope(envelope: Dictionary) -> void:
 			_session = {"world_id": int(payload.get("world_id", 0)), "civ": int(payload.get("civ", 0))}
 			var token := String(payload.get("session_token", ""))
 			if not token.is_empty():
-				SessionStore.save_token(_session["world_id"], _session["civ"], token)
-			SessionStore.save_last(_url, _session["world_id"], _session["civ"])
+				SessionStore.save_token(_session["world_id"], _session["civ"], token, _session_store_path)
+			SessionStore.save_last(_url, _session["world_id"], _session["civ"], _session_store_path)
 		"state_snapshot":
 			_apply_view(payload, false)
 		"turn_diff":
@@ -834,10 +836,12 @@ func _on_unit_action(action: String) -> void:
 				_report("Escolha a unidade inimiga na lista de ataque.", false)
 
 
-## Only visible adjacent foreign units are offered. The server rechecks reach and hostility.
+## Only an uncommitted own unit with movement remaining may attack; the server rechecks reach and hostility.
 func _attack_targets(unit: Dictionary) -> Array:
 	var result: Array = []
-	if unit.is_empty() or not unit.get("own", false):
+	if unit.is_empty() or not unit.get("own", false) or int(unit.get("movement_left", 0)) <= 0:
+		return result
+	if unit.get("order", "") != "Idle" or int(unit.get("skipped_turn", -1)) == world.turn or int(unit.get("attacked_turn", -1)) == world.turn:
 		return result
 	var adjacent := Hex.neighbors(unit["cell"], world.map_width, world.map_height)
 	for other in world.units:

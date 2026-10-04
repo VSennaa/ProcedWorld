@@ -231,10 +231,10 @@ static func _fill_civilization(view: RefCounted, state: Dictionary) -> void:
 	if typeof(raw_progress) == TYPE_DICTIONARY:
 		for id in raw_progress:
 			progress[String(id)] = int(raw_progress[id])
-	var per_turn := int(state.get("research_per_turn", 0))
-	if per_turn <= 0:
-		for city in view.own_cities():
-			per_turn += int(city.get("yields", {}).get("knowledge", 0))
+	# Only the explicit contract rate can support an estimate. City knowledge yields are
+	# not guaranteed to be the effective research rate (modifiers may apply server-side).
+	var raw_per_turn: Variant = state.get("research_per_turn")
+	var per_turn := int(raw_per_turn) if typeof(raw_per_turn) == TYPE_INT or typeof(raw_per_turn) == TYPE_FLOAT else 0
 	view.research = {"current": String(current) if current != null else "", "done": done, "progress": progress, "per_turn": per_turn}
 
 

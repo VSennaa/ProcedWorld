@@ -101,17 +101,25 @@ func improvements_for(tile: Dictionary, research: Dictionary) -> Array:
 	var result: Array = []
 	if tile.get("fog", "unknown") != "visible" or tile.get("improvement") != null or tile.has("build_progress"):
 		return result
-	var biome := String(tile.get("biome", ""))
+	# The projection must identify the terrain itself; the client must not guess it.
+	if typeof(tile.get("biome")) != TYPE_STRING or String(tile["biome"]).is_empty():
+		return result
+	var biome: String = tile["biome"]
 	var done: Array = research.get("done", [])
 	for id in improvements:
 		var entry: Dictionary = improvements[id]
 		var required := String(entry.get("requires_technology", entry.get("technology", entry.get("requires", ""))))
 		if not required.is_empty() and not done.has(required):
 			continue
-		var biomes: Variant = entry.get("biomes", entry.get("terrain", entry.get("terrains", [])))
-		if typeof(biomes) == TYPE_STRING:
-			biomes = [biomes]
-		if typeof(biomes) == TYPE_ARRAY and not biomes.is_empty() and not biomes.has(biome):
+		var biomes: Variant = entry.get("biomes")
+		if typeof(biomes) != TYPE_ARRAY or biomes.is_empty():
+			continue
+		var valid_biomes := true
+		for allowed in biomes:
+			if typeof(allowed) != TYPE_STRING or String(allowed).is_empty():
+				valid_biomes = false
+				break
+		if not valid_biomes or not biomes.has(biome):
 			continue
 		result.append({"id": String(id), "name": String(entry.get("name", id))})
 	result.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["name"] < b["name"])

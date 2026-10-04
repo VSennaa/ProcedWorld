@@ -21,6 +21,7 @@ func build(world: RefCounted) -> void:
 	scroll.add_child(root)
 	_add_title(root, "Sociedade")
 	_add_note(root, "Indicadores da visão atual do servidor. W e E são provisórios.")
+	_add_note(root, "P_c = limitar(0–100, 2D + 2G + W + E + (100 − S)/10 − (C − 50)/5). Fatores: D, G, W e E: 0–20; S e C: 0–100. P_civ é a média de P_c ponderada pela população.")
 	_add_title(root, "Civilização")
 	for row in CIVILIZATION_ROWS:
 		_add_row(root, row, world.indicators)

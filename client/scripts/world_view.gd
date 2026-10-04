@@ -200,6 +200,9 @@ func apply_local_build(unit_id: int, improvement: String) -> void:
 
 
 func apply_local_attack(unit_id: int) -> void:
+	var unit := unit_by_id(unit_id)
+	if not unit.is_empty():
+		unit["attacked_turn"] = turn
 	idle_units.erase(unit_id)
 
 

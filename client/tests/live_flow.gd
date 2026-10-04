@@ -4,8 +4,11 @@ extends SceneTree
 ## frame format. Not part of run_tests.gd because it opens a loopback socket.
 ##   godot --headless --path client -s res://tests/live_flow.gd
 
-const PORT := 18123
+const SessionStore := preload("res://scripts/session_store.gd")
+
+const PORT := 18124
 const MAX_FRAMES := 1500
+const SESSION_PATH := "res://tests/.tmp_live_sessions.cfg"
 
 var _tcp := TCPServer.new()
 var _peer: WebSocketPeer
@@ -28,9 +31,11 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	_tcp.listen(PORT, "127.0.0.1")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(SESSION_PATH))
+	check(_tcp.listen(PORT, "127.0.0.1") == OK, "mock server listens on loopback")
 	_main = load("res://scenes/main.tscn").instantiate()
 	root.add_child(_main)
+	_main._session_store_path = SESSION_PATH
 	await _frames(2)
 	check(_main.mode == _main.Mode.CONNECT, "app starts on the connection screen")
 
@@ -40,6 +45,7 @@ func _run() -> void:
 	check(_received.size() >= 2 and _received[0]["type"] == "create_world" and int(_received[0]["payload"]["seed"]) == 5 and int(_received[0]["payload"]["civs"]) == 2, "create_world sent with seed and civs")
 	check(_received[1]["type"] == "join" and _received[1]["payload"]["world_id"] == 5 and _received[1]["payload"]["civ"] == 0, "join sent right after the world was created")
 	check(_main._catalog != null and _main._catalog.techs.size() == 17, "catalog push is parsed")
+	check(SessionStore.load_token(5, 0, SESSION_PATH) == "tok-5-0", "joined token is saved through the live flow")
 	check(_main.world.unit_by_id(3)["name"] == "Batedor", "unit names use the catalog that arrived after the snapshot")
 	check(_main._nav_buttons["pesquisa"].visible, "Pesquisa tab appears once the catalog is there")
 	_main.show_screen("pesquisa")
@@ -67,16 +73,27 @@ func _run() -> void:
 	_main._on_unit_focus_requested(3)
 	check(_main._selected_unit == 3 and _main._screens["mapa"].visible, "queue tap shows the map with the unit selected")
 	check(_main._unit_panel._buttons["attack"].visible, "an adjacent visible foreign unit enables Atacar")
-	_main._on_unit_action("fortify")
-	await _wait(func() -> bool: return _main.world.idle_units == [5])
-	var command: Dictionary = _received.back()
-	check(command["type"] == "submit_command" and command["payload"]["command"]["type"] == "set_unit_order" and int(command["payload"]["command"]["data"]["unit_id"]) == 3 and command["payload"]["command"]["data"]["order"] == {"type": "fortify"}, "Fortificar sends SetUnitOrder")
-	check(_main.world.unit_by_id(3)["order"] == "Fortify", "accepted order is shown locally")
 	var attack_before := _received.size()
 	_main._on_unit_action("attack:20")
 	await _wait(func() -> bool: return _received.size() > attack_before)
 	var attack: Dictionary = _received[attack_before]["payload"]["command"]
 	check(attack["type"] == "declare_attack" and int(attack["data"]["attacker"]) == 3 and int(attack["data"]["target"]) == 20, "Atacar sends DeclareAttack with attacker and target")
+	await _wait(func() -> bool: return int(_main.world.unit_by_id(3).get("attacked_turn", -1)) == _main.world.turn)
+	attack_before = _received.size()
+	_main._on_unit_action("attack:20")
+	await _frames(8)
+	check(_received.size() == attack_before, "Atacar is not sent after an attack was accepted")
+	var fortify_before := _received.size()
+	_main._on_unit_action("fortify")
+	await _wait(func() -> bool: return _received.size() > fortify_before)
+	var command: Dictionary = _received[fortify_before]
+	check(command["type"] == "submit_command" and command["payload"]["command"]["type"] == "set_unit_order" and int(command["payload"]["command"]["data"]["unit_id"]) == 3 and command["payload"]["command"]["data"]["order"] == {"type": "fortify"}, "Fortificar sends SetUnitOrder")
+	await _wait(func() -> bool: return _main.world.unit_by_id(3)["order"] == "Fortify")
+	check(_main.world.unit_by_id(3)["order"] == "Fortify", "accepted order is shown locally")
+	attack_before = _received.size()
+	_main._on_unit_action("attack:20")
+	await _frames(8)
+	check(_received.size() == attack_before, "Atacar is not sent after an order was accepted")
 	var sentry_from := _received.size()
 	_main._on_unit_action("sentry")
 	await _wait(func() -> bool: return _main.world.unit_by_id(3)["order"] == "Sentry")
@@ -199,9 +216,22 @@ func _run() -> void:
 	check(settle["type"] == "found_city" and int(settle["data"]["city_id"]) == 1000005 and int(settle["data"]["target"]) == 7 * 24 + 9, "Fundar cidade sends FoundCity with the settler-derived id")
 	check(not _main.world.idle_units.has(5) and not _main._unit_panel._buttons["found"].visible, "the settler stops waiting and cannot found twice")
 
-	# Persistence itself is covered with a project-local file in run_tests; this sandbox cannot
-	# write the OS user-data folder used by the running client.
 	check(_main._session == {"world_id": 5, "civ": 0}, "joined payload establishes the live session")
+	# Re-enter through a fresh scene: it must load and send the token saved by the first join.
+	_main._on_leave_pressed()
+	await _frames(4)
+	_main.queue_free()
+	_peer = null
+	_main = load("res://scenes/main.tscn").instantiate()
+	root.add_child(_main)
+	_main._session_store_path = SESSION_PATH
+	await _frames(2)
+	var reentry_before := _received.size()
+	_main._on_join_requested("ws://127.0.0.1:%d/ws" % PORT, 5, 0)
+	await _wait(func() -> bool: return _main.mode == _main.Mode.LIVE and _main.world != null)
+	var reentry: Dictionary = _received[reentry_before]
+	check(reentry["type"] == "join" and reentry["payload"].get("session_token", "") == "tok-5-0", "fresh client reentry sends the saved token")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(SESSION_PATH))
 
 	print("%d live checks, %d failures" % [_checks, _failures])
 	if _failures == 0:

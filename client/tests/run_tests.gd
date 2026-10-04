@@ -256,7 +256,10 @@ func test_server_view_adapter() -> void:
 	check(view.civ_colors[0] != view.civ_colors[1], "each civilization gets its own color")
 
 	check(view.research["current"] == "tech.storage" and view.research["done"].has("tech.council") and view.research["progress"]["tech.storage"] == 6, "research state of the own civilization")
-	check(view.research["per_turn"] == 0, "absent research rate falls back to known city yield")
+	check(view.research["per_turn"] == 0, "absent research rate leaves the estimate unavailable")
+	var explicit_rate_payload := _load_view_payload()
+	explicit_rate_payload["civilization"]["research_per_turn"] = 3
+	check(_adapt(explicit_rate_payload, _load_catalog()).research["per_turn"] == 3, "explicit contract research rate is preserved")
 	check(view.header_chips.size() == 4 and view.header_chips[0]["value"] == 18, "header chips: wealth, knowledge, culture, cohesion")
 	check(view.agenda.size() == 1 and view.agenda[0]["event_id"] == 7 and view.agenda[0]["options"].size() == 2, "pending event becomes an agenda card with its choices")
 	check(view.agenda[0]["title"] == "Estiagem do vale" and view.agenda[0]["category"] == "Clima" and view.agenda[0]["effect"].contains("colheita"), "event uses readable name, category and text from catalog")
@@ -371,6 +374,15 @@ func test_unit_panel_actions() -> void:
 	check(options == [{"id": "improvement.lumberyard", "name": "Madeireira"}], "worker sees catalog improvements compatible with mastered technology and biome")
 	worker_tile["improvement"] = "improvement.lumberyard"
 	check(_load_catalog().improvements_for(worker_tile, view.research).is_empty(), "existing improvement hides build options")
+	worker_tile.erase("improvement")
+	worker_tile.erase("biome")
+	check(_load_catalog().improvements_for(worker_tile, view.research).is_empty(), "missing projected biome hides build options")
+	var malformed := _load_catalog()
+	malformed.improvements["improvement.lumberyard"]["biomes"] = "floresta"
+	check(malformed.improvements_for(view.tile_at(view.unit_by_id(8)["cell"]), view.research).is_empty(), "malformed biome schema hides build options")
+	malformed = _load_catalog()
+	malformed.improvements["improvement.lumberyard"].erase("biomes")
+	check(malformed.improvements_for(view.tile_at(view.unit_by_id(8)["cell"]), view.research).is_empty(), "missing biome schema hides build options")
 	check(ServerView.parse_order({"type": "build", "data": {"improvement": "improvement.farm"}}, 24)["kind"] == "Build", "Build order decodes tolerantly")
 
 
@@ -482,6 +494,7 @@ func test_views_build() -> void:
 	root.add_child(society)
 	society.build(view)
 	var society_text: Array = society.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text)
+	check(society_text.any(func(text: String) -> bool: return text.contains("P_c = limitar") and text.contains("D, G, W e E: 0–20") and text.contains("S e C: 0–100")), "society explains the pressure formula and factor scales")
 	check(society_text.any(func(text: String) -> bool: return text.begins_with("P · Pressão de crise") and text.contains("Fatores recebidos")), "society shows pressure with its factors")
 	check(society_text.any(func(text: String) -> bool: return text.contains("W") and text.contains("provisório")), "society marks W and E as provisional")
 	society.queue_free()
