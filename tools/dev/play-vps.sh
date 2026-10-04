@@ -5,11 +5,13 @@
 #
 # Usage: VPS_SSH=deploy@<VPS_HOST> tools/dev/play-vps.sh
 # Then open build/windows/ProcedWorld.exe and keep the default URL ws://127.0.0.1:8100/ws.
+# Worlds are saved on the VPS; use "Entrar" with the same world id and civilization to resume.
 set -uo pipefail
 root=$(git rev-parse --show-toplevel)
 target=${VPS_SSH:?set VPS_SSH, e.g. deploy@<VPS_HOST>}
 work="/home/deploy/pw-build/play"
 name="pw-server-play"
+data="/home/deploy/pw-data/play"   # worlds persist here between sessions (PW_DATA_DIR)
 
 echo "building pw-server on the VPS..."
 tar -C "$root" --exclude='target' --exclude='.git' -czf - engine data | \
@@ -17,7 +19,7 @@ tar -C "$root" --exclude='target' --exclude='.git' -czf - engine data | \
     flock /tmp/pw-cargo-target.lock docker run --rm -v $work:/src -w /src/engine -v pw-cargo-registry:/usr/local/cargo/registry \
       -v pw-cargo-target:/target -e CARGO_TARGET_DIR=/target rust:1-slim sh -c \
       'cargo build --release -q -p pw-server 2>&1 | tail -3; cp /target/release/pw-server /src/pw-server; chown -R 1000:1000 /src' && \
-    docker run -d --rm --name $name -p 127.0.0.1:8100:8100 -e PW_SERVER_BIND=0.0.0.0:8100 -v $work:/src rust:1-slim /src/pw-server >/dev/null" \
+    mkdir -p $data &&     docker run -d --rm --name $name -p 127.0.0.1:8100:8100 -e PW_SERVER_BIND=0.0.0.0:8100 -e PW_DATA_DIR=/data       -v $work:/src -v $data:/data rust:1-slim /src/pw-server >/dev/null" \
   || { echo "failed to start the server"; exit 1; }
 
 cleanup() { ssh -o BatchMode=yes "$target" "docker rm -f $name >/dev/null 2>&1"; echo "server stopped"; }
