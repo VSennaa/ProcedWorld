@@ -9,6 +9,10 @@ Instructions for non-Claude agents (Codex, opencode, etc.) working in this repos
    `Get-Content -Encoding utf8 <file>` and `Set-Content -Encoding utf8` / `Out-File -Encoding utf8`.
    Never let a tool rewrite a file in ANSI/cp1252. Line endings: LF.
 3. **Read your brief in `docs/briefs/` if one is named. Only touch the files your task names.** Do not reorganize, rename or "clean up" anything else.
+   **Never reformat whole files** (no `rustfmt`/`cargo fmt`, no re-wrapping lines you did not change):
+   keep the existing style and change only the lines your task needs. A reformat of `world.rs` once
+   turned a 40-line change into 2,380 lines and collided with another agent's work.
+   Do not edit build/test scripts (`tools/`) to make your task pass.
 4. **Do not run `git commit`, `git push`, or change branches.** The supervising agent (Claude) reviews
    and commits.
 5. Never write secrets, API keys, IPs or hostnames into files.
