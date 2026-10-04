@@ -121,7 +121,7 @@ static func from_payload(payload: Dictionary, catalog: RefCounted = null) -> Dic
 	view.civ_colors = {}
 	view.civilization = {"id": civ, "name": "Civilização %d" % (civ + 1), "color": "#" + civ_color(civ).to_html(false)}
 	var state: Dictionary = payload.get("civilization", {}) if typeof(payload.get("civilization")) == TYPE_DICTIONARY else {}
-	_fill_civilization(view, state)
+	_fill_civilization(view, state, payload)
 
 	var first_own_city := Vector2i(-1, -1)
 	for entry in payload.get("cities", []):
@@ -219,7 +219,7 @@ static func _name_cities(view: RefCounted) -> void:
 		city["name"] = label if city["own"] else "%s da civilização %d" % [label, owner + 1]
 
 
-static func _fill_civilization(view: RefCounted, state: Dictionary) -> void:
+static func _fill_civilization(view: RefCounted, state: Dictionary, payload: Dictionary) -> void:
 	var wealth := int(state.get("treasury_wealth", 0))
 	view.resources = {"riqueza": wealth, "conhecimento": int(state.get("knowledge", 0)), "cultura": int(state.get("culture", 0))}
 	view.indicators = {"coesao": int(state.get("cohesion", 0)), "legitimidade": int(state.get("legitimacy", 0)), "deprivation": int(state.get("deprivation", 0)), "group_tension": int(state.get("group_tension", 0)), "war_threat": int(state.get("war_threat", 0)), "environmental_exposure": int(state.get("environmental_exposure", 0)), "crisis_pressure": int(state.get("crisis_pressure", 0))}
@@ -240,9 +240,11 @@ static func _fill_civilization(view: RefCounted, state: Dictionary) -> void:
 			progress[String(id)] = int(raw_progress[id])
 	# Only the explicit contract rate can support an estimate. City knowledge yields are
 	# not guaranteed to be the effective research rate (modifiers may apply server-side).
-	var raw_per_turn: Variant = state.get("research_per_turn")
+	var raw_per_turn: Variant = payload.get("research_per_turn")
 	var per_turn := int(raw_per_turn) if typeof(raw_per_turn) == TYPE_INT or typeof(raw_per_turn) == TYPE_FLOAT else 0
-	view.research = {"current": String(current) if current != null else "", "done": done, "progress": progress, "per_turn": per_turn}
+	var percentages: Array = payload.get("research_percentages", [])
+	var investment := int(state.get("research_investment", 0))
+	view.research = {"current": String(current) if current != null else "", "done": done, "progress": progress, "per_turn": per_turn, "investment": investment, "percentages": percentages}
 
 
 ## Border edges: where the neighbor in that direction has another owner (or none). Display only.

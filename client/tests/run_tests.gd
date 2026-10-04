@@ -201,6 +201,7 @@ func test_commands() -> void:
 	check(Protocol.command_skip_unit(5) == {"command": {"type": "skip_unit", "data": {"unit_id": 5}}}, "SkipUnit payload shape")
 	check(Protocol.command_respond_to_event(7, "ration")["command"]["data"] == {"event_id": 7, "choice_id": "ration"}, "RespondToEvent payload shape")
 	check(Protocol.command_set_research("tech.herbal_care") == {"command": {"type": "set_research", "data": {"research": "tech.herbal_care"}}}, "SetResearch payload shape")
+	check(Protocol.command_set_research_investment(20) == {"command": {"type": "set_research_investment", "data": {"percent": 20}}}, "SetResearchInvestment payload shape")
 	var framed := Protocol.parse_envelope(Protocol.build_envelope("submit_command", Protocol.command_skip_unit(5), "c-9"))
 	check(framed["ok"] and framed["envelope"]["payload"]["command"]["type"] == "skip_unit", "command survives the envelope round trip")
 
@@ -256,9 +257,11 @@ func test_server_view_adapter() -> void:
 	check(view.civ_colors[0] != view.civ_colors[1], "each civilization gets its own color")
 
 	check(view.research["current"] == "tech.storage" and view.research["done"].has("tech.council") and view.research["progress"]["tech.storage"] == 6, "research state of the own civilization")
-	check(view.research["per_turn"] == 0, "absent research rate leaves the estimate unavailable")
+	check(view.research["per_turn"] == 2, "research projection reads top-level engine rate (%d)" % view.research["per_turn"])
+	check(view.research["investment"] == 10, "civilization investment percentage is adapted (%s)" % str(view.research["investment"]))
+	check(view.research["percentages"].size() == 3 and int(view.research["percentages"][2]) == 20, "server research percentages are adapted (%s)" % str(view.research["percentages"]))
 	var explicit_rate_payload := _load_view_payload()
-	explicit_rate_payload["civilization"]["research_per_turn"] = 3
+	explicit_rate_payload["research_per_turn"] = 3
 	check(_adapt(explicit_rate_payload, _load_catalog()).research["per_turn"] == 3, "explicit contract research rate is preserved")
 	check(view.header_chips.size() == 4 and view.header_chips[0]["value"] == 18, "header chips: wealth, knowledge, culture, cohesion")
 	check(view.agenda.size() == 1 and view.agenda[0]["event_id"] == 7 and view.agenda[0]["options"].size() == 2, "pending event becomes an agenda card with its choices")
@@ -292,7 +295,8 @@ func test_adapter_tolerates_missing_fields() -> void:
 	check(strange["kind"] == "", "unrecognized order decodes to unknown, not a crash")
 	var improvement_payload: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(IMPROVEMENT_VIEW))
 	var improvement_view := _adapt(improvement_payload, _load_catalog())
-	check(improvement_view.tile_at(Vector2i(0, 0))["improvement"] == "improvement.farm" and improvement_view.tile_at(Vector2i(1, 0)).has("build_progress"), "tile improvements and ongoing work are adapted")
+	var build: Dictionary = improvement_view.tile_at(Vector2i(1, 0)).get("build_progress", {})
+	check(improvement_view.tile_at(Vector2i(0, 0))["improvement"] == "improvement.farm" and int(build.get("progress", -1)) == 2 and int(build.get("required", -1)) == 10, "construction indicator retains progress and required work")
 	check(improvement_view.unit_by_id(8)["order"] == "Build" and improvement_view.unit_by_id(8)["order_improvement"] == "improvement.lumber_camp" and improvement_view.unit_by_id(8)["buildable"] == ["improvement.lumber_camp"], "Build order and server buildable ids are adapted")
 
 
@@ -405,9 +409,10 @@ func test_catalog_layout() -> void:
 	check(catalog.progress("tech.foraging", research)["have"] == catalog.progress("tech.foraging", research)["cost"], "mastered tech reads full")
 	check(catalog.progress("tech.irrigation", {"progress": {"tech.irrigation": 999}})["have"] == 20, "progress is capped at the cost")
 	check(catalog.missing_prerequisites("tech.irrigation", research) == ["Armazenamento"], "locked tech names what it still needs")
-	check(TechView.summary_text(catalog, research) == "2 de 17 dominadas. Em pesquisa: Armazenamento (6/14). Estimativa indisponível.", "summary line")
+	check(TechView.summary_text(catalog, research) == "2 de 17 dominadas. Em pesquisa: Armazenamento (6/14). sem investimento: escolha 10% ou 20%.", "zero-rate summary invites research investment")
 	check(TechView.summary_text(catalog, {"current": "", "done": [], "progress": {}}).contains("Nenhuma pesquisa em andamento"), "summary without current research")
 	check(TechView.estimate_turns(catalog, "tech.storage", {"progress": {"tech.storage": 6}, "per_turn": 2}) == 4, "research turn estimate uses projection rate")
+	check(TechView.estimate_turns(catalog, "tech.storage", {"progress": {"tech.storage": 6}, "per_turn": 0}) == -1, "zero engine rate has no numeric estimate")
 
 
 func test_research_selection() -> void:
@@ -417,9 +422,16 @@ func test_research_selection() -> void:
 	root.add_child(tech)
 	var selected: Array = []
 	tech.research_requested.connect(func(id: String) -> void: selected.append(id))
+	var investments: Array = []
+	tech.investment_requested.connect(func(percent: int) -> void: investments.append(percent))
 	tech.build(catalog, view.research)
-	var buttons: Array = tech.find_children("*", "Button", true, false)
+	var buttons: Array = tech.find_children("*", "Button", true, false).filter(func(button: Button) -> bool: return not button is OptionButton)
 	check(buttons.size() == 4, "one selectable button per available technology")
+	var selectors: Array = tech.find_children("*", "OptionButton", true, false)
+	check(selectors.size() == 1 and selectors[0].item_count == 3, "research investment options come from server percentages")
+	selectors[0].select(2)
+	selectors[0].item_selected.emit(2)
+	check(investments == [20], "investment selector emits selected server percentage")
 	for button in buttons:
 		check(button.custom_minimum_size.y >= 44, "research choices are at least 44 px tall")
 	buttons[0].pressed.emit()
@@ -484,7 +496,7 @@ func test_views_build() -> void:
 	society.build(view)
 	var society_text: Array = society.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text)
 	check(society_text.any(func(text: String) -> bool: return text.contains("P_c = limitar") and text.contains("D, G, W e E: 0–20") and text.contains("S e C: 0–100")), "society explains the pressure formula and factor scales")
-	check(society_text.any(func(text: String) -> bool: return text.begins_with("P · Pressão de crise") and text.contains("Fatores recebidos")), "society shows pressure with its factors")
+	check(society_text.any(func(text: String) -> bool: return text.begins_with("P · Pressão de crise") and text.contains("Fatores recebidos") and text.contains("(−(62−50)/5")), "pressure exposes the civilization cohesion term")
 	check(society_text.any(func(text: String) -> bool: return text.contains("W") and text.contains("provisório")), "society marks W and E as provisional")
 	society.queue_free()
 	var connect := ConnectView.new()

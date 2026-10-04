@@ -195,13 +195,18 @@ func _draw_improvement(screen: Vector2, tile: Dictionary) -> void:
 		draw_string(ThemeDB.fallback_font, marker.position + Vector2(2, marker.size.y - 2), text, HORIZONTAL_ALIGNMENT_LEFT, marker.size.x - 2, int(10 * zoom + 4), Color("17212b"))
 	if tile.has("build_progress"):
 		var progress: Variant = tile["build_progress"]
-		var label := "⚒"
+		var hammer := screen + Vector2(-19, 31) * zoom
+		draw_line(hammer + Vector2(3, 14) * zoom, hammer + Vector2(13, 3) * zoom, SELECT_COLOR, 5.0 * zoom, true)
+		draw_line(hammer + Vector2(9, 1) * zoom, hammer + Vector2(16, 8) * zoom, SELECT_COLOR, 5.0 * zoom, true)
+		draw_line(hammer + Vector2(8, 3) * zoom, hammer + Vector2(14, -3) * zoom, SELECT_COLOR, 5.0 * zoom, true)
+		var label := ""
 		if typeof(progress) == TYPE_DICTIONARY:
 			var current: Variant = progress.get("progress")
 			var required: Variant = progress.get("required")
 			if current != null and required != null:
-				label += " %s/%s" % [str(current), str(required)]
-		draw_string(ThemeDB.fallback_font, screen + Vector2(-20, 42) * zoom, label, HORIZONTAL_ALIGNMENT_LEFT, -1, int(12 * zoom + 5), SELECT_COLOR)
+				label = "%s/%s" % [str(current), str(required)]
+		if not label.is_empty():
+			draw_string(ThemeDB.fallback_font, screen + Vector2(-20, 47) * zoom, label, HORIZONTAL_ALIGNMENT_LEFT, -1, int(12 * zoom + 5), SELECT_COLOR)
 
 
 func _gui_input(event: InputEvent) -> void:

@@ -131,6 +131,10 @@ static func command_set_research(research: String) -> Dictionary:
 	return {"command": {"type": "set_research", "data": {"research": research}}}
 
 
+static func command_set_research_investment(percent: int) -> Dictionary:
+	return {"command": {"type": "set_research_investment", "data": {"percent": percent}}}
+
+
 static func command_respond_to_event(event_id: int, choice_id: String) -> Dictionary:
 	return {"command": {"type": "respond_to_event", "data": {"event_id": event_id, "choice_id": choice_id}}}
 

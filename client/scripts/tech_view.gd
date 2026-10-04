@@ -2,6 +2,7 @@ extends MarginContainer
 ## Research tree screen. Only catalog-available technologies can be selected.
 
 signal research_requested(research_id: String)
+signal investment_requested(percent: int)
 
 const MUTED_COLOR := Color("b9c1c8")
 const CARD_BG := Color("223140")
@@ -40,6 +41,26 @@ func build(catalog: RefCounted, research: Dictionary) -> void:
 	summary.add_theme_color_override("font_color", MUTED_COLOR)
 	summary.text = summary_text(catalog, research)
 	root.add_child(summary)
+	var investment_row := HBoxContainer.new()
+	var investment_label := Label.new()
+	investment_label.text = "Investimento em pesquisa"
+	investment_label.add_theme_font_size_override("font_size", 18)
+	investment_row.add_child(investment_label)
+	var investment := OptionButton.new()
+	var percentages: Array = research.get("percentages", [])
+	for percent in percentages:
+		investment.add_item("%d%%" % int(percent))
+		investment.set_item_metadata(investment.item_count - 1, int(percent))
+		if int(percent) == int(research.get("investment", 0)):
+			investment.select(investment.item_count - 1)
+	investment.item_selected.connect(func(index: int) -> void: investment_requested.emit(int(investment.get_item_metadata(index))))
+	investment_row.add_child(investment)
+	root.add_child(investment_row)
+	var investment_note := Label.new()
+	investment_note.text = "O investimento usa produção das cidades."
+	investment_note.add_theme_font_size_override("font_size", 16)
+	investment_note.add_theme_color_override("font_color", MUTED_COLOR)
+	root.add_child(investment_note)
 
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -72,7 +93,7 @@ static func summary_text(catalog: RefCounted, research: Dictionary) -> String:
 		text += "Nenhuma pesquisa em andamento."
 	if current != "" and catalog.techs.has(current):
 		var estimate := estimate_turns(catalog, current, research)
-		text += " " + ("Estimativa: %d turnos." % estimate if estimate >= 0 else "Estimativa indisponível.")
+		text += " " + ("Estimativa: %d turnos." % estimate if estimate >= 0 else "sem investimento: escolha 10% ou 20%.")
 	return text
 
 

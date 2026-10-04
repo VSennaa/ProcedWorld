@@ -31,7 +31,7 @@ func build(world: RefCounted) -> void:
 		var values: Dictionary = city.get("indicators", {})
 		for row in CITY_ROWS:
 			_add_row(root, row, values)
-		_add_pressure(root, values, city["name"])
+		_add_pressure(root, values, city["name"], int(world.indicators.get("coesao", 0)))
 
 
 func _add_title(parent: Control, text: String) -> void:
@@ -57,13 +57,14 @@ func _add_row(parent: Control, row: Array, values: Dictionary) -> void:
 	parent.add_child(label)
 
 
-func _add_pressure(parent: Control, values: Dictionary, scope: String) -> void:
+func _add_pressure(parent: Control, values: Dictionary, scope: String, cohesion: int = -1) -> void:
 	var label := Label.new()
 	var factors := "D %d · G %d · W %d · E %d" % [int(values.get("deprivation", 0)), int(values.get("group_tension", 0)), int(values.get("war_threat", 0)), int(values.get("environmental_exposure", 0))]
 	if values.has("stability"):
 		factors += " · S %d" % int(values["stability"])
-	if values.has("coesao"):
-		factors += " · C %d" % int(values["coesao"])
+	var c := int(values.get("coesao", cohesion)) if cohesion < 0 else cohesion
+	if c >= 0:
+		factors += " · C %d (−(%d−50)/5 = %+.1f)" % [c, c, -float(c - 50) / 5.0]
 	label.text = "P · Pressão de crise (%s): %d/100\nFatores recebidos: %s" % [scope, int(values.get("crisis_pressure", 0)), factors]
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	label.add_theme_font_size_override("font_size", 18)

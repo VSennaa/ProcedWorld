@@ -260,6 +260,7 @@ func _build_shell() -> void:
 
 	_tech = TechView.new()
 	_tech.research_requested.connect(_on_research_requested)
+	_tech.investment_requested.connect(_on_research_investment_requested)
 	_tech.set_anchors_preset(Control.PRESET_FULL_RECT)
 	content.add_child(_tech)
 	_screens["pesquisa"] = _tech
@@ -528,7 +529,7 @@ func _on_command_accepted(request_id: String) -> void:
 		return
 	var meta: Dictionary = _inflight[request_id]
 	_inflight.erase(request_id)
-	if meta["kind"] in ["order", "skip", "found", "queue", "queue_remove", "queue_move", "focus", "research", "attack", "build"]:
+	if meta["kind"] in ["order", "skip", "found", "queue", "queue_remove", "queue_move", "focus", "research", "research_investment", "attack", "build"]:
 		_overrides.append(meta)
 		_apply_override(meta)
 		_refresh_units()
@@ -658,6 +659,19 @@ func _on_research_requested(research_id: String) -> void:
 	if world == null or _catalog == null or _catalog.status(research_id, world.research) != "available":
 		return
 	_issue({"kind": "research", "research": research_id}, Protocol.command_set_research(research_id))
+
+
+func _on_research_investment_requested(percent: int) -> void:
+	if world == null:
+		return
+	var supported := false
+	for value in world.research.get("percentages", []):
+		if int(value) == percent:
+			supported = true
+			break
+	if not supported:
+		return
+	_issue({"kind": "research_investment", "percent": percent}, Protocol.command_set_research_investment(percent))
 
 
 func _idle_entries() -> Array:
@@ -967,6 +981,8 @@ func _apply_override(meta: Dictionary) -> void:
 			world.apply_local_focus(meta["city_id"], meta["focus"])
 		"research":
 			world.apply_local_research(meta["research"])
+		"research_investment":
+			world.apply_local_research_investment(meta["percent"])
 		"attack":
 			world.apply_local_attack(meta["unit_id"])
 		"build":
