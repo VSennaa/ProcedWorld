@@ -15,9 +15,9 @@ var tech_order: Array[String] = []  # ids in the order the server listed them
 var unit_types: Dictionary = {}  # id -> {id, name, role, movement, strength}
 ## Optional Entropy templates. Their display text is server-owned; an absent catalog remains valid.
 var event_templates: Dictionary = {}  # id -> {id, name, category, text, choices}
-## Optional terrain improvements. Fields are server-owned; the client only filters entries by the
-## visible tile and technologies already mastered in its projection.
-var improvements: Dictionary = {}  # id -> {id, name, requires_technology, biomes}
+## Optional terrain improvements. The server decides which ones are buildable; this catalog only
+## resolves their ids to display names.
+var improvements: Dictionary = {}  # id -> {id, name, ...}
 var _depth: Dictionary = {}
 
 
@@ -93,37 +93,6 @@ func event_template(id: String) -> Dictionary:
 
 func improvement_name(id: String) -> String:
 	return String(improvements[id].get("name", id)) if improvements.has(id) else id
-
-
-## Catalog-only shortlist for the selected worker's current tile. The server still decides every
-## ownership, resource and concurrent-work rule.
-func improvements_for(tile: Dictionary, research: Dictionary) -> Array:
-	var result: Array = []
-	if tile.get("fog", "unknown") != "visible" or tile.get("improvement") != null or tile.has("build_progress"):
-		return result
-	# The projection must identify the terrain itself; the client must not guess it.
-	if typeof(tile.get("biome")) != TYPE_STRING or String(tile["biome"]).is_empty():
-		return result
-	var biome: String = tile["biome"]
-	var done: Array = research.get("done", [])
-	for id in improvements:
-		var entry: Dictionary = improvements[id]
-		var required := String(entry.get("requires_technology", entry.get("technology", entry.get("requires", ""))))
-		if not required.is_empty() and not done.has(required):
-			continue
-		var biomes: Variant = entry.get("biomes")
-		if typeof(biomes) != TYPE_ARRAY or biomes.is_empty():
-			continue
-		var valid_biomes := true
-		for allowed in biomes:
-			if typeof(allowed) != TYPE_STRING or String(allowed).is_empty():
-				valid_biomes = false
-				break
-		if not valid_biomes or not biomes.has(biome):
-			continue
-		result.append({"id": String(id), "name": String(entry.get("name", id))})
-	result.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["name"] < b["name"])
-	return result
 
 
 ## Depth = longest prerequisite chain below the tech (0 for roots). Unknown prerequisites are ignored.

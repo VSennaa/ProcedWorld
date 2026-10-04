@@ -8,8 +8,8 @@ extends RefCounted
 const Hex := preload("res://scripts/hex.gd")
 const WorldView := preload("res://scripts/world_view.gd")
 
-## Engine terrain ids (world.rs TERRAIN_*) -> client biome ids (assets/tiles).
-const TERRAIN_BIOMES: Array[String] = ["planicie", "floresta", "selva", "pantano", "deserto", "estepe", "costa", "oceano"]
+## Catalog biome ids are English; map assets retain their Portuguese filenames.
+const BIOME_ASSETS := {"plains": "planicie", "forest": "floresta", "jungle": "selva", "swamp": "pantano", "desert": "deserto", "steppe": "estepe", "coast": "costa", "ocean": "oceano"}
 ## assets/palette.json overlays.civilizations, repeated for more than four civilizations.
 const CIV_COLORS: Array[String] = ["#E69F00", "#56B4E9", "#CC79A7", "#F0E442"]
 const KNOWN_ORDERS: Array[String] = ["Idle", "Fortify", "Explore", "MoveTo", "Sentry", "Build"]
@@ -93,11 +93,13 @@ static func from_payload(payload: Dictionary, catalog: RefCounted = null) -> Dic
 		var visibility := String(entry.get("visibility", ""))
 		if visibility != "visible" and visibility != "remembered":
 			continue  # "unknown" tiles are never sent with data; keep them blank
-		var terrain := int(entry.get("terrain", -1))
-		if terrain < 0 or terrain >= TERRAIN_BIOMES.size():
-			return _fail("terreno desconhecido: %d" % terrain)
+		var biome: Variant = entry.get("biome")
+		if typeof(biome) == TYPE_STRING and BIOME_ASSETS.has(biome):
+			biome = BIOME_ASSETS[biome]
+		else:
+			return _fail("bioma desconhecido: %s" % biome)
 		var cell := Hex.cell_of_index(index, width)
-		var tile: Dictionary = {"fog": visibility, "biome": TERRAIN_BIOMES[terrain], "river": bool(entry.get("river", false)), "yields": entry.get("yields", {})}
+		var tile: Dictionary = {"fog": visibility, "biome": biome, "river": bool(entry.get("river", false)), "yields": entry.get("yields", {})}
 		if entry.get("improvement") != null:
 			tile["improvement"] = String(entry["improvement"])
 		if entry.has("build_progress") and entry["build_progress"] != null:
@@ -161,13 +163,18 @@ static func from_payload(payload: Dictionary, catalog: RefCounted = null) -> Dic
 		var parsed := parse_order(data.get("order"), width_i)
 		order_info_present = order_info_present or parsed["kind"] != ""
 		var skipped: Variant = data.get("skipped_turn")
+		var buildable: Array = []
+		if owner == civ and typeof(data.get("buildable")) == TYPE_ARRAY:
+			for improvement in data["buildable"]:
+				if typeof(improvement) == TYPE_STRING:
+					buildable.append(improvement)
 		var info := _unit_info(catalog, type)
 		view.units.append({
 			"id": int(entry.get("id", 0)), "owner": owner, "own": owner == civ, "cell": cell, "type": type,
 			"name": info["name"], "role": info["role"], "movement_max": info["movement"],
 			"hp": int(data.get("hit_points", 0)), "movement_left": int(data.get("movement_left", 0)),
 			"order": parsed["kind"], "order_target": parsed["target"], "order_improvement": parsed.get("improvement", ""),
-			"skipped_turn": int(skipped) if skipped != null else -1,
+			"skipped_turn": int(skipped) if skipped != null else -1, "buildable": buildable,
 		})
 		view.civ_colors[owner] = civ_color(owner)
 	view.civ_colors[civ] = civ_color(civ)

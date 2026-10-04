@@ -51,6 +51,14 @@ const ENGINE_REASON_TEXT := {
 	"UnknownCity": "Cidade desconhecida.",
 	"NotCommandOwner": "Essa cidade não é sua.",
 	"InvalidQueueIndex": "Esse item não está mais na fila.",
+	"not_a_worker": "Apenas trabalhadores podem construir melhorias.",
+	"unknown_improvement": "Essa melhoria é desconhecida.",
+	"improvement_technology_not_researched": "A tecnologia dessa melhoria ainda não foi dominada.",
+	"improvement_terrain_invalid": "Essa melhoria não pode ser construída neste terreno.",
+	"tile_already_improved": "Este tile já possui uma melhoria.",
+	"city_tile_not_improvable": "Não é possível construir uma melhoria no tile da cidade.",
+	"tile_work_in_progress": "Já há uma obra em andamento neste tile.",
+	"tile_outside_territory": "Este tile está fora do território permitido para a obra.",
 }
 const ERROR_TEXT := {
 	"protocol_version_mismatch": "Versão do protocolo incompatível com o servidor.",
@@ -853,10 +861,13 @@ func _attack_targets(unit: Dictionary) -> Array:
 	return result
 
 
-func _build_options(unit: Dictionary, tile: Dictionary) -> Array:
-	if _catalog == null or unit.get("role", "") != "worker":
+func _build_options(unit: Dictionary, _tile: Dictionary) -> Array:
+	if _catalog == null:
 		return []
-	return _catalog.improvements_for(tile, world.research)
+	var result: Array = []
+	for id in unit.get("buildable", []):
+		result.append({"id": String(id), "name": _catalog.improvement_name(String(id))})
+	return result
 
 
 func _issue_attack(attacker: int, target: int) -> void:

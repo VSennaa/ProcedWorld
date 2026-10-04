@@ -197,12 +197,10 @@ func _draw_improvement(screen: Vector2, tile: Dictionary) -> void:
 		var progress: Variant = tile["build_progress"]
 		var label := "⚒"
 		if typeof(progress) == TYPE_DICTIONARY:
-			var work: Variant = progress.get("work", progress.get("progress", progress.get("current", null)))
-			var required: Variant = progress.get("required", progress.get("total", null))
-			if work != null:
-				label += " %s%s" % [str(work), "/%s" % str(required) if required != null else ""]
-		elif typeof(progress) == TYPE_INT or typeof(progress) == TYPE_FLOAT:
-			label += " %s" % str(progress)
+			var current: Variant = progress.get("progress")
+			var required: Variant = progress.get("required")
+			if current != null and required != null:
+				label += " %s/%s" % [str(current), str(required)]
 		draw_string(ThemeDB.fallback_font, screen + Vector2(-20, 42) * zoom, label, HORIZONTAL_ALIGNMENT_LEFT, -1, int(12 * zoom + 5), SELECT_COLOR)
 
 

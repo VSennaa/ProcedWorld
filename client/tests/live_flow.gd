@@ -197,15 +197,15 @@ func _run() -> void:
 	await _wait(func() -> bool: return _main.world.city_by_id(0)["focus"] == "build")
 	var focus: Dictionary = _received[sent_before]["payload"]["command"]
 	check(focus["type"] == "set_city_focus" and focus["data"]["focus"] == "build", "the focus selector sends SetCityFocus")
-	# A worker receives catalog-filtered construction choices for its visible tile.
+	# A worker receives exactly the construction choices authorized by the server.
 	_main._select_unit(8)
 	var build_buttons: Array = _main._unit_panel._choices.find_children("*", "Button", true, false)
-	check(build_buttons.any(func(button: Button) -> bool: return button.text == "Construir: Madeireira"), "worker panel shows the compatible improvement")
+	check(build_buttons.any(func(button: Button) -> bool: return button.text == "Construir: Plantação"), "worker panel shows the server-authorized improvement")
 	sent_before = _received.size()
-	_main._on_unit_action("build:improvement.lumberyard")
+	_main._on_unit_action("build:improvement.farm")
 	await _wait(func() -> bool: return _main.world.unit_by_id(8)["order"] == "Build")
 	var build: Dictionary = _received[sent_before]["payload"]["command"]
-	check(build["type"] == "set_unit_order" and build["data"]["unit_id"] == 8 and build["data"]["order"] == {"type": "build", "data": {"improvement": "improvement.lumberyard"}}, "Construir sends the Build order")
+	check(build["type"] == "set_unit_order" and build["data"]["unit_id"] == 8 and build["data"]["order"] == {"type": "build", "data": {"improvement": "improvement.farm"}}, "Construir sends the Build order")
 	# A settler founds a city where it stands.
 	_main._select_unit(5)
 	check(_main._unit_panel._buttons["found"].visible, "the settler card offers Fundar cidade")

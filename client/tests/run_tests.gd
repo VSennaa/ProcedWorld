@@ -293,7 +293,7 @@ func test_adapter_tolerates_missing_fields() -> void:
 	var improvement_payload: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(IMPROVEMENT_VIEW))
 	var improvement_view := _adapt(improvement_payload, _load_catalog())
 	check(improvement_view.tile_at(Vector2i(0, 0))["improvement"] == "improvement.farm" and improvement_view.tile_at(Vector2i(1, 0)).has("build_progress"), "tile improvements and ongoing work are adapted")
-	check(improvement_view.unit_by_id(8)["order"] == "Build" and improvement_view.unit_by_id(8)["order_improvement"] == "improvement.lumberyard", "Build order keeps its improvement id")
+	check(improvement_view.unit_by_id(8)["order"] == "Build" and improvement_view.unit_by_id(8)["order_improvement"] == "improvement.lumber_camp" and improvement_view.unit_by_id(8)["buildable"] == ["improvement.lumber_camp"], "Build order and server buildable ids are adapted")
 
 
 func test_adapter_rejects_bad_input() -> void:
@@ -301,8 +301,8 @@ func test_adapter_rejects_bad_input() -> void:
 	payload.erase("map_width")
 	check(not ServerView.from_payload(payload)["ok"], "missing map_width rejected")
 	payload = _load_view_payload()
-	payload["tiles"][0]["terrain"] = 42
-	check(not ServerView.from_payload(payload)["ok"], "unknown terrain id rejected")
+	payload["tiles"][0]["biome"] = "unknown"
+	check(not ServerView.from_payload(payload)["ok"], "unknown biome id rejected")
 	payload = _load_view_payload()
 	payload["map_width"] = 0
 	check(not ServerView.from_payload(payload)["ok"], "zero width rejected")
@@ -369,20 +369,9 @@ func test_unit_panel_actions() -> void:
 	check(UnitPanel.order_label(view.unit_by_id(6)) == "indo para (11, 9)", "MoveTo label shows the destination")
 	check(UnitPanel.order_label({"order": ""}) == "ordem desconhecida", "unknown order label")
 	check(UnitPanel.legal_actions(view.unit_by_id(3), {}, true).has("attack"), "own unit with a visible adjacent enemy offers attack")
-	var worker_tile: Dictionary = view.tile_at(view.unit_by_id(8)["cell"])
-	var options: Array = _load_catalog().improvements_for(worker_tile, view.research)
-	check(options == [{"id": "improvement.lumberyard", "name": "Madeireira"}], "worker sees catalog improvements compatible with mastered technology and biome")
-	worker_tile["improvement"] = "improvement.lumberyard"
-	check(_load_catalog().improvements_for(worker_tile, view.research).is_empty(), "existing improvement hides build options")
-	worker_tile.erase("improvement")
-	worker_tile.erase("biome")
-	check(_load_catalog().improvements_for(worker_tile, view.research).is_empty(), "missing projected biome hides build options")
-	var malformed := _load_catalog()
-	malformed.improvements["improvement.lumberyard"]["biomes"] = "floresta"
-	check(malformed.improvements_for(view.tile_at(view.unit_by_id(8)["cell"]), view.research).is_empty(), "malformed biome schema hides build options")
-	malformed = _load_catalog()
-	malformed.improvements["improvement.lumberyard"].erase("biomes")
-	check(malformed.improvements_for(view.tile_at(view.unit_by_id(8)["cell"]), view.research).is_empty(), "missing biome schema hides build options")
+	var without_buildable := _load_view_payload()
+	without_buildable["units"].filter(func(entry: Dictionary) -> bool: return entry["id"] == 8)[0]["unit"].erase("buildable")
+	check(_adapt(without_buildable).unit_by_id(8)["buildable"].is_empty(), "missing server buildable list offers no improvement")
 	check(ServerView.parse_order({"type": "build", "data": {"improvement": "improvement.farm"}}, 24)["kind"] == "Build", "Build order decodes tolerantly")
 
 

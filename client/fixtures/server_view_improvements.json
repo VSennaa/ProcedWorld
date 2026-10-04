@@ -8,11 +8,11 @@
     "researched_technologies": ["tech.foraging"]
   },
   "tiles": [
-    {"tile": 0, "visibility": "visible", "terrain": 0, "improvement": "improvement.farm", "owner": 0},
-    {"tile": 1, "visibility": "visible", "terrain": 1, "build_progress": {"improvement": "improvement.lumberyard", "work": 2, "required": 5}, "owner": 0},
-    {"tile": 2, "visibility": "visible", "terrain": 1, "owner": 0}
+    {"tile": 0, "visibility": "visible", "terrain": 0, "biome": "plains", "yields": {"food": 3}, "improvement": "improvement.farm", "build_progress": null, "owner": 0},
+    {"tile": 1, "visibility": "visible", "terrain": 1, "biome": "forest", "yields": {"food": 1, "production": 2}, "improvement": null, "build_progress": {"improvement": "improvement.lumber_camp", "progress": 2, "required": 10}, "owner": 0},
+    {"tile": 2, "visibility": "visible", "terrain": 1, "biome": "forest", "yields": {"food": 1, "production": 2}, "improvement": null, "build_progress": null, "owner": 0}
   ],
   "units": [
-    {"id": 8, "unit": {"owner": 0, "tile": 2, "unit_type": "unit.worker", "hit_points": 10, "movement_left": 2, "order": {"type": "build", "data": {"improvement": "improvement.lumberyard"}}}}
+    {"id": 8, "unit": {"owner": 0, "tile": 2, "unit_type": "unit.worker", "hit_points": 10, "movement_left": 2, "order": {"type": "build", "data": {"improvement": "improvement.lumber_camp"}}, "buildable": ["improvement.lumber_camp"]}}
   ]
 }

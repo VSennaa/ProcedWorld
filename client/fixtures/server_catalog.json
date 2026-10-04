@@ -282,11 +282,11 @@
    "biomes": ["planicie", "savana"]
   },
   {
-   "id": "improvement.lumberyard",
-   "name": "Madeireira",
-   "cost": {"work": 5},
-   "technology": "tech.foraging",
-   "biomes": ["floresta"]
+   "id": "improvement.lumber_camp",
+   "name": "Acampamento madeireiro",
+   "cost": {"production": 10},
+   "requires_technology": "tech.public_works",
+   "biomes": ["forest", "jungle"]
   }
  ],
  "event_templates": [
