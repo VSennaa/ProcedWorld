@@ -8,7 +8,12 @@ civilizations without a present human (bots, absent humans) are played by their 
 ## Run
 
 `PW_SERVER_BIND` (default `127.0.0.1:8100`, never `0.0.0.0` by default), `PW_RECONNECT_GRACE_SECS`
-(default 60, technical grace, not a game clock), `PW_MAX_WORLDS` (16), `PW_MAX_CIVS` (16).
+(default 60, technical grace, not a game clock), `PW_MAX_WORLDS` (16), `PW_MAX_CIVS` (16), and optional
+`PW_DATA_DIR`. Without `PW_DATA_DIR`, worlds remain in memory only. With it, each world is stored in
+its own directory as `initial_snapshot.json`, `turn.json`, and `metadata.json`; `turn.json` contains
+the log and its resulting snapshot as one unit, replaced via a temporary sibling and rename. Startup replays every sealed log and refuses any world whose replay
+does not match its sealed hash. Session tokens are stored in that same world metadata, so `Entrar`
+can resume a seat after a restart.
 
 ## Protocol v1
 
@@ -19,7 +24,7 @@ Frame: `{"protocol_version":"1.0","request_id":"..","type":"..","payload":{..}}`
 Client to server: `create_world {seed, civs}`, `join {world_id, civ, session_token?}`,
 `get_snapshot`, `submit_command {command}` (engine `CommandPayload` JSON), `ready`, `unready`.
 Server to client: `world_created`, `joined` (returns `session_token`), `catalog` (push right after
-`joined`: `{hash, versions, technologies[{id,name,branch,cost,prerequisites}], units[{id,name,role,movement,strength,requires_technology}]}`),
+`joined`: `{hash, versions, technologies[{id,name,branch,cost,prerequisites}], units[{id,name,role,movement,strength,requires_technology}], event_templates[{id,name,category,narrative?,choices[{id,label}]}], improvements[{id,name,cost,requires_technology,biomes}]}`),
 `state_snapshot`,
 `command_accepted {command_id, accepted_sequence, turn}`, `ready_state {turn, present, ready}`,
 `turn_diff`, `error {reason, detail, engine_reason}`.
@@ -47,9 +52,10 @@ Accepted ones get the next `accepted_sequence`, go to the command log, and are a
 
 ## Storage
 
-`WorldStore` trait with an in-memory implementation: initial snapshot, append-only accepted
-commands, sealed hash per turn, head state. `engine::replay` reproduces the head from it (tested).
-PostgreSQL (docs/sdd/09-persistencia.md) replaces it later; live worlds are not reloaded on restart yet.
+`WorldStore` has an in-memory implementation and `FileStore`. Both retain the initial snapshot,
+append-only accepted commands, and a sealed hash per turn. `FileStore` reconstructs the head only by
+replay, never trusting a mutable live-state file. PostgreSQL (docs/sdd/09-persistencia.md) replaces
+the file adapter later.
 
 ## Known gaps
 
@@ -59,7 +65,7 @@ PostgreSQL (docs/sdd/09-persistencia.md) replaces it later; live worlds are not 
   foreign cities and units only on visible tiles). The ledger and other civilizations' internals are
   never sent. Fog quality depends on the engine's `resolve_visibility`.
 - No real authentication: `create_world` is open, and the session token is an OS-seeded random
-  string (not cryptographic) that only protects a seat from takeover on the same server run.
+  string (not cryptographic), persisted only to let a seat resume after restart.
 - No per-connection rate limiting; only a 64 KiB message cap and a bounded outbox (slow clients
   drop pushes and recover with `get_snapshot`).
 - The Governor uses a fixed `GrowCautiously` mandate; player-configured Mandates, T1/T2 ports,

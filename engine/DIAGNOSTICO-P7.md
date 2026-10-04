@@ -325,3 +325,26 @@ média `>= 10` atingível no cenário de saúde de referência. O teste de saúd
 inalterado; não foram alterados seus limites, a ordem de resolução ou o balanceamento da
 Entropia, pois essas mudanças excederiam o escopo do P12b. É necessária uma decisão de
 balanceamento para elevar a pressão sem enfraquecer esse gate.
+
+# Melhorias de terreno (A2, 2026-10-03)
+## Simplificações registradas
+- Tile do motor não guarda bioma de origem nem depósito de recurso: cada terreno do motor equivale a um
+  bioma do catálogo e oferece os `resource_tags` desse bioma (`core.biomes`). Sem terreno de montanha, a
+  pedreira não pode ser construída; savana/tundra contam como estepe.
+- Pedra e madeira não têm estoque: custos não-produção viram trabalho do trabalhador 1:1; ritmo fixo de
+  2 de trabalho por turno.
+- Efeitos `AddTag` das melhorias não têm regra no motor (mina, especiarias, cisterna e a proteção do
+  campo irrigado só valem pelo id); o bot T0 não constrói melhoria sem ganho de rendimento.
+- Manutenção inadimplida suspende o bônus só no turno; não há suspensão manual nem reparo com produção.
+- Território = `control` explícito ou raio 2 da cidade mais próxima (empate por id).
+## Harness `run --seed 20261001 --civs 8 --turns 300` (VPS, Docker `rust:1-slim`)
+- Antes (base `836e121`): `cities 29 population 116 average_pressure 4 crises 0 collapses 0 events 253 ms/turn 10.139`
+  (diplomacia: audits 663, accepted 633, rejected 30, ungrounded 0).
+- Depois: `cities 27 population 108 average_pressure 4 crises 0 collapses 0 events 251 ms/turn 11.513`
+  (diplomacia: audits 691, accepted 653, rejected 38, ungrounded 0). Ao fim: 28 melhorias e 26
+  trabalhadores nas 8 civilizações; nenhuma cidade com sustento essencial inadimplido.
+- Primeira versão do bot (só reserva de tesouro) gerou **5 colapsos**: as melhorias consumiam o tesouro
+  que paga o sustento de cidades novas ainda sem renda, e a coesão (que só cai) chegou a 0. Corrigido no
+  bot exigindo renda de riqueza do turno ≥ sustento + manutenção das melhorias + 1. A queda leve de
+  cidades/população vem do custo dos trabalhadores (4 comida, 10 produção); com moradia inicial 4 por
+  cidade, o bônus de comida das fazendas ainda não vira crescimento.

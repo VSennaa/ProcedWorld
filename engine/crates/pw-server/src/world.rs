@@ -12,10 +12,13 @@ use std::{
 };
 
 use pw_engine::{
+    entropy::{bundled_catalog, respond_commands, EntropyDirector},
     governor::{Governor, Mandate, MandatePreset},
     ids::{CivId, TileIndex, UnitId},
-    entropy::{bundled_catalog, respond_commands, EntropyDirector},
-    world::{idle_units_with, step, AcceptedCommand, CommandKind, CommandOrigin, CommandPayload, DomainEvent, RejectionReason, SimulationVersions, WorldState},
+    world::{
+        idle_units_with, step, AcceptedCommand, CommandKind, CommandOrigin, CommandPayload,
+        DomainEvent, RejectionReason, SimulationVersions, WorldState,
+    },
 };
 use serde_json::{json, Value};
 use tokio::sync::mpsc::Sender;
@@ -51,7 +54,11 @@ pub struct SubmitError {
 
 impl SubmitError {
     fn plain(reason: ErrorReason, detail: &str) -> Self {
-        Self { reason, engine_reason: None, detail: detail.into() }
+        Self {
+            reason,
+            engine_reason: None,
+            detail: detail.into(),
+        }
     }
 }
 
@@ -106,7 +113,12 @@ fn kind_of(payload: &CommandPayload) -> CommandKind {
 }
 
 impl LiveWorld {
-    pub fn new(state: WorldState, versions: SimulationVersions, homes: BTreeMap<CivId, TileIndex>, store: Arc<dyn WorldStore>) -> Self {
+    pub fn new(
+        state: WorldState,
+        versions: SimulationVersions,
+        homes: BTreeMap<CivId, TileIndex>,
+        store: Arc<dyn WorldStore>,
+    ) -> Self {
         Self {
             state,
             versions,
@@ -119,6 +131,63 @@ impl LiveWorld {
         }
     }
 
+    /// Rebuilds a live world after a process restart. Restored seats are absent until their
+    /// owner proves possession of the persisted session token.
+    pub fn restore(record: crate::store::WorldRecord, store: Arc<dyn WorldStore>) -> Self {
+        let next_command_id = record
+            .log
+            .commands
+            .iter()
+            .map(|command| command.command_id)
+            .max()
+            .unwrap_or(0)
+            .saturating_add(1);
+        let pending = record
+            .log
+            .commands
+            .iter()
+            .filter(|command| command.turn == record.state.turn)
+            .cloned()
+            .collect();
+        let seats = record
+            .session_tokens
+            .into_iter()
+            .map(|(civ, token)| {
+                (
+                    civ,
+                    Seat {
+                        token,
+                        conn: None,
+                        ready: false,
+                        absent: true,
+                        generation: 0,
+                    },
+                )
+            })
+            .collect();
+        Self {
+            state: record.state,
+            versions: record.snapshot.versions,
+            homes: record.home_tiles,
+            seats,
+            pending,
+            next_command_id,
+            mandate: Mandate::preset(MandatePreset::GrowCautiously, 1),
+            store,
+        }
+    }
+
+    fn persist_sessions(&self) -> Result<(), ErrorReason> {
+        let tokens = self
+            .seats
+            .iter()
+            .map(|(civ, seat)| (*civ, seat.token.clone()))
+            .collect();
+        self.store
+            .save_session_tokens(self.state.world_id, &tokens)
+            .map_err(|_| ErrorReason::Internal)
+    }
+
     pub fn state(&self) -> &WorldState {
         &self.state
     }
@@ -128,7 +197,12 @@ impl LiveWorld {
     }
 
     pub fn snapshot_for(&self, civ: CivId) -> Value {
-        view_for(&self.state, civ, self.homes.get(&civ).copied(), &self.pending)
+        view_for(
+            &self.state,
+            civ,
+            self.homes.get(&civ).copied(),
+            &self.pending,
+        )
     }
 
     /// Idle units that block `ready` (SDD 03 / SDD 15 section 4.3): only for a present human seat,
@@ -141,7 +215,12 @@ impl LiveWorld {
     }
 
     /// Claims a civilization (new seat) or resumes one with the session token.
-    pub fn join(&mut self, civ: CivId, token: Option<&str>, conn: Conn) -> Result<String, ErrorReason> {
+    pub fn join(
+        &mut self,
+        civ: CivId,
+        token: Option<&str>,
+        conn: Conn,
+    ) -> Result<String, ErrorReason> {
         if !self.state.civilizations.contains_key(&civ) {
             return Err(ErrorReason::CivNotFound);
         }
@@ -164,7 +243,25 @@ impl LiveWorld {
                     return Err(ErrorReason::InvalidSessionToken);
                 }
                 let token = new_token();
-                self.seats.insert(civ, Seat { token: token.clone(), conn: Some(conn), ready: false, absent: false, generation: 0 });
+                let mut tokens: BTreeMap<_, _> = self
+                    .seats
+                    .iter()
+                    .map(|(seat_civ, seat)| (*seat_civ, seat.token.clone()))
+                    .collect();
+                tokens.insert(civ, token.clone());
+                self.store
+                    .save_session_tokens(self.state.world_id, &tokens)
+                    .map_err(|_| ErrorReason::Internal)?;
+                self.seats.insert(
+                    civ,
+                    Seat {
+                        token: token.clone(),
+                        conn: Some(conn),
+                        ready: false,
+                        absent: false,
+                        generation: 0,
+                    },
+                );
                 Ok(token)
             }
         }
@@ -194,14 +291,28 @@ impl LiveWorld {
     }
 
     pub fn set_ready(&mut self, civ: CivId, ready: bool) -> Result<(), ErrorReason> {
-        let seat = self.seats.get_mut(&civ).filter(|seat| !seat.absent).ok_or(ErrorReason::NotJoined)?;
+        let seat = self
+            .seats
+            .get_mut(&civ)
+            .filter(|seat| !seat.absent)
+            .ok_or(ErrorReason::NotJoined)?;
         seat.ready = ready;
         Ok(())
     }
 
     pub fn ready_payload(&self) -> Value {
-        let present: Vec<u32> = self.seats.iter().filter(|(_, s)| !s.absent).map(|(civ, _)| civ.0).collect();
-        let ready: Vec<u32> = self.seats.iter().filter(|(_, s)| !s.absent && s.ready).map(|(civ, _)| civ.0).collect();
+        let present: Vec<u32> = self
+            .seats
+            .iter()
+            .filter(|(_, s)| !s.absent)
+            .map(|(civ, _)| civ.0)
+            .collect();
+        let ready: Vec<u32> = self
+            .seats
+            .iter()
+            .filter(|(_, s)| !s.absent && s.ready)
+            .map(|(civ, _)| civ.0)
+            .collect();
         json!({ "turn": self.state.turn, "present": present, "ready": ready })
     }
 
@@ -220,10 +331,23 @@ impl LiveWorld {
 
     /// Validates a player command with the engine (dry run of the open turn plus this command),
     /// then stores it with the next `accepted_sequence`. On rejection nothing changes.
-    pub fn submit(&mut self, civ: CivId, payload: CommandPayload) -> Result<AcceptedCommand, SubmitError> {
-        let seat = self.seats.get(&civ).filter(|seat| !seat.absent).ok_or_else(|| SubmitError::plain(ErrorReason::NotJoined, "join a civilization first"))?;
+    pub fn submit(
+        &mut self,
+        civ: CivId,
+        payload: CommandPayload,
+    ) -> Result<AcceptedCommand, SubmitError> {
+        let seat = self
+            .seats
+            .get(&civ)
+            .filter(|seat| !seat.absent)
+            .ok_or_else(|| {
+                SubmitError::plain(ErrorReason::NotJoined, "join a civilization first")
+            })?;
         if seat.ready {
-            return Err(SubmitError::plain(ErrorReason::AlreadyReady, "send unready before changing orders"));
+            return Err(SubmitError::plain(
+                ErrorReason::AlreadyReady,
+                "send unready before changing orders",
+            ));
         }
         let command = AcceptedCommand {
             command_id: self.next_command_id,
@@ -242,11 +366,19 @@ impl LiveWorld {
         trial.push(command.clone());
         let result = step(&self.state, &trial, self.state.seed, &self.versions);
         let rejection = result.events.iter().find_map(|event| match event {
-            DomainEvent::CommandRejected { command_id, reason } if *command_id == command.command_id => Some(*reason),
+            DomainEvent::CommandRejected { command_id, reason }
+                if *command_id == command.command_id =>
+            {
+                Some(*reason)
+            }
             _ => None,
         });
         if let Some(reason) = rejection {
-            return Err(SubmitError { reason: ErrorReason::CommandRejected, engine_reason: Some(reason), detail: format!("{reason:?}") });
+            return Err(SubmitError {
+                reason: ErrorReason::CommandRejected,
+                engine_reason: Some(reason),
+                detail: format!("{reason:?}"),
+            });
         }
         self.store
             .append_command(self.state.world_id, &command)
@@ -270,21 +402,42 @@ impl LiveWorld {
             if self.seats.get(&civ).is_some_and(|seat| !seat.absent) {
                 continue;
             }
-            let Some(home) = self.homes.get(&civ).copied() else { continue };
-            let governor = Governor { mandate: &self.mandate, decision_port: None };
-            let decision = governor.decide(&self.state, civ, home, true, next_id, turn_commands.len() as u64 + 1);
+            let Some(home) = self.homes.get(&civ).copied() else {
+                continue;
+            };
+            let governor = Governor {
+                mandate: &self.mandate,
+                decision_port: None,
+            };
+            let decision = governor.decide(
+                &self.state,
+                civ,
+                home,
+                true,
+                next_id,
+                turn_commands.len() as u64 + 1,
+            );
             next_id = next_id.saturating_add(decision.commands.len().max(1) as u64);
             governor_commands.extend(decision.commands.iter().cloned());
             turn_commands.extend(decision.commands);
             // The Governor also answers pending Entropy events of the civilizations it plays.
-            let responses = respond_commands(&self.state, civ, &self.mandate, next_id, turn_commands.len() as u64 + 1);
+            let responses = respond_commands(
+                &self.state,
+                civ,
+                &self.mandate,
+                next_id,
+                turn_commands.len() as u64 + 1,
+            );
             next_id = next_id.saturating_add(responses.len() as u64);
             governor_commands.extend(responses.iter().cloned());
             turn_commands.extend(responses);
         }
         // World-scoped Entropy director: events are commands with origin Entropy, validated by the engine.
         let catalog = bundled_catalog();
-        let director = EntropyDirector { catalog: &catalog, decision_port: None };
+        let director = EntropyDirector {
+            catalog: &catalog,
+            decision_port: None,
+        };
         let proposed = director.propose(&self.state, next_id, turn_commands.len() as u64 + 1);
         next_id = next_id.saturating_add(proposed.len() as u64);
         governor_commands.extend(proposed.iter().cloned());
@@ -292,7 +445,13 @@ impl LiveWorld {
         let sealed = self.state.turn;
         let result = step(&self.state, &turn_commands, self.state.seed, &self.versions);
         self.store
-            .commit_turn(self.state.world_id, &governor_commands, sealed, result.state_hash, &result.state)
+            .commit_turn(
+                self.state.world_id,
+                &governor_commands,
+                sealed,
+                result.state_hash,
+                &result.state,
+            )
             .map_err(|_| ErrorReason::Internal)?;
         self.state = result.state;
         self.pending.clear();
@@ -302,7 +461,10 @@ impl LiveWorld {
         }
         for (civ, seat) in &self.seats {
             let Some(conn) = &seat.conn else { continue };
-            let own: Vec<&AcceptedCommand> = turn_commands.iter().filter(|command| command.actor_id == *civ).collect();
+            let own: Vec<&AcceptedCommand> = turn_commands
+                .iter()
+                .filter(|command| command.actor_id == *civ)
+                .collect();
             // The engine has no delta representation yet: the diff carries the civilization's
             // filtered full view plus its own command results (see README, protocol gaps).
             let payload = json!({
@@ -322,27 +484,72 @@ impl LiveWorld {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::store::{InMemoryStore, WorldRecord};
+    use crate::store::{InMemoryStore, StoreError, WorldRecord, WorldStore};
     use pw_engine::world::{CommandLog, UnitOrder, UnitState, WorldSnapshot};
 
     fn live_with_idle_unit() -> LiveWorld {
         let (mut state, versions, homes) = pw_harness::initial_world(5, 2).expect("world builds");
-        state.units.insert(UnitId(900), UnitState {
-            owner: CivId(0), tile: homes[&CivId(0)], unit_type: "unit.scout".into(), hit_points: 100,
-            movement_left: 3, explored: false, order: UnitOrder::Idle, skipped_turn: None,
-        });
+        state.units.insert(
+            UnitId(900),
+            UnitState {
+                owner: CivId(0),
+                tile: homes[&CivId(0)],
+                unit_type: "unit.scout".into(),
+                hit_points: 100,
+                movement_left: 3,
+                explored: false,
+                order: UnitOrder::Idle,
+                skipped_turn: None,
+            },
+        );
         let store = Arc::new(InMemoryStore::default());
-        store.create(WorldRecord { snapshot: WorldSnapshot::new(state.clone(), versions.clone()), log: CommandLog::default(), home_tiles: homes.clone(), state: state.clone() }).expect("store accepts the world");
+        store
+            .create(WorldRecord {
+                snapshot: WorldSnapshot::new(state.clone(), versions.clone()),
+                log: CommandLog::default(),
+                home_tiles: homes.clone(),
+                session_tokens: Default::default(),
+                state: state.clone(),
+            })
+            .expect("store accepts the world");
         LiveWorld::new(state, versions, homes, store)
     }
 
     fn conn(id: u64) -> Conn {
-        Conn { id, tx: tokio::sync::mpsc::channel(16).0 }
+        Conn {
+            id,
+            tx: tokio::sync::mpsc::channel(16).0,
+        }
+    }
+
+    struct RejectSessionsStore;
+
+    impl WorldStore for RejectSessionsStore {
+        fn create(&self, _: WorldRecord) -> Result<(), StoreError> { Ok(()) }
+        fn append_command(&self, _: pw_engine::world::WorldId, _: &AcceptedCommand) -> Result<(), StoreError> { Ok(()) }
+        fn commit_turn(&self, _: pw_engine::world::WorldId, _: &[AcceptedCommand], _: pw_engine::ids::TurnNumber, _: pw_engine::hash::StateHash, _: &WorldState) -> Result<(), StoreError> { Ok(()) }
+        fn save_session_tokens(&self, _: pw_engine::world::WorldId, _: &BTreeMap<CivId, String>) -> Result<(), StoreError> { Err(StoreError::Io("disk unavailable".into())) }
+        fn load(&self, _: pw_engine::world::WorldId) -> Result<Option<WorldRecord>, StoreError> { Ok(None) }
+        fn list(&self) -> Result<Vec<pw_engine::world::WorldId>, StoreError> { Ok(Vec::new()) }
+    }
+
+    #[test]
+    fn join_does_not_claim_a_seat_when_token_persistence_fails() {
+        let (state, versions, homes) = pw_harness::initial_world(6, 2).expect("world builds");
+        let mut live = LiveWorld::new(state, versions, homes, Arc::new(RejectSessionsStore));
+        assert_eq!(live.join(CivId(0), None, conn(1)), Err(ErrorReason::Internal));
+        assert_eq!(live.join(CivId(0), None, conn(2)), Err(ErrorReason::Internal));
     }
 
     fn unit_json(live: &LiveWorld) -> Value {
         let view = live.snapshot_for(CivId(0));
-        view["units"].as_array().unwrap().iter().find(|unit| unit["id"] == 900).unwrap()["unit"].clone()
+        view["units"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|unit| unit["id"] == 900)
+            .unwrap()["unit"]
+            .clone()
     }
 
     #[test]
@@ -352,7 +559,14 @@ mod tests {
         assert_eq!(live.idle_blocking(CivId(0)), vec![UnitId(900)]);
         assert_eq!(live.snapshot_for(CivId(0))["idle_units"], json!([900]));
 
-        assert!(live.submit(CivId(0), CommandPayload::SkipUnit { unit_id: UnitId(900) }).is_ok());
+        assert!(live
+            .submit(
+                CivId(0),
+                CommandPayload::SkipUnit {
+                    unit_id: UnitId(900)
+                }
+            )
+            .is_ok());
         assert!(live.idle_blocking(CivId(0)).is_empty());
         assert_eq!(live.snapshot_for(CivId(0))["idle_units"], json!([]));
         assert_eq!(unit_json(&live)["skipped_turn"], json!(0));
@@ -362,7 +576,15 @@ mod tests {
         // The skip only covered the turn it was given in.
         assert_eq!(live.idle_blocking(CivId(0)), vec![UnitId(900)]);
 
-        assert!(live.submit(CivId(0), CommandPayload::SetUnitOrder { unit_id: UnitId(900), order: UnitOrder::Fortify }).is_ok());
+        assert!(live
+            .submit(
+                CivId(0),
+                CommandPayload::SetUnitOrder {
+                    unit_id: UnitId(900),
+                    order: UnitOrder::Fortify
+                }
+            )
+            .is_ok());
         assert!(live.idle_blocking(CivId(0)).is_empty());
         assert_eq!(unit_json(&live)["order"], json!({ "type": "fortify" }));
     }
@@ -373,26 +595,81 @@ mod tests {
         let home = live.homes[&CivId(0)];
         live.join(CivId(0), None, conn(1)).unwrap();
         assert_eq!(live.snapshot_for(CivId(0))["home_tile"], json!(home));
-        assert!(live.snapshot_for(CivId(1))["home_tile"].is_number(), "every civilization without a city gets its starting tile");
+        assert!(
+            live.snapshot_for(CivId(1))["home_tile"].is_number(),
+            "every civilization without a city gets its starting tile"
+        );
         // The first city needs no settler: the capital id is the civilization id (bots do the same).
-        assert!(live.submit(CivId(0), CommandPayload::FoundCity { city_id: pw_engine::ids::CityId(0), target: home }).is_ok());
+        assert!(live
+            .submit(
+                CivId(0),
+                CommandPayload::FoundCity {
+                    city_id: pw_engine::ids::CityId(0),
+                    target: home
+                }
+            )
+            .is_ok());
         // A second FoundCity with the same id is a clean rejection, not a state change.
-        let duplicate = live.submit(CivId(0), CommandPayload::FoundCity { city_id: pw_engine::ids::CityId(0), target: home });
-        assert!(matches!(duplicate, Err(SubmitError { reason: ErrorReason::CommandRejected, .. })));
-        assert!(live.submit(CivId(0), CommandPayload::SkipUnit { unit_id: UnitId(900) }).is_ok());
+        let duplicate = live.submit(
+            CivId(0),
+            CommandPayload::FoundCity {
+                city_id: pw_engine::ids::CityId(0),
+                target: home,
+            },
+        );
+        assert!(matches!(
+            duplicate,
+            Err(SubmitError {
+                reason: ErrorReason::CommandRejected,
+                ..
+            })
+        ));
+        assert!(live
+            .submit(
+                CivId(0),
+                CommandPayload::SkipUnit {
+                    unit_id: UnitId(900)
+                }
+            )
+            .is_ok());
         live.set_ready(CivId(0), true).unwrap();
         assert!(live.try_advance().unwrap());
         let view = live.snapshot_for(CivId(0));
         assert_eq!(view["home_tile"], Value::Null);
-        assert_eq!(view["cities"].as_array().unwrap().iter().filter(|c| c["city"]["owner"] == 0).count(), 1);
+        assert_eq!(
+            view["cities"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|c| c["city"]["owner"] == 0)
+                .count(),
+            1
+        );
         // A settler about to found a city no longer blocks Ready (it is consumed at resolution).
         let site = TileIndex(home.0 + 2);
-        live.state.units.insert(UnitId(901), UnitState {
-            owner: CivId(0), tile: site, unit_type: "unit.settler".into(), hit_points: 100,
-            movement_left: 3, explored: false, order: UnitOrder::Idle, skipped_turn: None,
-        });
+        live.state.units.insert(
+            UnitId(901),
+            UnitState {
+                owner: CivId(0),
+                tile: site,
+                unit_type: "unit.settler".into(),
+                hit_points: 100,
+                movement_left: 3,
+                explored: false,
+                order: UnitOrder::Idle,
+                skipped_turn: None,
+            },
+        );
         assert!(live.idle_blocking(CivId(0)).contains(&UnitId(901)));
-        assert!(live.submit(CivId(0), CommandPayload::FoundCity { city_id: pw_engine::ids::CityId(1_000_901), target: site }).is_ok());
+        assert!(live
+            .submit(
+                CivId(0),
+                CommandPayload::FoundCity {
+                    city_id: pw_engine::ids::CityId(1_000_901),
+                    target: site
+                }
+            )
+            .is_ok());
         assert!(!live.idle_blocking(CivId(0)).contains(&UnitId(901)));
     }
 

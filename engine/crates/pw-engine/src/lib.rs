@@ -15,6 +15,7 @@ pub mod ai;
 pub mod dsl;
 pub mod entropy;
 pub mod governor;
+pub mod improvements;
 pub mod world;
 
 /// Version printed by the harness and pinned by future replay metadata.

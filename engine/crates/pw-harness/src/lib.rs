@@ -95,7 +95,7 @@ pub fn initial_world(seed: u64, civilizations: u32) -> Result<(WorldState, Simul
     let generated = generate(WorldParams::for_civilizations(civilizations), seed, &catalog).map_err(|error| format!("map generation failed: {error:?}"))?;
     let mut civilization_states = BTreeMap::new(); let mut homes = BTreeMap::new();
     for start in &generated.starting_points { let id = CivId(start.civilization); let mut civilization = CivilizationState::default(); civilization.researched_technologies.insert("tech.foraging".into()); civilization_states.insert(id, civilization); homes.insert(id, start.tile); }
-    let tiles = generated.tiles.iter().map(|tile| TileState { terrain: terrain(&tile.biome_id), river: false, yields: yields(&tile.biome_id) }).collect();
+    let tiles = generated.tiles.iter().map(|tile| TileState { terrain: terrain(&tile.biome_id), river: false, yields: yields(&tile.biome_id), ..Default::default() }).collect();
     let visibility = homes.iter().map(|(civilization, home)| (*civilization, BTreeMap::from([(*home, Visibility::Visible)]))).collect();
     let state = WorldState { world_id: WorldId(seed), turn: TurnNumber::ZERO, seed, ruleset: generated.ruleset_ref.clone(), schema_version: 1, map_width: generated.grid.width, tiles, civilizations: civilization_states, cities: BTreeMap::new(), units: BTreeMap::new(), attacks: BTreeMap::new(), control: BTreeMap::new(), visibility, diplomacy: Default::default(), entropy: Default::default() };
     Ok((state, SimulationVersions { ruleset: generated.ruleset_ref, resolver_version: 1 }, homes))
