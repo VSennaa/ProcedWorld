@@ -199,6 +199,41 @@ Correção de alinhamento com a fórmula compartilhada do GDD 12, aplicada em 20
   manutenção entra na prioridade de pagamento do GDD 03. Ritmo de obra e custos não-produção são
   proposta de balanceamento, registrados no código e no DIAGNOSTICO, nunca inventados no cliente.
 - Visão do tile: `improvement` (id ou `null`) e `build_progress` quando houver obra.
+- **Implementação (2026-10-03, `pw-engine/src/improvements.rs`).** Wire da ordem:
+  `{"type":"build","data":{"improvement":"improvement.farm"}}` (`UnitOrder::Build`). Rejeições:
+  `not_a_worker`, `unknown_improvement`, `improvement_technology_not_researched`,
+  `improvement_terrain_invalid`, `tile_already_improved`, `city_tile_not_improvable`,
+  `tile_work_in_progress`, `tile_outside_territory`. Estado do tile: `improvement` e
+  `build { improvement, progress }`, ambos no hash. A obra fica no tile se o trabalhador sair; ordem
+  para a mesma melhoria retoma, para outra recomeça do zero. Ordem que deixa de ser legal volta a `Idle`
+  sem progresso.
+- **Simplificações provisórias** (registradas também em `engine/DIAGNOSTICO-P7.md`, "Melhorias"):
+  - *Bioma*: o tile do motor guarda só o código de terreno; cada terreno corresponde a **um** bioma do
+    catálogo (planície→`plains`, floresta→`forest`, selva→`jungle`, pântano→`swamp`,
+    deserto→`desert`, estepe→`steppe`, costa→`coast`, oceano→`ocean`). Savana/tundra (gerados como
+    estepe) e montanha/geleira (gerados como planície) não são distinguíveis; a pedreira (só montanha)
+    não pode ser construída por enquanto.
+  - *Recurso*: o motor não guarda depósitos por tile; o tile oferece os `resource_tags` do seu bioma
+    (`core.biomes`). Melhoria com `resources` vazio não exige recurso.
+  - *Ritmo e custos*: trabalho fixo de **2 por turno** (`WORK_PER_TURN`); custos não-produção (pedra,
+    madeira) não têm estoque no motor e viram trabalho 1:1 (fazenda 8 → 4 turnos; campo irrigado
+    16+6 → 11 turnos).
+  - *Território*: `control` explícito; senão, a cidade mais próxima cujo raio de trabalho (2) cobre o
+    tile (empate por id de cidade). "Neutro adjacente" = sem dono e vizinho de tile próprio. Tile de
+    cidade não recebe melhoria.
+  - *Efeitos*: só `AdjustResource` no tile soma rendimento (depois limitado a 0–6); efeitos `AddTag`
+    (mina, jardim de especiarias, cisterna, proteção do campo irrigado) ainda não têm regra no motor.
+  - *Manutenção*: em riqueza, paga pelo dono do território do tile, depois do sustento das cidades,
+    por índice de tile. Sem saldo, o bônus fica suspenso **só naquele turno** (inclusive a riqueza que
+    a própria melhoria daria); marcar suspensão e reparo com produção ainda não existem. Melhoria em
+    terra neutra fica dormente (ninguém trabalha, ninguém paga).
+- Visão (`pw-server`): tile com `improvement`, `build_progress` (`{improvement, progress, required}`
+  ou `null`), `biome` e `yields` efetivos (base + melhoria, 0–6); trabalhador próprio traz `buildable`
+  (melhorias que o motor aceitaria agora no tile dele).
+- Bot T0: cidade com população ≥ 3 treina trabalhador até um por cidade; trabalhador ocioso recebe
+  `Build` (ou `MoveTo` até o tile) da melhoria de maior ganho ponderado no raio das cidades, só quando
+  a renda de riqueza do turno anterior cobre sustento + manutenção das melhorias + 1 e o tesouro tem
+  4 + 2 × manutenção (proposta de balanceamento).
 
 ### 4.3 Ordens de unidade (decidido em 2026-10-03)
 
@@ -206,7 +241,7 @@ Cada unidade guarda uma **ordem persistente** e o turno em que foi pulada:
 
 ```text
 UnitState { ..., order: UnitOrder, skipped_turn: Option<Turn> }
-UnitOrder = Idle | Fortify | Sentry | Explore | MoveTo { target: TileIndex }
+UnitOrder = Idle | Fortify | Sentry | Explore | MoveTo { target: TileIndex } | Build { improvement }
 ```
 
 - Unidade recém-produzida nasce `Idle`. `MoveTo` avança pelo caminho a cada turno (mesma regra de

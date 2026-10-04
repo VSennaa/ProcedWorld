@@ -3,12 +3,21 @@
 use crate::{
     hex::Grid,
     ids::{CivId, CityId, TileIndex},
-    world::{can_explore, movement_cost, next_technology, queued_food_cost, unit_movement, unit_role, AcceptedCommand, CityFocus, CommandOrigin, CommandPayload, GroundingRef, UnitOrder, WorldState, SETTLER_CITY_ID_BASE, TERRAIN_OCEAN},
+    improvements::{civilization_upkeep, improvement_value, improvements, territory_owner, ImprovementDefinition},
+    world::{can_explore, grid_for, movement_cost, next_technology, queued_food_cost, unit_movement, unit_role, unit_route, AcceptedCommand, CityFocus, CommandOrigin, CommandPayload, GroundingRef, UnitOrder, WorldState, SETTLER_CITY_ID_BASE, TERRAIN_OCEAN},
 };
 use std::collections::{BTreeSet, VecDeque};
 
 // Keep the two-hex work areas disjoint when selecting a new settlement.
 const SETTLEMENT_SPACING: u32 = 5;
+/// A city trains a worker only once it has this many people (balance proposal, 2026-10-03).
+const WORKER_MIN_POPULATION: u32 = 3;
+/// Improvements are started only while the treasury holds this reserve plus twice the upkeep
+/// the civilization would owe afterwards (balance proposal, 2026-10-03).
+const IMPROVEMENT_TREASURY_RESERVE: u32 = 4;
+/// ... and only while last turn's wealth income exceeds essential city upkeep plus all improvement
+/// upkeep by this margin, so improvements never eat the reserve new cities live on (2026-10-03).
+const IMPROVEMENT_INCOME_MARGIN: u32 = 1;
 
 /// A deterministic, utility-based civilization bot. It has no external model or I/O.
 #[derive(Clone, Debug, Default)]
@@ -32,6 +41,10 @@ impl BotT0 {
         }
         let mut expansion_pending = state.units.values().any(|unit| unit.owner == civilization && unit.unit_type == "unit.settler")
             || cities.iter().any(|(_, city)| city.unit_queue.iter().any(|id| id == "unit.settler"));
+        // One worker per city: count trained and queued workers.
+        let mut workers = state.units.values().filter(|unit| unit.owner == civilization && unit_role(&unit.unit_type) == "worker").count()
+            + cities.iter().flat_map(|(_, city)| &city.unit_queue).filter(|id| unit_role(id) == "worker").count();
+        let city_count = cities.len();
         for (city_id, city) in cities {
             let focus = if city.food_stock < city.population.saturating_add(queued_food_cost(city)) { CityFocus::Supply } else if city.unit_queue.is_empty() { CityFocus::Build } else { CityFocus::Diversify };
             let mut grounding = base.clone();
@@ -46,6 +59,9 @@ impl BotT0 {
                 expansion_pending = true;
             } else if city.unit_queue.is_empty() && !state.units.values().any(|unit| unit.owner == civilization && unit.unit_type == "unit.scout") {
                 proposals.push(BotProposal { payload: CommandPayload::QueueUnit { city_id, unit_type: "unit.scout".into() }, grounding });
+            } else if city.unit_queue.is_empty() && city.population >= WORKER_MIN_POPULATION && workers < city_count {
+                proposals.push(BotProposal { payload: CommandPayload::QueueUnit { city_id, unit_type: "unit.worker".into() }, grounding });
+                workers += 1;
             }
         }
         let civ = &state.civilizations[&civilization];
@@ -78,6 +94,14 @@ impl BotT0 {
             }
             // Persistent orders replace per-turn micro-moves: only idle units need a new order.
             if unit.order != UnitOrder::Idle { continue; }
+            if unit_role(&unit.unit_type) == "worker" {
+                // A worker with nothing useful to build stays idle and is re-evaluated next turn.
+                if let Some((order, tile)) = worker_order(state, civilization, *unit_id) {
+                    grounding.push(GroundingRef::Tile { tile });
+                    proposals.push(BotProposal { payload: CommandPayload::SetUnitOrder { unit_id: *unit_id, order }, grounding });
+                }
+                continue;
+            }
             let order = if unit_role(&unit.unit_type) == "defense" || !can_explore(state, *unit_id) { UnitOrder::Fortify } else { UnitOrder::Explore };
             proposals.push(BotProposal { payload: CommandPayload::SetUnitOrder { unit_id: *unit_id, order }, grounding });
         }
@@ -97,6 +121,72 @@ impl BotProposal {
     pub fn accept(self, state: &WorldState, actor_id: CivId, command_id: u64, accepted_sequence: u64) -> AcceptedCommand {
         let kind = self.payload.kind();
         AcceptedCommand { command_id, world_id: state.world_id, turn: state.turn, accepted_sequence, actor_id, origin: CommandOrigin::Bot, kind, payload: self.payload, grounding: self.grounding, intent_evidence: None, mandate: None }
+    }
+}
+
+/// The most useful legal improvement near an own city for an idle worker: `Build` when the worker
+/// already stands on the chosen tile, `MoveTo` otherwise. Candidates are tiles of the civilization's
+/// territory inside its cities' work radius, without improvement, city or another unit, and not
+/// already targeted by another own worker. Order: value (`improvement_value`), worked tiles first,
+/// distance, tile id, catalog order. Nothing is proposed while the treasury cannot carry the upkeep.
+fn worker_order(state: &WorldState, civilization: CivId, unit_id: crate::ids::UnitId) -> Option<(UnitOrder, TileIndex)> {
+    let unit = state.units.get(&unit_id)?;
+    let grid = grid_for(state).ok()?;
+    let from = grid.cell(unit.tile).ok()?;
+    let civ = state.civilizations.get(&civilization)?;
+    let upkeep = civilization_upkeep(state, civilization);
+    let own_cities = || state.cities.values().filter(|city| city.owner == civilization);
+    let income: u32 = own_cities().map(|city| u32::from(city.last_yields.wealth)).sum();
+    let essential: u32 = own_cities().map(|city| 1 + (city.population + 3) / 4).sum();
+    let affordable = |extra: u32| civ.treasury_wealth >= IMPROVEMENT_TREASURY_RESERVE + 2 * (upkeep + extra)
+        && income >= essential + upkeep + extra + IMPROVEMENT_INCOME_MARGIN;
+    let cheapest = improvements().iter().map(ImprovementDefinition::upkeep).min()?;
+    if !affordable(cheapest) { return None; }
+    let movement = unit_movement(&unit.unit_type);
+    let claimed: BTreeSet<TileIndex> = state.units.iter()
+        .filter(|(id, other)| **id != unit_id && other.owner == civilization)
+        .filter_map(|(_, other)| match &other.order {
+            UnitOrder::MoveTo { target } if unit_role(&other.unit_type) == "worker" => Some(*target),
+            UnitOrder::Build { .. } => Some(other.tile),
+            _ => None,
+        })
+        .collect();
+    let mut candidates = BTreeSet::new();
+    for city in state.cities.values().filter(|city| city.owner == civilization) {
+        let Ok(area) = grid.area(grid.cell(city.tile).ok()?, 2) else { continue };
+        candidates.extend(area.into_iter().filter_map(|cell| grid.tile_index(cell).ok()));
+    }
+    let worked: BTreeSet<TileIndex> = state.cities.values().filter(|city| city.owner == civilization).flat_map(|city| city.workplaces.iter().copied()).collect();
+    let mut best: Option<((std::cmp::Reverse<u32>, bool, u32, TileIndex, usize), &ImprovementDefinition, TileIndex)> = None;
+    for tile in candidates {
+        let data = &state.tiles[tile.0 as usize];
+        if data.improvement.is_some() || claimed.contains(&tile)
+            || state.cities.values().any(|city| city.tile == tile)
+            || state.units.iter().any(|(id, other)| *id != unit_id && other.tile == tile) { continue; }
+        let distance = grid.distance(from, grid.cell(tile).ok()?).ok()?;
+        let mut local: Option<(_, &ImprovementDefinition)> = None;
+        for (index, definition) in improvements().iter().enumerate() {
+            if !civ.researched_technologies.contains(&definition.requires_technology)
+                || !crate::improvements::allowed_on_terrain(definition, data.terrain)
+                || !affordable(definition.upkeep()) { continue; }
+            let value = improvement_value(data, definition);
+            if value == 0 { continue; }
+            let key = (std::cmp::Reverse(value), !worked.contains(&tile), distance, tile, index);
+            if local.as_ref().map_or(true, |(current, _)| key < *current) { local = Some((key, definition)); }
+        }
+        // The costlier territory and route checks run only for a tile that would win.
+        let Some((key, definition)) = local else { continue };
+        if best.as_ref().is_some_and(|(current, _, _)| *current <= key) { continue; }
+        if territory_owner(state, tile) != Some(civilization)
+            || (tile != unit.tile && unit_route(state, unit.tile, tile, movement).is_none()) { continue; }
+        best = Some((key, definition, tile));
+    }
+    let (_, definition, tile) = best?;
+    if tile == unit.tile {
+        crate::improvements::check_build(state, unit_id, &definition.id).ok()?;
+        Some((UnitOrder::Build { improvement: definition.id.clone() }, tile))
+    } else {
+        Some((UnitOrder::MoveTo { target: tile }, tile))
     }
 }
 
@@ -156,7 +246,7 @@ mod tests {
             schema_version: 1, map_width: 20,
             tiles: vec![TileState { terrain: 0, river: false, yields: crate::world::TileYields {
                 food: 2, production: 1, wealth: 1, knowledge: 0, culture: 0,
-            } }; 200],
+            }, ..Default::default() }; 200],
             civilizations: BTreeMap::from([(CivId(0), civ)]), cities: BTreeMap::new(),
             units: BTreeMap::new(), attacks: BTreeMap::new(), control: BTreeMap::new(),
             visibility: BTreeMap::new(), diplomacy: Default::default(), entropy: Default::default(),
@@ -297,5 +387,53 @@ mod tests {
         assert_eq!(orders(&state), vec![(crate::ids::UnitId(7), UnitOrder::Explore)]);
         state.units.get_mut(&crate::ids::UnitId(7)).unwrap().order = UnitOrder::Fortify;
         assert!(orders(&state).is_empty());
+    }
+
+    #[test]
+    fn idle_worker_improves_a_tile_near_the_city_and_cities_train_workers() {
+        let mut initial = expansion_world();
+        // Income must cover essential upkeep plus the new improvement's upkeep and the margin.
+        for tile in &mut initial.tiles { tile.yields.wealth = 4; }
+        let versions = crate::world::SimulationVersions { ruleset: initial.ruleset.clone(), resolver_version: 1 };
+        let founding = BotT0.decide(&initial, CivId(0), TileIndex(0)).remove(0).accept(&initial, CivId(0), 1, 1);
+        let mut state = crate::world::step(&initial, &[founding], initial.seed, &versions).state;
+        let worker = crate::ids::UnitId(5);
+        state.units.insert(worker, crate::world::UnitState {
+            owner: CivId(0), tile: TileIndex(22), unit_type: "unit.worker".into(),
+            hit_points: 100, movement_left: 2, explored: false, order: UnitOrder::Idle, skipped_turn: None,
+        });
+        let first = BotT0.decide(&state, CivId(0), TileIndex(0));
+        let order = first.iter().find_map(|proposal| match &proposal.payload {
+            CommandPayload::SetUnitOrder { unit_id, order } if *unit_id == worker => Some(order.clone()),
+            _ => None,
+        });
+        assert!(matches!(order, Some(UnitOrder::Build { .. } | UnitOrder::MoveTo { .. })), "{order:?}");
+        let mut built = 0;
+        for turn in 0..30_u64 {
+            let commands: Vec<_> = BotT0.decide(&state, CivId(0), TileIndex(0)).into_iter().enumerate()
+                .map(|(index, proposal)| proposal.accept(&state, CivId(0), 1_000 + turn * 100 + index as u64, index as u64)).collect();
+            let result = crate::world::step(&state, &commands, state.seed, &versions);
+            for event in &result.events {
+                if let crate::world::DomainEvent::CommandRejected { command_id, reason } = event {
+                    assert!(!commands.iter().any(|command| command.command_id == *command_id
+                        && matches!(command.payload, CommandPayload::SetUnitOrder { unit_id, .. } if unit_id == worker)), "worker order rejected: {reason:?}");
+                }
+            }
+            state = result.state;
+            built = state.tiles.iter().filter(|tile| tile.improvement.is_some()).count();
+        }
+        assert!(built >= 1, "expected the worker to finish an improvement, got {built}");
+        // No worker is queued below the population threshold; a grown city queues one.
+        let city = state.cities.get_mut(&CityId(0)).unwrap();
+        city.unit_queue.clear();
+        city.population = WORKER_MIN_POPULATION;
+        state.units.remove(&worker);
+        state.units.insert(crate::ids::UnitId(9), crate::world::UnitState {
+            owner: CivId(0), tile: TileIndex(199), unit_type: "unit.scout".into(),
+            hit_points: 100, movement_left: 3, explored: false, order: UnitOrder::Fortify, skipped_turn: None,
+        });
+        state.civilizations.get_mut(&CivId(0)).unwrap().researched_technologies.remove("tech.storage");
+        assert!(BotT0.decide(&state, CivId(0), TileIndex(0)).iter().any(|proposal| matches!(
+            &proposal.payload, CommandPayload::QueueUnit { unit_type, .. } if unit_type == "unit.worker")));
     }
 }

@@ -5,6 +5,7 @@
 
 use pw_engine::{
     ids::{CivId, TileIndex},
+    improvements,
     world::{effective_unit_orders, idle_units_with, AcceptedCommand, DomainEvent, Visibility, WorldState},
 };
 use serde_json::{json, Value};
@@ -27,9 +28,17 @@ pub fn view_for(state: &WorldState, civ: CivId, home: Option<TileIndex>, pending
         .filter(|(_, v)| **v != Visibility::Unknown)
         .filter_map(|(index, v)| {
             let tile = state.tiles.get(index.0 as usize)?;
+            // `yields` is the effective per-worker output (base + improvement, 0-6); `biome` is the
+            // catalog biome of the terrain, matching `improvements[].biomes` in the catalog.
             Some(json!({
                 "tile": index, "visibility": v, "terrain": tile.terrain,
-                "river": tile.river, "yields": tile.yields, "owner": state.control.get(index),
+                "biome": improvements::terrain_biome(tile.terrain),
+                "river": tile.river, "yields": improvements::tile_output(tile), "owner": state.control.get(index),
+                "improvement": tile.improvement,
+                "build_progress": tile.build.as_ref().map(|build| json!({
+                    "improvement": build.improvement, "progress": build.progress,
+                    "required": improvements::improvement(&build.improvement).map(|definition| definition.work_required()),
+                })),
             }))
         })
         .collect();
@@ -50,9 +59,14 @@ pub fn view_for(state: &WorldState, civ: CivId, home: Option<TileIndex>, pending
                     // Orders are private to the owner.
                     object.remove("order");
                     object.remove("skipped_turn");
-                } else if let Some((order, skipped)) = effective.get(id) {
-                    object.insert("order".to_string(), json!(order));
-                    object.insert("skipped_turn".to_string(), json!(skipped));
+                } else {
+                    if let Some((order, skipped)) = effective.get(id) {
+                        object.insert("order".to_string(), json!(order));
+                        object.insert("skipped_turn".to_string(), json!(skipped));
+                    }
+                    // Improvements this own worker may start on its tile now (engine validation).
+                    let buildable = improvements::buildable_improvements(state, *id);
+                    if !buildable.is_empty() { object.insert("buildable".to_string(), json!(buildable)); }
                 }
             }
             json!({ "id": id, "unit": unit })
@@ -93,4 +107,29 @@ pub fn events_for(state: &WorldState, civ: CivId, turn_commands: &[AcceptedComma
         })
         .map(|event| serde_json::to_value(event).unwrap_or(Value::Null))
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pw_engine::improvements::TileBuild;
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn tiles_carry_improvement_build_progress_and_effective_yields() {
+        let (mut state, _, _) = pw_harness::initial_world(5, 2).expect("world builds");
+        let civ = *state.civilizations.keys().next().expect("a civilization");
+        state.visibility.insert(civ, BTreeMap::from([(TileIndex(0), Visibility::Visible), (TileIndex(1), Visibility::Remembered)]));
+        state.tiles[0].improvement = Some("improvement.farm".into());
+        state.tiles[0].yields.food = 2;
+        state.tiles[1].build = Some(TileBuild { improvement: "improvement.farm".into(), progress: 2 });
+        let view = view_for(&state, civ, None, &[]);
+        let tiles = view["tiles"].as_array().expect("tiles");
+        assert_eq!(tiles[0]["improvement"], json!("improvement.farm"));
+        assert_eq!(tiles[0]["build_progress"], Value::Null);
+        assert_eq!(tiles[0]["yields"]["food"], json!(3));
+        assert_eq!(tiles[1]["improvement"], Value::Null);
+        assert_eq!(tiles[1]["build_progress"], json!({ "improvement": "improvement.farm", "progress": 2, "required": 8 }));
+        assert!(tiles[0]["biome"].is_string());
+    }
 }
