@@ -58,7 +58,7 @@ pub const TERRAIN_STEPPE: u8 = 5;
 pub const TERRAIN_COAST: u8 = 6;
 pub const TERRAIN_OCEAN: u8 = 7;
 
-const RESEARCH_PERCENTAGES: [u8; 3] = [0, 10, 20];
+pub const RESEARCH_PERCENTAGES: [u8; 3] = [0, 10, 20];
 const RESEARCH_PER_TURN_CAP: u32 = 10;
 const ACTIVE_PRACTICE_LIMIT: usize = 3;
 const VISIBILITY_RADIUS: u32 = 2;
@@ -1428,22 +1428,24 @@ fn resolve_economy(state: &mut WorldState, seed: u64) {
     resolve_unit_production(state);
 }
 
+/// Research points `civ_id` adds per turn with its current investment, from the last resolved yields.
+/// Also published to the client, so the estimate shown is the engine's own rule.
+pub fn research_points_per_turn(state: &WorldState, civ_id: CivId) -> u32 {
+    let Some(civ) = state.civilizations.get(&civ_id) else { return 0 };
+    let production: u32 = state.cities.values().filter(|city| city.owner == civ_id).map(|city| u32::from(city.last_yields.production)).sum();
+    let maintenance: u32 = civ.active_practices.iter().filter_map(|id| practice(id).map(|(_, definition)| definition.maintenance)).sum();
+    let available = production.saturating_sub(maintenance);
+    // Research uses half of the allocated production. Round the resulting
+    // point up so the supported 10/20% investments can progress from a
+    // one-production founding city instead of remaining permanently zero.
+    ((available.saturating_mul(u32::from(civ.research_investment)) + 199) / 200).min(RESEARCH_PER_TURN_CAP)
+}
+
 fn resolve_research_and_practices(state: &mut WorldState) {
     let civ_ids: Vec<CivId> = state.civilizations.keys().copied().collect();
     for civ_id in civ_ids {
-        let production: u32 = state.cities.values().filter(|city| city.owner == civ_id).map(|city| u32::from(city.last_yields.production)).sum();
-        let maintenance: u32 = state.civilizations[&civ_id].active_practices.iter().filter_map(|id| practice(id).map(|(_, definition)| definition.maintenance)).sum();
-        let available = production.saturating_sub(maintenance);
-        let (research, investment) = {
-            let civ = &state.civilizations[&civ_id];
-            (civ.research.clone(), civ.research_investment)
-        };
-        let Some(research) = research else { continue; };
-        // Research uses half of the allocated production. Round the resulting
-        // point up so the supported 10/20% investments can progress from a
-        // one-production founding city instead of remaining permanently zero.
-        let points = ((available.saturating_mul(u32::from(investment)) + 199) / 200)
-            .min(RESEARCH_PER_TURN_CAP);
+        let Some(research) = state.civilizations[&civ_id].research.clone() else { continue; };
+        let points = research_points_per_turn(state, civ_id);
         let Some(definition) = technology(&research) else { continue; };
         let civ = state.civilizations.get_mut(&civ_id).expect("civilization id was collected from state");
         let progress = civ.research_progress.entry(research.clone()).or_default();

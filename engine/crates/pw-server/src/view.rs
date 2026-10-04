@@ -80,6 +80,9 @@ pub fn view_for(state: &WorldState, civ: CivId, home: Option<TileIndex>, pending
         "map_width": state.map_width,
         "civ": civ,
         "civilization": state.civilizations.get(&civ),
+        // Engine rule (research_points_per_turn); the client's estimate never guesses it.
+        "research_per_turn": pw_engine::world::research_points_per_turn(state, civ),
+        "research_percentages": pw_engine::world::RESEARCH_PERCENTAGES,
         "home_tile": if has_city { None } else { home },
         "tiles": tiles,
         "cities": cities,
