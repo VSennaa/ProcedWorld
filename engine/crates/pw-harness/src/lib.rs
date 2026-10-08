@@ -2,21 +2,23 @@
 
 use std::{collections::BTreeMap, fs, path::Path};
 use serde::{Deserialize, Serialize};
-use pw_engine::{entropy::{bundled_catalog, respond_commands, EntropyDirector}, diplomacy::{audit_records, DiplomaticAudit}, governor::{Governor, Mandate, MandatePreset}, hash::StateHash, ids::{CivId, TileIndex, TurnNumber}, mapgen::{generate, Catalog, WorldParams}, memory::{CanonicalKind, CanonicalSet}, rng::Rng, world::{replay, step, CivilizationState, CommandLog, CommandOrigin, DomainEvent, SimulationVersions, TileState, TileYields, Visibility, WorldId, WorldSnapshot, WorldState, TERRAIN_COAST, TERRAIN_DESERT, TERRAIN_FOREST, TERRAIN_JUNGLE, TERRAIN_OCEAN, TERRAIN_PLAINS, TERRAIN_STEPPE, TERRAIN_SWAMP}};
+use pw_engine::{entropy::{bundled_catalog, respond_commands, EntropyDirector}, diplomacy::{audit_records, DiplomaticAudit}, governor::{Governor, Mandate}, personality::BotPersonality, hash::StateHash, ids::{CivId, TileIndex, TurnNumber}, mapgen::{generate, Catalog, WorldParams}, memory::{CanonicalKind, CanonicalSet}, rng::Rng, world::{replay, step, CivilizationState, CommandLog, CommandOrigin, DomainEvent, SimulationVersions, TileState, TileYields, Visibility, WorldId, WorldSnapshot, WorldState, TERRAIN_COAST, TERRAIN_DESERT, TERRAIN_FOREST, TERRAIN_JUNGLE, TERRAIN_OCEAN, TERRAIN_PLAINS, TERRAIN_STEPPE, TERRAIN_SWAMP}};
 
 pub const SNAPSHOT_INTERVAL: u32 = 100;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)] pub struct RunConfig { pub seed: u64, pub civilizations: u32, pub turns: u32 }
 impl Default for RunConfig { fn default() -> Self { Self { seed: 1, civilizations: 8, turns: 1_000 } } }
 #[derive(Clone, Debug, Serialize, Deserialize)] pub struct StoredRun { pub snapshot: WorldSnapshot, pub log: CommandLog, pub home_tiles: BTreeMap<CivId, TileIndex> }
-#[derive(Clone, Debug)] pub struct SimulationRun { pub stored: StoredRun, pub final_state: WorldState, pub final_events: Vec<DomainEvent>, pub audits: Vec<DiplomaticAudit>, pub terms: PressureTerms, pressure_sum: u64, pressure_samples: u64 }
+#[derive(Clone, Debug)] pub struct SimulationRun { pub stored: StoredRun, pub final_state: WorldState, pub final_events: Vec<DomainEvent>, pub audits: Vec<DiplomaticAudit>, pub terms: PressureTerms, pub personalities: BTreeMap<CivId, BotPersonality>, pressure_sum: u64, pressure_samples: u64 }
 /// Population-weighted sums of the `P_c` terms over every resolved turn (harness metric only, GDD 12):
-/// `D`, `G`, `W`, `E`, `(100 - S)/10` and `-(C - 50)/5`, plus pair-turns spent in tension and war.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)] pub struct PressureTerms { pub deprivation: i64, pub group_tension: i64, pub war_threat: i64, pub exposure: i64, pub stability: i64, pub cohesion: i64, pub population: i64, pub tension_pair_turns: u64, pub war_pair_turns: u64 }
+/// `D`, `G`, `W`, `E`, `(100 - S)/10` and `-(C - 50)/5`, the administrative load subtracted from `S`,
+/// plus pair-turns spent in tension and war.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)] pub struct PressureTerms { pub deprivation: i64, pub group_tension: i64, pub war_threat: i64, pub exposure: i64, pub stability: i64, pub cohesion: i64, pub admin_load: i64, pub population: i64, pub tension_pair_turns: u64, pub war_pair_turns: u64 }
 impl PressureTerms {
     fn sample(&mut self, state: &WorldState) {
-        for city in state.cities.values() {
+        for (id, city) in &state.cities {
             let Some(civ) = state.civilizations.get(&city.owner) else { continue; };
             let population = i64::from(city.population);
+            self.admin_load += population * i64::from(pw_engine::world::administrative_load(state, *id));
             self.deprivation += population * i64::from(city.deprivation);
             self.group_tension += population * i64::from(city.group_tension);
             self.war_threat += population * i64::from(city.war_threat);
@@ -50,18 +52,22 @@ pub fn run_simulation(config: RunConfig) -> Result<SimulationRun, String> {
     if config.civilizations == 0 || config.turns == 0 { return Err("civilizations and turns must be greater than zero".into()); }
     let (mut state, versions, homes) = initial_world(config.seed, config.civilizations)?;
     let snapshot = WorldSnapshot::new(state.clone(), versions);
-    let mut log = CommandLog::default(); let mandate = Mandate::preset(MandatePreset::GrowCautiously, 1); let catalog = bundled_catalog(); let director = EntropyDirector { catalog: &catalog, decision_port: None }; let mut command_id = 1_u64; let mut final_events = Vec::new(); let mut audits = Vec::new(); let mut pressure_sum = 0_u64; let mut pressure_samples = 0_u64; let mut terms = PressureTerms::default();
+    // Every harness civilization is a bot: its personality, derived from the seed, sets its Governor's
+    // Mandate and war policy (B2). Bots have no player to wait for, so they decide as present.
+    let personalities = BotPersonality::assign(config.seed, homes.keys().copied());
+    let mandates: BTreeMap<CivId, Mandate> = personalities.iter().map(|(civ, personality)| (*civ, personality.mandate(1))).collect();
+    let mut log = CommandLog::default(); let catalog = bundled_catalog(); let director = EntropyDirector { catalog: &catalog, decision_port: None }; let mut command_id = 1_u64; let mut final_events = Vec::new(); let mut audits = Vec::new(); let mut pressure_sum = 0_u64; let mut pressure_samples = 0_u64; let mut terms = PressureTerms::default();
     for _ in 0..config.turns {
         let mut commands = Vec::new();
         for civilization in rotating_order(config.seed, state.turn, &homes) {
-            let governor = Governor { mandate: &mandate, decision_port: None };
-            let decision = governor.decide(&state, civilization, homes[&civilization], true, command_id, commands.len() as u64 + 1);
+            let governor = Governor { mandate: &mandates[&civilization], decision_port: None };
+            let decision = governor.decide_with(&state, civilization, homes[&civilization], false, command_id, commands.len() as u64 + 1, personalities[&civilization].war_policy());
             command_id = command_id.checked_add(decision.commands.len().max(1) as u64).ok_or_else(|| "command id exhausted".to_string())?;
             commands.extend(decision.commands);
         }
         // The Governor answers pending Entropy events for every civilization; then the director opens new ones.
         for civilization in homes.keys() {
-            let responses = respond_commands(&state, *civilization, &mandate, command_id, commands.len() as u64 + 1);
+            let responses = respond_commands(&state, *civilization, &mandates[civilization], command_id, commands.len() as u64 + 1);
             command_id = command_id.saturating_add(responses.len() as u64);
             commands.extend(responses);
         }
@@ -76,7 +82,7 @@ pub fn run_simulation(config: RunConfig) -> Result<SimulationRun, String> {
         audits.extend(audit_records(&commands, &result.events));
         log.record_turn(turn, result.state_hash); final_events = result.events; state = result.state;
     }
-    Ok(SimulationRun { stored: StoredRun { snapshot, log, home_tiles: homes }, final_state: state, final_events, audits, terms, pressure_sum, pressure_samples })
+    Ok(SimulationRun { stored: StoredRun { snapshot, log, home_tiles: homes }, final_state: state, final_events, audits, terms, personalities, pressure_sum, pressure_samples })
 }
 
 pub fn replay_log(stored: &StoredRun) -> Result<StateHash, String> { replay(&stored.snapshot, &stored.log).map(|result| result.state.state_hash()).map_err(|error| format!("replay failed: {error:?}")) }
@@ -106,8 +112,8 @@ fn write_chronicles(directory: &Path, run: &SimulationRun) -> Result<(), String>
         event_history.push((*turn, result.events));
         state = result.state;
     }
-    let mandate = Mandate::preset(MandatePreset::GrowCautiously, 1);
     for civilization in state.civilizations.keys() {
+        let mandate = run.personalities.get(civilization).map_or_else(|| BotPersonality::Cautious.mandate(1), |personality| personality.mandate(1));
         let chronicle = CanonicalSet::rebuild(&state, *civilization, &mandate, &event_history).document(CanonicalKind::Chronicle).content.clone();
         fs::write(directory.join(format!("civ-{}.md", civilization.0)), chronicle).map_err(|error| error.to_string())?;
     }
@@ -181,9 +187,12 @@ fn yields(biome: &str) -> TileYields { match biome { "forest" => TileYields { fo
         assert!(metrics.population >= 40, "expected at least 40 population, got {}", metrics.population);
         assert!(metrics.collapses <= 2, "expected at most two collapses, got {}", metrics.collapses);
         assert!(metrics.events >= 10, "expected the Entropy director to open events, got {}", metrics.events);
-        // Upper bound only. The floor of 10 is a balance goal not reached yet (cohesion term centered on 50,
-        // user decision 2026-10-02): reported as a warning, not a red test (docs/process/agentes-e-cotas.md §4).
-        // See engine/DIAGNOSTICO-P7.md, "P12b" and "B1" (measured 4 with W from diplomacy; the gap needs a design decision).
+        // Bot personalities and border disputes make the world contentious (B2): tension and war must happen.
+        assert!(run.terms.tension_pair_turns > 0, "expected border tensions between bots");
+        assert!(run.terms.war_pair_turns > 0, "expected at least one war between bots");
+        // Upper bound only. The floor of 10 is a balance goal reached on this seed but not on seeds 42 and 7
+        // (B2: 10, 8 and 9): reported as a warning, not a red test (docs/process/agentes-e-cotas.md §4).
+        // See engine/DIAGNOSTICO-P7.md, "P12b", "B1" and "B2".
         if metrics.average_pressure < 10 {
             eprintln!("warning: average pressure {} below the balance goal of 10 (events {}, crises {})", metrics.average_pressure, metrics.events, metrics.crises);
         }

@@ -26,9 +26,12 @@ fn execute(arguments: Vec<String>) -> Result<(), String> {
             println!("cities {} population {} average_pressure {} crises {} collapses {} events {} ms/turn {:.3}", metrics.cities, metrics.population, metrics.average_pressure, metrics.crises, metrics.collapses, metrics.events, elapsed_ms / f64::from(config.turns));
             let terms = run.terms;
             let tenths = |sum: i64| { let value = terms.tenths(sum); format!("{}{}.{}", if value < 0 { "-" } else { "" }, value.abs() / 10, value.abs() % 10) };
-            println!("pressure_terms D {} G {} W {} E {} S {} C {} tension_pair_turns {} war_pair_turns {}", tenths(terms.deprivation), tenths(terms.group_tension), tenths(terms.war_threat), tenths(terms.exposure), tenths(terms.stability), tenths(terms.cohesion), terms.tension_pair_turns, terms.war_pair_turns);
+            println!("pressure_terms D {} G {} W {} E {} S {} C {} admin_load {} tension_pair_turns {} war_pair_turns {}", tenths(terms.deprivation), tenths(terms.group_tension), tenths(terms.war_threat), tenths(terms.exposure), tenths(terms.stability), tenths(terms.cohesion), tenths(terms.admin_load), terms.tension_pair_turns, terms.war_pair_turns);
             let kinds = |kind: pw_engine::world::CommandKind| run.stored.log.commands.iter().filter(|command| command.kind == kind).count();
-            println!("conflict declare_war {} declare_attack {}", kinds(pw_engine::world::CommandKind::DeclareWar), kinds(pw_engine::world::CommandKind::DeclareAttack));
+            let executed_wars = run.audits.iter().filter(|audit| matches!(audit.action, Some(pw_engine::diplomacy::DiplomaticAction::DeclareWar { .. })) && audit.outcome == Some(pw_engine::diplomacy::DiplomaticOutcome::Executed)).count();
+            let truces = run.audits.iter().filter(|audit| matches!(audit.action, Some(pw_engine::diplomacy::DiplomaticAction::Propose { kind: pw_engine::diplomacy::ProposalKind::Truce })) && audit.outcome == Some(pw_engine::diplomacy::DiplomaticOutcome::Accepted)).count();
+            let disputes = run.final_state.diplomacy.entries.iter().filter(|entry| entry.category == pw_engine::diplomacy::LedgerCategory::Border && entry.intensity == pw_engine::diplomacy::BORDER_DISPUTE_INTENSITY && entry.status == pw_engine::diplomacy::EntryStatus::Active && entry.supersedes.is_none()).count();
+            println!("conflict declare_war {} wars_executed {} truces {} border_disputes {} declare_attack {}", kinds(pw_engine::world::CommandKind::DeclareWar), executed_wars, truces, disputes, kinds(pw_engine::world::CommandKind::DeclareAttack));
             let mut categories = std::collections::BTreeMap::new();
             for command in &run.stored.log.commands {
                 if let pw_engine::world::CommandPayload::ApplyEvent { category, cost, .. } = &command.payload { let entry = categories.entry(category.clone()).or_insert((0_u32, 0_u32)); entry.0 += 1; entry.1 += u32::from(*cost); }
@@ -38,11 +41,15 @@ fn execute(arguments: Vec<String>) -> Result<(), String> {
             let rejected = run.audits.iter().filter(|audit| audit.rejection.is_some()).count();
             let ungrounded = run.audits.iter().filter(|audit| !audit.is_grounded(&run.final_state.diplomacy)).count();
             println!("diplomacy audits {} accepted {} rejected {} ungrounded {} ledger_entries {} betrayal_marks {}", run.audits.len(), accepted, rejected, ungrounded, run.final_state.diplomacy.entries.len(), run.final_state.diplomacy.marks.len());
+            let mut reasons = std::collections::BTreeMap::new();
+            for audit in &run.audits { if let Some(reason) = audit.rejection { *reasons.entry(format!("{reason:?}")).or_insert(0_u32) += 1; } }
+            println!("diplomacy_rejections {}", reasons.iter().map(|(reason, count)| format!("{reason}={count}")).collect::<Vec<_>>().join(" "));
             if ungrounded > 0 { return Err("diplomatic actions without verifiable grounding".into()); }
             for (civilization, state) in &run.final_state.civilizations {
                 let cities = run.final_state.cities.values().filter(|city| city.owner == *civilization).count();
                 let population: u32 = run.final_state.cities.values().filter(|city| city.owner == *civilization).map(|city| city.population).sum();
-                println!("civ {} cities {} population {} cohesion {} collapsed {}", civilization.0, cities, population, state.cohesion, state.frozen);
+                let personality = run.personalities.get(civilization).map_or("none", |personality| personality.id());
+                println!("civ {} {} cities {} population {} cohesion {} collapsed {}", civilization.0, personality, cities, population, state.cohesion, state.frozen);
             }
             write_run(&PathBuf::from("out").join(config.seed.to_string()), &run)?;
             Ok(())
