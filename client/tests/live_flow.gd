@@ -227,6 +227,18 @@ func _run() -> void:
 	check(not _main.world.idle_units.has(5) and not _main._unit_panel._buttons["found"].visible, "the settler stops waiting and cannot found twice")
 
 	check(_main._session == {"world_id": 5, "civ": 0}, "joined payload establishes the live session")
+	# Session chronicle (C2c): a resolved turn report lands in the read-only Crônica screen.
+	var diff := {
+		"from_turn": _main.world.turn, "turn": _main.world.turn + 1,
+		"commands": [{"command_id": 1, "kind": "found_city", "payload": {"type": "found_city", "data": {"city_id": 0, "target": 178}}}],
+		"events": [{"type": "command_applied", "data": {"command_id": 1}}],
+		"view": _view(),
+	}
+	_main._on_envelope({"type": "turn_diff", "request_id": "", "payload": diff})
+	await _frames(2)
+	_main.show_screen("cronica")
+	var chronicle_texts: Array = _main._chronicle_view.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text)
+	check(chronicle_texts.any(func(text: String) -> bool: return text.begins_with("Ordem aplicada: fundar cidade")), "a resolved turn reaches the session chronicle")
 	# Re-enter through a fresh scene: it must load and send the token saved by the first join.
 	_main._on_leave_pressed()
 	await _frames(4)
