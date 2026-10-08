@@ -164,3 +164,13 @@ não no motor, que tem testes determinísticos objetivos.
 - Remoto (VPS): exportar `BOARD_REMOTE=deploy@<VPS_HOST>` ao lançar as filas; o quadro é servido pelo
   container `pw-board` (nginx) em `127.0.0.1:8110` no host, só por túnel:
   `ssh -L 8110:127.0.0.1:8110 deploy@<VPS_HOST>` e abrir `http://localhost:8110/board.html`.
+
+## Registro de retrabalho (desde 2026-10-08)
+
+Pedido do usuário: medir se o retrabalho de cada executor compensa frente ao custo de cota/reset.
+Toda entrega delegada ganha **uma linha** em `docs/process/retrabalho.jsonl` ao ser mesclada ou
+abandonada (`python tools/agents/rework.py add '<json>'`): executor e modelo, notas do juiz por rodada,
+correções automáticas, execuções extras do agente, correções à mão do supervisor, trocas de executor,
+tokens, custo direto e resultado. O relatório comparativo é gerado com
+`python tools/agents/rework.py report` (`docs/process/retrabalho.md`). Os logs dos agentes ficam sempre
+no checkout principal (`.agent-runs/`), mesmo quando rodam em worktrees.

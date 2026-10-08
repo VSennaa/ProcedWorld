@@ -26,7 +26,9 @@ set -euo pipefail
 name=${1:?task name}; prompt_file=${2:?prompt file}; sandbox=${3:-workspace-write}
 : "${OPENROUTER_API_KEY:?OPENROUTER_API_KEY not set}"
 root=$(git rev-parse --show-toplevel)
-runs="$root/.agent-runs"; mkdir -p "$runs"
+# Logs always go to the MAIN checkout, so runs inside git worktrees survive `git worktree remove`.
+main_root=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+runs="$main_root/.agent-runs"; mkdir -p "$runs"
 codex_bin=${CODEX_BIN:-codex}
 export JEV_CODEX_MODELS=${JEV_CODEX_MODELS:-gpt-6-astra,gpt-6-sol,gpt-6-luna,gpt-5.6-sol,gpt-5.6-terra,gpt-5.6-luna,gpt-5.5}
 export JEV_SCORES="$root/tools/agents/model-scores.json"
