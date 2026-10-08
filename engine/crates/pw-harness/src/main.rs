@@ -29,6 +29,11 @@ fn execute(arguments: Vec<String>) -> Result<(), String> {
             println!("pressure_terms D {} G {} W {} E {} S {} C {} tension_pair_turns {} war_pair_turns {}", tenths(terms.deprivation), tenths(terms.group_tension), tenths(terms.war_threat), tenths(terms.exposure), tenths(terms.stability), tenths(terms.cohesion), terms.tension_pair_turns, terms.war_pair_turns);
             let kinds = |kind: pw_engine::world::CommandKind| run.stored.log.commands.iter().filter(|command| command.kind == kind).count();
             println!("conflict declare_war {} declare_attack {}", kinds(pw_engine::world::CommandKind::DeclareWar), kinds(pw_engine::world::CommandKind::DeclareAttack));
+            let mut categories = std::collections::BTreeMap::new();
+            for command in &run.stored.log.commands {
+                if let pw_engine::world::CommandPayload::ApplyEvent { category, cost, .. } = &command.payload { let entry = categories.entry(category.clone()).or_insert((0_u32, 0_u32)); entry.0 += 1; entry.1 += u32::from(*cost); }
+            }
+            println!("entropy_by_category {}", categories.iter().map(|(category, (count, cost))| format!("{category}={count}/{cost}")).collect::<Vec<_>>().join(" "));
             let accepted = run.audits.iter().filter(|audit| audit.outcome == Some(pw_engine::diplomacy::DiplomaticOutcome::Accepted)).count();
             let rejected = run.audits.iter().filter(|audit| audit.rejection.is_some()).count();
             let ungrounded = run.audits.iter().filter(|audit| !audit.is_grounded(&run.final_state.diplomacy)).count();
