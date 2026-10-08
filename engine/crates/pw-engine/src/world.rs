@@ -121,11 +121,14 @@ pub struct CivilizationState {
     pub crisis_pressure: u8,
     pub zero_cohesion_turns: u8,
     pub frozen: bool,
+    /// The civilization's first city, fixed when it is founded (administrative load, B2 2026-10-07).
+    #[serde(default)]
+    pub capital: Option<CityId>,
 }
 
 impl Default for CivilizationState {
     fn default() -> Self {
-        Self { research: None, research_investment: 0, researched_technologies: BTreeSet::new(), research_progress: BTreeMap::new(), active_practices: BTreeSet::new(), treasury_wealth: INITIAL_TREASURY_WEALTH, cohesion: 50, legitimacy: 50, knowledge: 0, culture: 0, deprivation: 0, group_tension: 0, war_threat: 0, environmental_exposure: 0, crisis_pressure: 0, zero_cohesion_turns: 0, frozen: false }
+        Self { research: None, research_investment: 0, researched_technologies: BTreeSet::new(), research_progress: BTreeMap::new(), active_practices: BTreeSet::new(), treasury_wealth: INITIAL_TREASURY_WEALTH, cohesion: 50, legitimacy: 50, knowledge: 0, culture: 0, deprivation: 0, group_tension: 0, war_threat: 0, environmental_exposure: 0, crisis_pressure: 0, zero_cohesion_turns: 0, frozen: false, capital: None }
     }
 }
 
@@ -295,6 +298,8 @@ impl WorldState {
             hasher.write_u8(civilization.crisis_pressure);
             hasher.write_u8(civilization.zero_cohesion_turns);
             hasher.write_bool(civilization.frozen);
+            hasher.write_bool(civilization.capital.is_some());
+            hasher.write_u32(civilization.capital.map_or(0, |city| city.0));
         }
 
         hasher.write_u64(self.cities.len() as u64);
@@ -936,6 +941,8 @@ fn apply_command(state: &mut WorldState, command: &AcceptedCommand, events: &mut
                     unit_queue: Vec::new(), unit_production: 0,
                 },
             );
+            let civ = state.civilizations.get_mut(&command.actor_id).expect("civilization was checked above");
+            if civ.capital.is_none() { civ.capital = Some(*city_id); }
             Ok(())
         }
         CommandPayload::SetCityFocus { city_id, focus } => {
@@ -1672,16 +1679,67 @@ fn move_person(source: &mut CityState, destination: &mut CityState) -> GroupFunc
     function
 }
 
+/// Administrative load (GDD 06, SDD 15 §4.2; decided on 2026-10-07 by delegation of the user, B2,
+/// provisional weights): hexes beyond `ADMIN_FREE_DISTANCE` from the capital cost `ADMIN_PER_HEX` each
+/// (at most `ADMIN_DISTANCE_CAP`), and every city of the civilization beyond `ADMIN_CITY_LIMIT` costs
+/// `ADMIN_PER_EXTRA_CITY` to all of its cities (at most `ADMIN_COUNT_CAP`). It is subtracted from `S`,
+/// but the load alone never takes `S` below `ADMIN_STABILITY_FLOOR` (the growth threshold): it raises
+/// `P` without blocking the growth of a newly founded city (measured in B2: a floor of 40 left new
+/// cities without growth or income and collapsed a civilization).
+pub const ADMIN_FREE_DISTANCE: u32 = 2;
+pub const ADMIN_PER_HEX: u32 = 6;
+pub const ADMIN_DISTANCE_CAP: u32 = 36;
+pub const ADMIN_CITY_LIMIT: u32 = 2;
+pub const ADMIN_PER_EXTRA_CITY: u32 = 12;
+pub const ADMIN_COUNT_CAP: u32 = 36;
+pub const ADMIN_STABILITY_FLOOR: u32 = 50;
+/// Cohesion rule terms (GDD 12): at most one kept and one broken commitment count per turn; an active
+/// conflict is a war (2 points) or an unresolved tension (1 point, half a conflict), capped per turn;
+/// and wars, tensions and broken promises alone never push cohesion below the floor (collapse needs a
+/// social cause too). Decided on 2026-10-07 by delegation of the user (B2).
+pub const COHESION_PER_KEPT_COMMITMENT: i32 = 4;
+pub const COHESION_PER_BROKEN_COMMITMENT: i32 = 5;
+pub const COHESION_PER_ACTIVE_CONFLICT: i32 = 2;
+pub const COHESION_PER_TENSION: i32 = 1;
+pub const MAX_CONFLICT_COHESION_LOSS: i32 = 4;
+pub const COHESION_CONFLICT_FLOOR: i32 = 5;
+
+/// The capital of a civilization: the city recorded at its founding, or, if that city no longer belongs
+/// to it, its lowest city id.
+pub fn capital_of(state: &WorldState, civilization: CivId) -> Option<CityId> {
+    let recorded = state.civilizations.get(&civilization).and_then(|civ| civ.capital)
+        .filter(|id| state.cities.get(id).is_some_and(|city| city.owner == civilization));
+    recorded.or_else(|| state.cities.iter().find(|(_, city)| city.owner == civilization).map(|(id, _)| *id))
+}
+
+/// Administrative load of one city (see `ADMIN_FREE_DISTANCE`); zero for an unknown city.
+pub fn administrative_load(state: &WorldState, city_id: CityId) -> u32 {
+    let Some(city) = state.cities.get(&city_id) else { return 0; };
+    let count = state.cities.values().filter(|other| other.owner == city.owner).count() as u32;
+    let capital = capital_of(state, city.owner).and_then(|id| state.cities.get(&id)).map(|capital| capital.tile);
+    let distance = capital.and_then(|tile| hex_distance(state, tile, city.tile).ok()).unwrap_or(0);
+    (ADMIN_PER_HEX * distance.saturating_sub(ADMIN_FREE_DISTANCE)).min(ADMIN_DISTANCE_CAP)
+        + (ADMIN_PER_EXTRA_CITY * count.saturating_sub(ADMIN_CITY_LIMIT)).min(ADMIN_COUNT_CAP)
+}
+
 fn resolve_society(state: &mut WorldState, seed: u64, events: &mut Vec<DomainEvent>) {
     let _rng = Rng::derive(seed, "society");
-    for city in state.cities.values_mut() {
+    let loads: BTreeMap<CityId, u32> = state.cities.keys().map(|id| (*id, administrative_load(state, *id))).collect();
+    let turn = state.turn;
+    let diplomatic: BTreeMap<CivId, (u32, u32, u32, u32)> = state.civilizations.keys().map(|civ| {
+        let (kept, broken) = state.diplomacy.commitments(*civ, turn);
+        (*civ, (kept, broken, state.diplomacy.active_wars(*civ), state.diplomacy.pairs_in(*civ, crate::diplomacy::RelationState::Tension)))
+    }).collect();
+    for (city_id, city) in &mut state.cities {
         for group in &mut city.groups {
             let employed = match group.function { GroupFunction::Cultivators => city.last_yields.food > 0, GroupFunction::Crafts => city.last_yields.production > 0, GroupFunction::Merchants => city.last_yields.wealth > 0 };
             let change = if city.deprivation > 0 { -5 } else if employed { 5 } else { -3 };
             group.satisfaction = (i16::from(group.satisfaction) + change).clamp(0, 100) as u8;
         }
         let weighted_satisfaction: u32 = city.groups.iter().map(|group| group.population * u32::from(group.satisfaction)).sum();
-        city.stability = if city.population == 0 { 0 } else { (weighted_satisfaction / city.population).min(100) as u8 };
+        let load = loads.get(city_id).copied().unwrap_or(0);
+        let satisfaction = if city.population == 0 { 0 } else { (weighted_satisfaction / city.population).min(100) };
+        city.stability = satisfaction.saturating_sub(load).max(satisfaction.min(ADMIN_STABILITY_FLOOR)) as u8;
         let dissatisfied: u32 = city.groups.iter().filter(|group| group.satisfaction < 40).map(|group| group.population).sum();
         city.group_tension = if city.population == 0 { 0 } else { ((20 * dissatisfied + city.population - 1) / city.population).min(20) as u8 };
     }
@@ -1694,7 +1752,13 @@ fn resolve_society(state: &mut WorldState, seed: u64, events: &mut Vec<DomainEve
         civ.war_threat = weighted(|city| city.war_threat);
         civ.environmental_exposure = weighted(|city| city.environmental_exposure);
         let mean_tension = if population == 0 { 0 } else { cities.iter().flat_map(|city| city.groups.iter()).map(|group| group.population * u32::from(100 - group.satisfaction)).sum::<u32>() / population };
-        civ.cohesion = (i32::from(civ.cohesion) - (mean_tension / 10) as i32).clamp(0, 100) as u8;
+        // C' = C + 4*kept - 5*broken - weighted_mean(T_g)/10 - 2*active_conflicts (GDD 12; a tension is half a conflict), each term limited
+        // per turn; the war and broken-promise terms stop at the conflict floor.
+        let (kept, broken, wars, tensions) = diplomatic.get(civ_id).copied().unwrap_or((0, 0, 0, 0));
+        let social = i32::from(civ.cohesion) - (mean_tension / 10) as i32 + COHESION_PER_KEPT_COMMITMENT * kept.min(1) as i32;
+        let hostile = COHESION_PER_BROKEN_COMMITMENT * broken.min(1) as i32 + (COHESION_PER_ACTIVE_CONFLICT * wars as i32 + COHESION_PER_TENSION * tensions as i32).min(MAX_CONFLICT_COHESION_LOSS);
+        let hostile = hostile.min((social - COHESION_CONFLICT_FLOOR).max(0));
+        civ.cohesion = (social - hostile).clamp(0, 100) as u8;
         civ.zero_cohesion_turns = if civ.cohesion == 0 { civ.zero_cohesion_turns.saturating_add(1) } else { 0 };
         drop(cities);
         for city in state.cities.values_mut().filter(|city| city.owner == *civ_id) {
@@ -2510,5 +2574,74 @@ mod tests {
         log.record_turn(TurnNumber(1), second.state_hash);
         let replayed = replay(&snapshot, &log).unwrap();
         assert_eq!(replayed.state, second.state);
+    }
+
+    fn content_city(owner: CivId, tile: u32) -> CityState {
+        let mut city = city(owner, tile, 1);
+        city.groups[0].satisfaction = 100;
+        city.last_yields.food = 2;
+        city
+    }
+
+    #[test]
+    fn administrative_load_lowers_stability_with_distance_and_city_count() {
+        let mut initial = wide_state(40, 1);
+        for (id, tile) in [(1, 0), (2, 3), (3, 10)] { initial.cities.insert(CityId(id), content_city(CivId(1), tile)); }
+        // Without a recorded capital the lowest city id is the capital.
+        assert_eq!(capital_of(&initial, CivId(1)), Some(CityId(1)));
+        initial.civilizations.get_mut(&CivId(1)).unwrap().capital = Some(CityId(2));
+        let three = ADMIN_PER_EXTRA_CITY * (3 - ADMIN_CITY_LIMIT);
+        assert_eq!(administrative_load(&initial, CityId(1)), ADMIN_PER_HEX * (3 - ADMIN_FREE_DISTANCE) + three, "three hexes from the capital");
+        assert_eq!(administrative_load(&initial, CityId(3)), ADMIN_PER_HEX * (7 - ADMIN_FREE_DISTANCE) + three, "seven hexes from the capital");
+        for (id, tile) in [(4, 20), (5, 21), (6, 22)] { initial.cities.insert(CityId(id), content_city(CivId(1), tile)); }
+        let extra = (ADMIN_PER_EXTRA_CITY * (6 - ADMIN_CITY_LIMIT)).min(ADMIN_COUNT_CAP);
+        assert_eq!(administrative_load(&initial, CityId(2)), extra, "six cities, beyond the limit");
+        assert_eq!(administrative_load(&initial, CityId(6)), ADMIN_DISTANCE_CAP + extra, "the distance term is capped");
+        resolve_society(&mut initial, 99, &mut Vec::new());
+        assert_eq!(initial.cities[&CityId(2)].stability, (100 - extra) as u8);
+        // The load alone stops at the growth threshold.
+        let far = (100 - ADMIN_DISTANCE_CAP - extra).max(ADMIN_STABILITY_FLOOR);
+        assert_eq!(u32::from(initial.cities[&CityId(6)].stability), far);
+        // (100 - S)/10 enters the local pressure; the cohesion term of 50 is zero.
+        assert_eq!(u32::from(initial.cities[&CityId(6)].crisis_pressure), (100 - far) / 10);
+        assert_eq!(u32::from(initial.cities[&CityId(2)].crisis_pressure), extra / 10);
+        // A newly founded city (satisfaction 50) keeps the stability it needs to grow.
+        let mut frontier = city(CivId(1), 30, 1);
+        frontier.last_yields.food = 2;
+        initial.cities.insert(CityId(7), frontier);
+        resolve_society(&mut initial, 99, &mut Vec::new());
+        assert_eq!(u32::from(initial.cities[&CityId(7)].stability), ADMIN_STABILITY_FLOOR);
+    }
+
+    #[test]
+    fn the_first_city_founded_is_the_capital() {
+        let mut initial = state();
+        let found = |id: u64, city: u32, tile: u32| command(id, id, CivId(1), CommandPayload::FoundCity { city_id: CityId(city), target: TileIndex(tile) });
+        let result = step(&initial, &[found(1, 7, 1)], 99, &versions());
+        assert_eq!(result.state.civilizations[&CivId(1)].capital, Some(CityId(7)));
+        initial = result.state;
+        initial.cities.insert(CityId(3), content_city(CivId(1), 3));
+        assert_eq!(capital_of(&initial, CivId(1)), Some(CityId(7)), "a lower id founded later does not move the capital");
+    }
+
+    #[test]
+    fn active_wars_wear_cohesion_down_to_a_floor() {
+        let mut initial = state();
+        initial.units.clear();
+        initial.civilizations.insert(CivId(3), CivilizationState::default());
+        initial.cities.insert(CityId(1), content_city(CivId(1), 0));
+        initial.civilizations.get_mut(&CivId(1)).unwrap().cohesion = 30;
+        war_with(&mut initial, CivId(1), CivId(2), crate::diplomacy::RelationState::War);
+        resolve_society(&mut initial, 99, &mut Vec::new());
+        assert_eq!(initial.civilizations[&CivId(1)].cohesion, 30 - COHESION_PER_ACTIVE_CONFLICT as u8);
+        war_with(&mut initial, CivId(1), CivId(3), crate::diplomacy::RelationState::War);
+        resolve_society(&mut initial, 99, &mut Vec::new());
+        assert_eq!(initial.civilizations[&CivId(1)].cohesion, 28 - MAX_CONFLICT_COHESION_LOSS as u8, "two wars, capped loss");
+        initial.civilizations.get_mut(&CivId(1)).unwrap().cohesion = 14;
+        for _ in 0..5 { resolve_society(&mut initial, 99, &mut Vec::new()); }
+        assert_eq!(i32::from(initial.civilizations[&CivId(1)].cohesion), COHESION_CONFLICT_FLOOR, "war alone never collapses");
+        assert!(!initial.civilizations[&CivId(1)].frozen);
+        // Civilization 2 has no cities: its cohesion follows the same rule.
+        assert!(initial.civilizations[&CivId(2)].cohesion < 50);
     }
 }
