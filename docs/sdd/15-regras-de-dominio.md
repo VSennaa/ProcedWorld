@@ -177,6 +177,20 @@ como no motor; `(C-50)/5` vai de −10 a +10. Cada termo da atualização de `C`
 `D_civ`, `G_civ` e `P_civ` são médias ponderadas por população; população zero produz zero onde
 aplicável. `W` e `E` são provisórios e não devem ser tratados como balanceamento decidido.
 
+Ameaça de guerra `W_c` (implementada em 2026-10-07, B1; pesos **provisórios**, proposta do GDD 12 mais
+o termo de tensão pedido no brief B1), recalculada na fase 7 a cada turno a partir só da máquina de
+estados diplomática e dos combates do turno, em ordem de id de cidade:
+
+```text
+W_c = min(20, 4 * clashes_within_3_of_city_this_turn
+            + 6 * [owner at war with a civ that has a city within distance 5]
+            + 2 * [owner in tension with a civ that has a city within distance 5])
+```
+
+"Faz fronteira" = a outra civilização tem cidade a distância hexagonal ≤ 5 (as áreas de trabalho de
+raio 2 se tocam ou se sobrepõem). Confronto = tile onde a fase 3 resolveu combate entre duas ou mais
+civilizações. Sem guerra, tensão nem combate, `W_c = 0`: o termo some quando a hostilidade acaba.
+
 Correção de alinhamento com a fórmula compartilhada do GDD 12, aplicada em 2026-10-01.
 
 ### 4.2.1 Fila de produção (decidido em 2026-10-03)

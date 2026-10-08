@@ -833,12 +833,13 @@ pub fn step(
     }
 
     resolve_movement(&mut next, seed);
-    resolve_conflicts(&mut next, seed);
+    let clashes = resolve_conflicts(&mut next, seed);
     crate::improvements::resolve_works(&mut next);
     resolve_visibility(&mut next);
     resolve_sentries(&mut next);
     resolve_economy(&mut next, seed);
     resolve_growth_and_migration(&mut next, seed, &mut events);
+    resolve_war_threat(&mut next, &clashes);
     resolve_society(&mut next, seed, &mut events);
     resolve_entropy(&mut next, seed);
     resolve_diplomacy(&mut next, seed);
@@ -1297,8 +1298,10 @@ fn execute_order(state: &mut WorldState, id: UnitId) {
     if finished { unit.order = UnitOrder::Idle; }
 }
 
-fn resolve_conflicts(state: &mut WorldState, seed: u64) {
+/// Resolves this turn's combats and returns the tiles where a clash between two or more civilizations happened.
+fn resolve_conflicts(state: &mut WorldState, seed: u64) -> Vec<TileIndex> {
     let _rng = Rng::derive(seed, "conflicts");
+    let mut clashes = Vec::new();
     let reservations = std::mem::take(&mut state.attacks);
     let mut by_tile: BTreeMap<TileIndex, Vec<AttackReservation>> = BTreeMap::new();
     for reservation in reservations.into_values() {
@@ -1317,6 +1320,7 @@ fn resolve_conflicts(state: &mut WorldState, seed: u64) {
         }
         for units in participants.values_mut() { units.sort_unstable(); units.dedup(); }
         if participants.len() < 2 { continue; }
+        clashes.push(tile);
         let strengths: BTreeMap<CivId, u32> = participants.iter().map(|(civ, units)| {
             (*civ, units.iter().filter_map(|id| state.units.get(id)).map(unit_strength).sum())
         }).collect();
@@ -1336,6 +1340,38 @@ fn resolve_conflicts(state: &mut WorldState, seed: u64) {
             let winner = *survivors.iter().next().expect("non-empty set was checked");
             state.control.insert(tile, winner);
         }
+    }
+    clashes
+}
+
+/// Clashes at most this far from a city count as nearby confrontations (GDD 12).
+pub const WAR_THREAT_CLASH_RADIUS: u32 = 3;
+/// Two cities whose work areas (radius 2) touch or overlap share a border.
+pub const WAR_THREAT_BORDER_DISTANCE: u32 = 5;
+pub const WAR_THREAT_PER_CLASH: u32 = 4;
+pub const WAR_THREAT_BORDER_WAR: u32 = 6;
+pub const WAR_THREAT_BORDER_TENSION: u32 = 2;
+pub const MAX_WAR_THREAT: u32 = 20;
+
+/// War threat `W_c` (GDD 12, provisional; SDD 15 §4.2): `min(20, 4 × clashes within radius 3 of the city this
+/// turn + 6 × [war with a civilization that has a city on the border] + 2 × [tension with such a civilization])`.
+/// It only reads the diplomatic state machine and this turn's combats, in city-id order.
+fn resolve_war_threat(state: &mut WorldState, clashes: &[TileIndex]) {
+    let Ok(grid) = Grid::new(state.map_width, (state.tiles.len() as u32).checked_div(state.map_width).unwrap_or(0)) else { return; };
+    let cells: BTreeMap<CityId, (CivId, Option<crate::hex::Cell>)> = state.cities.iter().map(|(id, city)| (*id, (city.owner, grid.cell(city.tile).ok()))).collect();
+    let clash_cells: Vec<_> = clashes.iter().filter_map(|tile| grid.cell(*tile).ok()).collect();
+    let within = |a: crate::hex::Cell, b: crate::hex::Cell, limit: u32| grid.distance(a, b).is_ok_and(|distance| distance <= limit);
+    for (id, city) in &mut state.cities {
+        let Some((owner, Some(cell))) = cells.get(id).copied() else { city.war_threat = 0; continue; };
+        let nearby_clashes = clash_cells.iter().filter(|clash| within(cell, **clash, WAR_THREAT_CLASH_RADIUS)).count() as u32;
+        let neighbors: BTreeSet<CivId> = cells.values().filter_map(|(other, other_cell)| {
+            let other_cell = (*other_cell)?;
+            (*other != owner && within(cell, other_cell, WAR_THREAT_BORDER_DISTANCE)).then_some(*other)
+        }).collect();
+        let border_war = neighbors.iter().any(|other| state.diplomacy.state(owner, *other) == crate::diplomacy::RelationState::War);
+        let border_tension = neighbors.iter().any(|other| state.diplomacy.state(owner, *other) == crate::diplomacy::RelationState::Tension);
+        let threat = WAR_THREAT_PER_CLASH * nearby_clashes + WAR_THREAT_BORDER_WAR * u32::from(border_war) + WAR_THREAT_BORDER_TENSION * u32::from(border_tension);
+        city.war_threat = threat.min(MAX_WAR_THREAT) as u8;
     }
 }
 
@@ -2141,6 +2177,63 @@ mod tests {
         assert_eq!(starved.groups.iter().map(|group| group.population).sum::<u32>(), starved.population);
     }
 
+    fn war_with(state: &mut WorldState, a: CivId, b: CivId, relation: crate::diplomacy::RelationState) {
+        state.diplomacy.set_relation(a, b, crate::diplomacy::RelationRecord { state: relation, since: TurnNumber::ZERO, until: None, objective: None });
+    }
+
+    fn wide_state(width: u32, height: u32) -> WorldState {
+        let mut initial = state();
+        initial.units.clear();
+        initial.map_width = width;
+        initial.tiles = vec![TileState::default(); (width * height) as usize];
+        initial
+    }
+
+    #[test]
+    fn war_threat_comes_from_a_border_war_and_tension_only() {
+        let mut initial = wide_state(12, 1);
+        initial.civilizations.insert(CivId(3), CivilizationState::default());
+        initial.cities.insert(CityId(1), city(CivId(1), 0, 1));
+        initial.cities.insert(CityId(2), city(CivId(2), 5, 1));
+        initial.cities.insert(CityId(3), city(CivId(3), 6, 1));
+        resolve_war_threat(&mut initial, &[]);
+        assert!(initial.cities.values().all(|city| city.war_threat == 0), "peace and contact give no threat");
+        war_with(&mut initial, CivId(1), CivId(2), crate::diplomacy::RelationState::War);
+        war_with(&mut initial, CivId(1), CivId(3), crate::diplomacy::RelationState::War);
+        resolve_war_threat(&mut initial, &[]);
+        // Civ 2 is five tiles away (work areas touch); civ 3 is six away (wrapped map: distance 6), not a border.
+        assert_eq!(initial.cities[&CityId(1)].war_threat, WAR_THREAT_BORDER_WAR as u8);
+        assert_eq!(initial.cities[&CityId(2)].war_threat, WAR_THREAT_BORDER_WAR as u8);
+        assert_eq!(initial.cities[&CityId(3)].war_threat, 0);
+        war_with(&mut initial, CivId(1), CivId(2), crate::diplomacy::RelationState::Tension);
+        resolve_war_threat(&mut initial, &[]);
+        assert_eq!(initial.cities[&CityId(1)].war_threat, WAR_THREAT_BORDER_TENSION as u8);
+        war_with(&mut initial, CivId(1), CivId(2), crate::diplomacy::RelationState::Peace);
+        resolve_war_threat(&mut initial, &[]);
+        assert_eq!(initial.cities[&CityId(1)].war_threat, 0, "the threat ends with the hostility");
+    }
+
+    #[test]
+    fn nearby_clashes_add_war_threat_up_to_the_cap() {
+        let mut initial = wide_state(12, 1);
+        initial.cities.insert(CityId(1), city(CivId(1), 0, 1));
+        resolve_war_threat(&mut initial, &[TileIndex(3), TileIndex(4)]);
+        assert_eq!(initial.cities[&CityId(1)].war_threat, WAR_THREAT_PER_CLASH as u8, "only the clash within radius 3 counts");
+        let clashes: Vec<TileIndex> = [1, 2, 3, 11, 10, 9].into_iter().map(TileIndex).collect();
+        resolve_war_threat(&mut initial, &clashes);
+        assert_eq!(initial.cities[&CityId(1)].war_threat, MAX_WAR_THREAT as u8);
+    }
+
+    #[test]
+    fn a_clash_between_units_raises_war_threat_in_the_same_step() {
+        let mut initial = state();
+        initial.cities.insert(CityId(1), city(CivId(1), 1, 1));
+        let attack = command(1, 1, CivId(1), CommandPayload::DeclareAttack { attacker: UnitId(1), target: UnitId(2) });
+        let result = step(&initial, &[attack], 99, &versions());
+        assert!(result.events.contains(&DomainEvent::CommandApplied { command_id: 1 }), "attack accepted: {:?}", result.events);
+        assert_eq!(result.state.cities[&CityId(1)].war_threat, WAR_THREAT_PER_CLASH as u8);
+    }
+
     #[test]
     fn crisis_pressure_is_clamped_and_collapse_freezes_after_two_zero_cohesion_turns() {
         let mut initial = state();
@@ -2149,9 +2242,11 @@ mod tests {
         let mut unstable = city(CivId(1), 0, 2);
         unstable.stability = 0;
         unstable.groups[0].satisfaction = 0;
-        unstable.war_threat = 20;
         unstable.environmental_exposure = 20;
         initial.cities.insert(CityId(1), unstable);
+        // `W` is derived each turn: a war with a bordering civilization keeps it raised.
+        initial.cities.insert(CityId(2), city(CivId(2), 3, 1));
+        initial.diplomacy.set_relation(CivId(1), CivId(2), crate::diplomacy::RelationRecord { state: crate::diplomacy::RelationState::War, since: TurnNumber::ZERO, until: None, objective: None });
         let first = step(&initial, &[], 99, &versions());
         let second = step(&first.state, &[], 99, &versions());
         let city = second.state.cities.get(&CityId(1)).unwrap();
