@@ -163,6 +163,24 @@ ser tabelas PostgreSQL com controle transacional de versão; a chave-mestra deve
 continuar fora do PostgreSQL. A escolha de biblioteca criptográfica, cofre de
 segredos e mecanismo de lock fica para ADR específico ou implementação aprovada.
 
+## Tokens de sessão do servidor (implementado em `pw-server`)
+
+O token de sessão de um assento (256 bits do CSPRNG do sistema, em hexadecimal) é
+entregue ao cliente uma única vez, em `joined`. Em disco (`metadata.json`) fica
+apenas um verificador:
+
+```
+sha256$<sal: 16 bytes em hex>$<SHA-256(sal || token) em hex>
+```
+
+- O sal é aleatório por token; a comparação é em tempo constante.
+- Tokens de 256 bits não são senhas humanas, então um hash rápido com sal basta; um KDF lento
+  (argon2) só seria necessário se o segredo tivesse pouca entropia.
+- Migração: na carga, um valor que não seja um verificador bem formado é tratado como token
+  legado em texto claro, convertido em verificador e regravado; o token original continua entrando.
+- Criação de mundo é atômica (diretório `<id>.creating` publicado por rename); diretórios incompletos
+  são ignorados na carga com aviso, e a restauração respeita `PW_MAX_WORLDS` em ordem estável de id.
+
 ## Invariantes verificáveis
 
 1. Um segredo em texto claro existe apenas na memória do processo durante a
