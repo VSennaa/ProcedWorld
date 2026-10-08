@@ -5,6 +5,10 @@ description: Delegate tasks to Codex (ChatGPT) subagents whose model is chosen p
 
 # Jev subagents (Claude supervises)
 
+Executor: `JEV_EXECUTOR=opencode` (default since 2026-10-07: opencode + DeepSeek API, prepaid, key in
+`DEEPSEEK_API_KEY`, provider in `./opencode.json`; read-only tasks use the `plan` agent) or `codex`
+(ChatGPT login). Claude subagents keep critical code, planning and the quality judge.
+
 Tool: `tools/agents/jev-codex.sh <task-name> <prompt-file> [read-only|workspace-write]`.
 OpenRouter is used ONLY for Jev's decision (`typesafe/jev-router`, `max_tokens: 1`, choice in the
 response `model`; ~US$ 0.00001-0.002). The pick is mapped to a Codex model: exact `openai/*` match, else

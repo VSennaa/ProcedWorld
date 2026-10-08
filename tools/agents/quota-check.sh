@@ -2,6 +2,7 @@
 # Quota audit for external executors. Prints one JSON object:
 #   codex:      latest rate-limit snapshot from ~/.codex/sessions (ChatGPT-backed runs only)
 #   openrouter: credit usage/limit of OPENROUTER_API_KEY (used by Jev-routed subagents)
+#   deepseek:   prepaid balance of DEEPSEEK_API_KEY (opencode executor)
 # Claude's own quota is NOT here: it comes from the desktop tool `get_usage`
 # (mcp__ccd_session_mgmt__get_usage). See docs/process/agentes-e-cotas.md.
 set -euo pipefail
@@ -50,5 +51,20 @@ if key:
     except Exception as e:
         orr = {"available": False, "error": str(e)}
 out["openrouter"] = orr
+
+# DeepSeek: prepaid balance of DEEPSEEK_API_KEY (executor of opencode subagents).
+ds = {"available": False}
+key = os.environ.get("DEEPSEEK_API_KEY")
+if key:
+    try:
+        req = urllib.request.Request("https://api.deepseek.com/user/balance",
+                                     headers={"Authorization": "Bearer " + key})
+        d = json.load(urllib.request.urlopen(req, timeout=30))
+        usd = [b for b in d.get("balance_infos", []) if b.get("currency") == "USD"]
+        ds = {"available": bool(d.get("is_available")),
+              "balance_usd": float(usd[0]["total_balance"]) if usd else None}
+    except Exception as e:
+        ds = {"available": False, "error": str(e)}
+out["deepseek"] = ds
 print(json.dumps(out, indent=1))
 PY

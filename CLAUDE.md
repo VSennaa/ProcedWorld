@@ -286,8 +286,8 @@ RAM: evite builds pesados em paralelo com outros serviços.
 - Qualquer uso de chave de API real.
 
 **Agentes, subagentes e cotas** — ver [docs/process/agentes-e-cotas.md](docs/process/agentes-e-cotas.md).
-- Claude é o supervisor; tarefas independentes vão para subagentes Codex (conta ChatGPT) cujo modelo é
-  escolhido pelo **Jev Router** (skill `jev-subagents`, script `tools/agents/jev-codex.sh`). O OpenRouter
+- Claude é o supervisor; tarefas independentes vão para subagentes (executor padrão **opencode + DeepSeek**,
+  pré-pago; Codex/ChatGPT opcional) cujo modelo é escolhido pelo **Jev Router** (skill `jev-subagents`, script `tools/agents/jev-codex.sh`). O OpenRouter
   é usado **só** para a decisão do Jev, nunca para executar tarefas.
 - **Auto-auditoria obrigatória** (skill `quota-audit`): checar a cota do Claude (`get_usage`), do Codex
   e do OpenRouter (`tools/agents/quota-check.sh`) no início da sessão, antes de cada lote de

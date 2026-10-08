@@ -16,6 +16,10 @@
 # Anthropic picks: when the supervisor (Claude) has quota to spare it sets JEV_CLAUDE_OK=1; then an
 # `anthropic/*` pick is NOT run on Codex: the script records it and exits 76 so Claude runs the task
 # itself (Agent tool). Without JEV_CLAUDE_OK the pick is mapped to Codex as usual.
+# Executor (JEV_EXECUTOR, default opencode since 2026-10-07): `opencode` runs the task with opencode
+# on the DeepSeek API (key DEEPSEEK_API_KEY, prepaid; provider in ./opencode.json), mapping Jev's pick to
+# the cheapest model in JEV_OPENCODE_MODELS whose benchmark score is >= the pick's (else the best one);
+# `codex` runs it on the ChatGPT login as before.
 # Output: .agent-runs/<task-name>.{log,out.txt}; decisions appended to .agent-runs/decisions.jsonl
 set -euo pipefail
 
@@ -110,20 +114,47 @@ PY2
   echo "[$name] executor: claude ($jev_choice) - run it with the Agent tool"
   exit 76
 fi
-echo "[$name] codex model: $model ($pick)"
-
-# 2. Codex runs the task on the ChatGPT login (default provider), on the chosen model.
+executor=${JEV_EXECUTOR:-opencode}
 start=$(date +%s); status=0
-search_flag=(); [ "${JEV_CODEX_SEARCH:-0}" = "1" ] && search_flag=(--search)
-"$codex_bin" "${search_flag[@]}" exec -C "$root" -s "$sandbox" -m "$model" \
-  -o "$runs/$name.out.txt" - < "$prompt_file" > "$runs/$name.log" 2>&1 || status=$?
-tokens=$(grep -A1 '^tokens used' "$runs/$name.log" | tail -1 | tr -dc '0-9' || true)
+if [ "$executor" = "opencode" ]; then
+  # 2a. opencode on the DeepSeek API: map Jev's pick by benchmark score (Akita) to a DeepSeek model.
+  : "${DEEPSEEK_API_KEY:?DEEPSEEK_API_KEY not set (needed by JEV_EXECUTOR=opencode)}"
+  export JEV_OPENCODE_MODELS=${JEV_OPENCODE_MODELS:-deepseek/deepseek-flash=deepseek/deepseek-v4.1-flash,deepseek/deepseek-v4-pro=deepseek/deepseek-v4-pro-0813}
+  model=$("$py" - "$pick" <<'PY3'
+import json, os, sys
+pick = json.loads(sys.argv[1])
+scores = json.load(open(os.environ["JEV_SCORES"], encoding="utf-8"))["scores"]
+pairs = [item.split("=") for item in os.environ["JEV_OPENCODE_MODELS"].split(",")]
+ranked = [(scores.get(bench, {}).get("score", 0), scores.get(bench, {}).get("cost_usd", 1e9), oc) for oc, bench in pairs]
+need = pick.get("jev_choice_score") or scores.get(pick.get("jev_choice") or "", {}).get("score") or 0
+ok = [r for r in ranked if r[0] >= need]
+print(min(ok, key=lambda r: r[1])[2] if ok else max(ranked)[2])
+PY3
+)
+  pick=$("$py" -c 'import json,sys; d=json.loads(sys.argv[1]); d["model"]=sys.argv[2]; d["mapping"]=d.get("mapping","")+"+opencode"; print(json.dumps(d))' "$pick" "$model")
+  echo "[$name] opencode model: $model ($pick)"
+  agent=build; [ "$sandbox" = "read-only" ] && agent=plan
+  (cd "$root" && opencode run --standalone --auto --agent "$agent" -m "$model" -f "$prompt_file" \
+    "Siga exatamente as instruções do arquivo anexo. Responda em português ao final.") \
+    > "$runs/$name.log" 2>&1 || status=$?
+  # The final answer is the text after the last tool line; keep the whole log as out.txt for review.
+  cp "$runs/$name.log" "$runs/$name.out.txt"
+  tokens=0
+else
+  echo "[$name] codex model: $model ($pick)"
+  # 2b. Codex runs the task on the ChatGPT login (default provider), on the chosen model.
+  search_flag=(); [ "${JEV_CODEX_SEARCH:-0}" = "1" ] && search_flag=(--search)
+  "$codex_bin" "${search_flag[@]}" exec -C "$root" -s "$sandbox" -m "$model" \
+    -o "$runs/$name.out.txt" - < "$prompt_file" > "$runs/$name.log" 2>&1 || status=$?
+  tokens=$(grep -A1 '^tokens used' "$runs/$name.log" | tail -1 | tr -dc '0-9' || true)
+fi
 
+[ "$executor" = "opencode" ] && export JEV_EXECUTOR_USED=opencode-deepseek
 "$py" - "$name" "$pick" "$status" "${tokens:-0}" "$(( $(date +%s) - start ))" >> "$runs/decisions.jsonl" <<'PY'
-import json, sys, datetime
+import json, os, sys, datetime
 name, pick, status, tokens, secs = sys.argv[1:]
 rec = {"ts": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
-       "task": name, **json.loads(pick), "executor": "codex-chatgpt", "exit": int(status),
+       "task": name, **json.loads(pick), "executor": os.environ.get("JEV_EXECUTOR_USED", "codex-chatgpt"), "exit": int(status),
        "tokens": int(tokens or 0), "seconds": int(secs)}
 print(json.dumps(rec))
 PY

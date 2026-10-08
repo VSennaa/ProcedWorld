@@ -9,7 +9,7 @@
 |---|---|---|
 | **Claude** (Claude Code) | Supervisor: planeja, escreve prompts, revisa, faz commit e push, conversa com o usuário | Plano Claude (janela de 5 h e semanal) |
 | **Subagentes Codex com modelo escolhido pelo Jev** | Executores de tarefas independentes (rascunhos, implementação de arquivos isolados) | Execução: plano **ChatGPT/Codex** (janela de 5 h e semanal). Decisão do Jev: centavos de crédito do **OpenRouter** |
-| **opencode + DeepSeek** | Último recurso, mais barato | Créditos DeepSeek |
+| **opencode + DeepSeek** (executor padrão desde 2026-10-07) | Código braçal: cliente, telas, testes, dados, docs; sempre com juiz | API DeepSeek pré-paga (`DEEPSEEK_API_KEY`, só no ambiente do PC); provedor em `opencode.json` |
 
 Subagentes **nunca** fazem commit, push ou trocam de branch (ver `AGENTS.md`). Só o supervisor integra.
 
@@ -44,7 +44,11 @@ O crédito de lá existe para as decisões, que custam entre US$ 0,00001 e US$ 0
    O script então não roda o Codex: registra a decisão (`executor: claude`) e sai com código 76, e o
    Claude executa a tarefa com a ferramenta Agent no modelo correspondente. Sem folga, a escolha é
    mapeada para o Codex normalmente.
-3. O Codex roda a tarefa inteira com esse modelo **pela conta do ChatGPT**.
+3. O executor roda a tarefa inteira (`JEV_EXECUTOR`, padrão `opencode`): **opencode + DeepSeek**, com o
+   modelo DeepSeek mais barato de nota ≥ à da escolha do Jev (`JEV_OPENCODE_MODELS`, hoje `deepseek-flash`
+   nota 92,5 e `deepseek-v4-pro`); ou `JEV_EXECUTOR=codex` para o Codex **pela conta do ChatGPT**.
+   Divisão (decisão do usuário em 2026-10-07): Claude (Opus/Sonnet) fica com planejamento, código
+   crítico — motor, determinismo, segurança — e o juiz de qualidade; o opencode faz o código braçal.
 4. Sem crédito para a decisão (abaixo de `JEV_MIN_CREDIT`, padrão US$ 0,10) ou com erro no Jev, usa
    `JEV_FALLBACK_MODEL` (padrão `gpt-6-sol`) — o roteador nunca para o projeto.
 5. Registra tudo em `.agent-runs/decisions.jsonl` (fora do git): escolha do Jev, modelo do Codex,
