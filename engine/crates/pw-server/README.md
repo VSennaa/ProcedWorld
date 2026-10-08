@@ -12,8 +12,12 @@ civilizations without a present human (bots, absent humans) are played by their 
 `PW_DATA_DIR`. Without `PW_DATA_DIR`, worlds remain in memory only. With it, each world is stored in
 its own directory as `initial_snapshot.json`, `turn.json`, and `metadata.json`; `turn.json` contains
 the log and its resulting snapshot as one unit, replaced via a temporary sibling and rename. Startup replays every sealed log and refuses any world whose replay
-does not match its sealed hash. Session tokens are stored in that same world metadata, so `Entrar`
-can resume a seat after a restart.
+does not match its sealed hash. Only a salted verifier of each session token is stored in that
+world metadata (never the token), so `Entrar` can resume a seat after a restart. Verifier format:
+`sha256$<16-byte salt hex>$<SHA-256(salt || token) hex>`, compared in constant time; plaintext tokens
+from older files are converted on load (the original token keeps working). A world is created in
+`<id>.creating` and published by one directory rename; incomplete directories are ignored with a
+warning. Startup restores at most `PW_MAX_WORLDS` worlds in ascending id order and logs the rest.
 
 ## Protocol v1
 
@@ -47,6 +51,7 @@ Accepted ones get the next `accepted_sequence`, go to the command log, and are a
 - `axum` (with `ws`), `tokio`, `serde`, `serde_json`: approved stack.
 - `pw-harness`: reused for initial world construction (`initial_world`) and the seeded
   rotating civilization order, so server and harness cannot drift.
+- `sha2` (RustCrypto, SHA-256 for token verifiers) and `getrandom` (OS CSPRNG for tokens and salts).
 - Dev only: `tokio-tungstenite` (real WebSocket client in tests) and `futures-util` (its
   stream/sink traits).
 
@@ -64,8 +69,8 @@ the file adapter later.
 - Visibility filtering uses the engine `visibility` map (terrain for visible/remembered tiles;
   foreign cities and units only on visible tiles). The ledger and other civilizations' internals are
   never sent. Fog quality depends on the engine's `resolve_visibility`.
-- No real authentication: `create_world` is open, and the session token is an OS-seeded random
-  string (not cryptographic), persisted only to let a seat resume after restart.
+- No real authentication: `create_world` is open, and the session token is 256 random bits from the OS
+  CSPRNG, kept on disk only as a salted verifier so a seat can resume after restart.
 - No per-connection rate limiting; only a 64 KiB message cap and a bounded outbox (slow clients
   drop pushes and recover with `get_snapshot`).
 - The Governor uses a fixed `GrowCautiously` mandate; player-configured Mandates, T1/T2 ports,
