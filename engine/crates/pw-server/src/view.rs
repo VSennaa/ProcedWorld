@@ -5,8 +5,8 @@
 //! already met (SDD 07, SDD 16).
 
 use pw_engine::{
-    diplomacy::RelationState,
-    ids::{CivId, TileIndex},
+    diplomacy::{EntryStatus, LedgerCategory, RelationState},
+    ids::{CivId, TileIndex, TurnNumber},
     improvements,
     world::{effective_unit_orders, idle_units_with, AcceptedCommand, DomainEvent, Visibility, WorldState},
 };
@@ -106,6 +106,34 @@ pub fn view_for(state: &WorldState, civ: CivId, home: Option<TileIndex>, pending
 /// Ledger entries published per known civilization, most recent first (SDD 07).
 const RECENT_LEDGER_LIMIT: usize = 5;
 
+/// One row per Ledger fact between the viewer and `other`. `subject` is the side the entry
+/// names (`LedgerEntry::subject`) and `counterpart` the other side of the pair, so
+/// `subject -> counterpart` reads the recorded direction. A symmetric fact is written in both
+/// directions by `push_pair`; only the newest row is published, so the same fact is never listed
+/// twice (SDD 07, C2a).
+fn recent_ledger(state: &WorldState, civ: CivId, other: CivId) -> Vec<Value> {
+    let mut seen: Vec<(LedgerCategory, TurnNumber, EntryStatus, Option<u64>)> = Vec::new();
+    let mut ledger: Vec<Value> = Vec::new();
+    for entry in state.diplomacy.entries.iter().rev() {
+        if !((entry.holder == civ && entry.subject == other) || (entry.holder == other && entry.subject == civ)) {
+            continue;
+        }
+        let fact = (entry.category, entry.turn, entry.status, entry.cause_command);
+        if seen.contains(&fact) { continue; }
+        seen.push(fact);
+        ledger.push(json!({
+            "id": entry.id,
+            "turn": entry.turn,
+            "category": entry.category,
+            "status": entry.status,
+            "subject": entry.subject,
+            "counterpart": entry.holder,
+        }));
+        if ledger.len() >= RECENT_LEDGER_LIMIT { break; }
+    }
+    ledger
+}
+
 /// Relations visible to `civ`: one entry per civilization the engine has put it in contact with
 /// (`relation_state != Unknown`, i.e. contact was established). Each entry carries the viewer's
 /// directional balance (`Cf`/`R`/`Dv`) and the most recent Ledger entries **between the two**.
@@ -121,27 +149,7 @@ fn relations_for(state: &WorldState, civ: CivId) -> Vec<Value> {
             if relation_state == RelationState::Unknown { return None; }
             // Directional: the viewer's own view of `other` (SDD 07, GDD 07).
             let balance = state.diplomacy.balance(civ, other);
-            let ledger: Vec<Value> = state
-                .diplomacy
-                .entries
-                .iter()
-                .rev()
-                .filter(|entry| {
-                    (entry.holder == civ && entry.subject == other)
-                        || (entry.holder == other && entry.subject == civ)
-                })
-                .take(RECENT_LEDGER_LIMIT)
-                .map(|entry| {
-                    let counterpart = if entry.holder == civ { entry.subject } else { entry.holder };
-                    json!({
-                        "id": entry.id,
-                        "turn": entry.turn,
-                        "category": entry.category,
-                        "status": entry.status,
-                        "counterpart": counterpart,
-                    })
-                })
-                .collect();
+            let ledger = recent_ledger(state, civ, other);
             Some(json!({
                 "civ": other,
                 "state": relation_state,
@@ -228,6 +236,9 @@ mod tests {
             // Third-party facts shared between B and C: never visible to A.
             ledger_entry(2, 5, b, c, LedgerCategory::Trade),
             ledger_entry(3, 6, c, b, LedgerCategory::Incident),
+            // One symmetric fact mirrored in both directions (as `push_pair` records it).
+            ledger_entry(4, 7, a, b, LedgerCategory::Promise),
+            ledger_entry(5, 7, b, a, LedgerCategory::Promise),
         ];
 
         let view = view_for(&state, a, None, &[]);
@@ -242,14 +253,20 @@ mod tests {
         assert_eq!(relation["debt"], json!(-8));
 
         let ledger = relation["ledger"].as_array().expect("ledger");
-        assert_eq!(ledger.len(), 2, "only the entries between A and B");
-        // Most recent first, each naming the counterpart of the pair.
-        assert_eq!(ledger[0]["id"], json!(1));
-        assert_eq!(ledger[0]["category"], json!("offense"));
+        assert_eq!(ledger.len(), 3, "the mirrored fact is listed once, one row per fact");
+        // Most recent first: `subject` names the entry's side and `counterpart` the other side.
+        assert_eq!(ledger[0]["id"], json!(5));
+        assert_eq!(ledger[0]["category"], json!("promise"));
+        assert_eq!(ledger[0]["subject"], json!(0));
         assert_eq!(ledger[0]["counterpart"], json!(1));
-        assert_eq!(ledger[1]["id"], json!(0));
-        assert_eq!(ledger[1]["category"], json!("border"));
+        assert_eq!(ledger[1]["id"], json!(1));
+        assert_eq!(ledger[1]["category"], json!("offense"));
+        assert_eq!(ledger[1]["subject"], json!(0));
         assert_eq!(ledger[1]["counterpart"], json!(1));
+        assert_eq!(ledger[2]["id"], json!(0));
+        assert_eq!(ledger[2]["category"], json!("border"));
+        assert_eq!(ledger[2]["subject"], json!(1));
+        assert_eq!(ledger[2]["counterpart"], json!(0));
 
         // No leak: A's relations carry no trace of the B<->C war or its ledger.
         let visible = serde_json::to_string(relations).expect("serializes");

@@ -83,35 +83,52 @@ static func city_name(cities: Dictionary, id: int) -> String:
 
 
 ## One PT-BR line for a report event (`events_for`). Returns "" when the fact is carried elsewhere
-## (an Entropy response is shown by `response_line`, not twice).
+## (an Entropy response is shown by `response_line`, a diplomatic result by `diplomacy_line`).
 static func event_line(event: Dictionary, entry: Dictionary) -> String:
 	var kind := String(event.get("type", ""))
 	var data: Dictionary = event.get("data", {}) if typeof(event.get("data")) == TYPE_DICTIONARY else {}
 	match kind:
 		"command_applied":
-			var applied: Dictionary = entry["commands"].get(int(data.get("command_id", -1)), {})
-			if String(applied.get("kind", "")) == "respond_to_event":
+			var command_id := int(data.get("command_id", -1))
+			var applied: Dictionary = entry["commands"].get(command_id, {})
+			if String(applied.get("kind", "")) == "respond_to_event" or _has_diplomacy(entry["events"], command_id):
 				return ""
 			return "Ordem aplicada: %s." % command_label(applied)
 		"command_rejected":
 			var rejected: Dictionary = entry["commands"].get(int(data.get("command_id", -1)), {})
-			if String(rejected.get("kind", "")) == "respond_to_event":
-				return ""
 			return "Ordem recusada: %s — %s." % [command_label(rejected), rejection_label(String(data.get("reason", "")))]
 		"population_migrated":
 			return "População migrou de %s para %s." % [city_name(entry["cities"], int(data.get("from", -1))), city_name(entry["cities"], int(data.get("to", -1)))]
 		"collapse_triggered":
 			return "Colapso da Civilização %d." % (int(data.get("civilization", -1)) + 1)
 		"diplomacy_resolved":
-			return diplomacy_line(data)
+			return diplomacy_line(data, int(entry.get("viewer", -1)))
 		_:
 			return "Fato: %s." % ServerView.humanize(kind)
 
 
-static func diplomacy_line(data: Dictionary) -> String:
+## True when the same command also produced a `diplomacy_resolved` event: the applied order and the
+## resolution are one fact, and `diplomacy_line` already carries it.
+static func _has_diplomacy(events: Array, command_id: int) -> bool:
+	for event in events:
+		if typeof(event) != TYPE_DICTIONARY or String(event.get("type", "")) != "diplomacy_resolved":
+			continue
+		var data: Dictionary = event.get("data", {}) if typeof(event.get("data")) == TYPE_DICTIONARY else {}
+		if int(data.get("command_id", -1)) == command_id:
+			return true
+	return false
+
+
+## "você propôs um acordo de comércio a Civilização 2 — aceita (Contato → Paz)". The event's `actor`
+## names who acted, so the recipient is never read as if it had proposed.
+static func diplomacy_line(data: Dictionary, viewer: int) -> String:
 	var action: Dictionary = data.get("action", {}) if typeof(data.get("action")) == TYPE_DICTIONARY else {}
 	var resolution: Dictionary = data.get("resolution", {}) if typeof(data.get("resolution")) == TYPE_DICTIONARY else {}
-	var line := "Diplomacia com Civilização %d: %s" % [int(data.get("other", -1)) + 1, _action_text(action)]
+	var actor := int(data.get("actor", -1))
+	var other := int(data.get("other", -1))
+	var who := "você" if (actor == viewer and viewer >= 0) else "Civilização %d" % (actor + 1)
+	var target := "você" if (other == viewer and viewer >= 0) else "Civilização %d" % (other + 1)
+	var line := "%s %s" % [who, _action_text(action, target)]
 	var outcome: String = OUTCOME_LABELS.get(String(resolution.get("outcome", "")), "")
 	if not outcome.is_empty():
 		line += " — %s" % outcome
@@ -122,15 +139,15 @@ static func diplomacy_line(data: Dictionary) -> String:
 	return line + "."
 
 
-static func _action_text(action: Dictionary) -> String:
+static func _action_text(action: Dictionary, target: String) -> String:
 	var data: Dictionary = action.get("data", {}) if typeof(action.get("data")) == TYPE_DICTIONARY else {}
 	match String(action.get("type", "")):
 		"propose":
-			return "propôs um acordo de %s" % PROPOSAL_LABELS.get(String(data.get("kind", "")), "cooperação")
+			return "propôs um acordo de %s a %s" % [PROPOSAL_LABELS.get(String(data.get("kind", "")), "cooperação"), target]
 		"break_treaty":
-			return "rompeu um tratado"
+			return "rompeu um tratado com %s" % target
 		"declare_war":
-			return "declarou guerra"
+			return "declarou guerra a %s" % target
 		_:
 			return ServerView.humanize(String(action.get("type", "")))
 

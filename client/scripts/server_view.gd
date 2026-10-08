@@ -244,6 +244,7 @@ static func _parse_relations(raw: Variant, civ: int) -> Array:
 					"turn": int(fact.get("turn", 0)),
 					"category": String(fact.get("category", "")),
 					"status": String(fact.get("status", "")),
+					"subject": int(fact.get("subject", -1)),
 					"counterpart": int(fact.get("counterpart", -1)),
 				})
 		result.append({

@@ -20,18 +20,21 @@ static func balance_text(relation: Dictionary) -> String:
 		int(relation.get("confidence", 0)), int(relation.get("resentment", 0)), int(relation.get("debt", 0))]
 
 
-## The pair side a Ledger entry names. The viewer itself reads as "você".
-static func counterpart_name(counterpart: int, viewer: int) -> String:
-	return "você" if counterpart == viewer else "Civilização %d" % (counterpart + 1)
+## A side of a Ledger fact. The viewer itself reads as "você".
+static func side_name(civ: int, viewer: int) -> String:
+	return "você" if civ == viewer else "Civilização %d" % (civ + 1)
 
 
-## "Turno 40 · Tratado (ativa) · contraparte: Civilização 2"
+## "Turno 40 · Tratado (ativa) · Civilização 2 → você". The entry names its `subject` and the
+## `counterpart` is the other side of the pair, so the arrow reads the recorded direction; the
+## server already deduplicated the mirrored pair, so each fact appears once.
 static func ledger_line(entry: Dictionary, viewer: int) -> String:
-	return "Turno %d · %s (%s) · contraparte: %s" % [
+	return "Turno %d · %s (%s) · %s → %s" % [
 		int(entry.get("turn", 0)),
 		ServerView.ledger_category_label(String(entry.get("category", ""))),
 		ServerView.ledger_status_label(String(entry.get("status", ""))),
-		counterpart_name(int(entry.get("counterpart", -1)), viewer)]
+		side_name(int(entry.get("subject", -1)), viewer),
+		side_name(int(entry.get("counterpart", -1)), viewer)]
 
 
 func build(world: RefCounted) -> void:

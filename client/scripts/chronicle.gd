@@ -7,7 +7,7 @@ extends RefCounted
 ## Turn at which the current session started, or -1 before the first view.
 var session_start_turn := -1
 ## Turns received, oldest first. Each entry:
-## {turn: int, events: Array, commands: Dictionary, responses: Array, cities: Dictionary}.
+## {turn: int, viewer: int, events: Array, commands: Dictionary, responses: Array, cities: Dictionary}.
 var entries: Array = []
 ## Entropy events seen in earlier views, so a later response stays readable after the event leaves
 ## the projection: event id -> {title: String, choices: {choice_id: label}}.
@@ -41,6 +41,13 @@ func record_turn(payload: Dictionary, cities: Dictionary) -> void:
 	for entry in entries:
 		if int(entry["turn"]) == turn:
 			return
+	var raw_events: Array = payload.get("events", []) if typeof(payload.get("events")) == TYPE_ARRAY else []
+	# Commands the engine actually applied this turn. A response is a fact only when applied;
+	# a rejected `respond_to_event` is carried by its rejection event instead (CLAUDE.md §8).
+	var applied: Dictionary = {}
+	for event in raw_events:
+		if typeof(event) == TYPE_DICTIONARY and String(event.get("type", "")) == "command_applied":
+			applied[int(event.get("data", {}).get("command_id", -1))] = true
 	var commands: Dictionary = {}
 	var raw_commands: Variant = payload.get("commands", [])
 	if typeof(raw_commands) == TYPE_ARRAY:
@@ -49,11 +56,16 @@ func record_turn(payload: Dictionary, cities: Dictionary) -> void:
 				commands[int(command.get("command_id", -1))] = command
 	var responses: Array = []
 	for command in commands.values():
-		if String(command.get("kind", "")) == "respond_to_event":
-			responses.append(_response(command))
+		if String(command.get("kind", "")) != "respond_to_event":
+			continue
+		if not applied.has(int(command.get("command_id", -1))):
+			continue
+		responses.append(_response(command))
+	var view: Dictionary = payload.get("view", {}) if typeof(payload.get("view")) == TYPE_DICTIONARY else {}
 	entries.append({
 		"turn": turn,
-		"events": payload.get("events", []).duplicate(true) if typeof(payload.get("events")) == TYPE_ARRAY else [],
+		"viewer": int(view.get("civ", -1)),
+		"events": raw_events.duplicate(true),
 		"commands": commands,
 		"responses": responses,
 		"cities": cities.duplicate(),

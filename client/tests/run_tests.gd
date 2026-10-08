@@ -339,14 +339,14 @@ func test_relations_view() -> void:
 	check(relation["civ"] == 1 and relation["name"] == "Civilização 2" and relation["state"] == "peace", "relation identity and state")
 	check(relation["confidence"] == 64 and relation["resentment"] == 12 and relation["debt"] == -5, "directional balances are adapted")
 	check(relation["ledger"].size() == 3, "recent ledger entries are adapted")
-	check(relation["ledger"][0]["category"] == "treaty" and int(relation["ledger"][0]["counterpart"]) == 1, "ledger entry fields are adapted")
+	check(relation["ledger"][0]["category"] == "treaty" and int(relation["ledger"][0]["subject"]) == 0 and int(relation["ledger"][0]["counterpart"]) == 1, "ledger entry fields (subject and counterpart) are adapted")
 	check(ServerView.relation_state_label("peace") == "Paz" and ServerView.relation_state_label("war") == "Guerra" and ServerView.relation_state_label("tension") == "Tensão", "diplomacy states are PT-BR")
 	check(ServerView.ledger_category_label("treaty") == "Tratado" and ServerView.ledger_category_label("offense") == "Ofensa", "ledger categories are PT-BR")
 	check(ServerView.ledger_status_label("breached") == "quebrada" and ServerView.ledger_status_label("active") == "ativa", "ledger statuses are PT-BR")
 	check(RelationsView.relation_title(relation) == "Civilização 2 — Paz", "relation title")
 	check(RelationsView.balance_text(relation) == "Cf 64/100 · R 12/100 · Dv -5 (−100..100)", "balance line carries the GDD 12 scales: %s" % RelationsView.balance_text(relation))
-	check(RelationsView.ledger_line(relation["ledger"][0], 0) == "Turno 40 · Tratado (ativa) · contraparte: Civilização 2", "ledger line is readable in PT-BR")
-	check(RelationsView.ledger_line(relation["ledger"][1], 0) == "Turno 33 · Fronteira (cumprida) · contraparte: você", "the viewer side reads as you")
+	check(RelationsView.ledger_line(relation["ledger"][0], 0) == "Turno 40 · Tratado (ativa) · você → Civilização 2", "ledger line names the subject and counterpart in PT-BR")
+	check(RelationsView.ledger_line(relation["ledger"][1], 0) == "Turno 33 · Fronteira (cumprida) · Civilização 2 → você", "the counterpart side reads as you")
 
 	# Tolerant of an older server that does not publish relations yet.
 	var older := _load_view_payload()
@@ -382,10 +382,13 @@ func test_chronicle() -> void:
 	var cities := {0: "Capital", 1: "Capital da civilização 2"}
 	var payload := {
 		"from_turn": 42, "turn": 43,
+		"view": {"civ": 0},
 		"commands": [
 			{"command_id": 1, "kind": "found_city", "payload": {"type": "found_city", "data": {"city_id": 0, "target": 178}}},
 			{"command_id": 3, "kind": "declare_attack", "payload": {"type": "declare_attack", "data": {"attacker": 4, "target": 20}}},
 			{"command_id": 2, "kind": "respond_to_event", "payload": {"type": "respond_to_event", "data": {"event_id": 7, "choice_id": "ration"}}},
+			{"command_id": 4, "kind": "propose_diplomacy", "payload": {"type": "propose_diplomacy", "data": {"recipient": 1, "kind": "trade"}}},
+			{"command_id": 5, "kind": "respond_to_event", "payload": {"type": "respond_to_event", "data": {"event_id": 8, "choice_id": "fight"}}},
 		],
 		"events": [
 			{"type": "command_applied", "data": {"command_id": 1}},
@@ -393,6 +396,9 @@ func test_chronicle() -> void:
 			{"type": "population_migrated", "data": {"from": 0, "to": 1, "group": "labor"}},
 			{"type": "collapse_triggered", "data": {"civilization": 2}},
 			{"type": "diplomacy_resolved", "data": {"command_id": 4, "actor": 0, "other": 1, "action": {"type": "propose", "data": {"kind": "trade"}}, "resolution": {"outcome": "accepted", "from": "contact", "to": "peace"}}},
+			{"type": "command_applied", "data": {"command_id": 2}},
+			{"type": "command_rejected", "data": {"command_id": 5, "reason": "event_invalid"}},
+			{"type": "command_applied", "data": {"command_id": 4}},
 		],
 	}
 	chronicle.record_turn(payload, cities)
@@ -404,7 +410,12 @@ func test_chronicle() -> void:
 	check(ChronicleView.event_line(entry["events"][1], entry) == "Ordem recusada: atacar — alvo fora de alcance.", "rejected command names the PT-BR reason")
 	check(ChronicleView.event_line(entry["events"][2], entry) == "População migrou de Capital para Capital da civilização 2.", "migration names both cities")
 	check(ChronicleView.event_line(entry["events"][3], entry) == "Colapso da Civilização 3.", "collapse names the civilization")
-	check(ChronicleView.event_line(entry["events"][4], entry) == "Diplomacia com Civilização 2: propôs um acordo de comércio — aceita (Contato → Paz).", "diplomatic resolution is PT-BR")
+	check(ChronicleView.event_line(entry["events"][4], entry) == "você propôs um acordo de comércio a Civilização 2 — aceita (Contato → Paz).", "the diplomacy line names the actor")
+	check(ChronicleView.diplomacy_line(entry["events"][4]["data"], 1) == "Civilização 1 propôs um acordo de comércio a você — aceita (Contato → Paz).", "the recipient is not read as the proposer")
+	check(ChronicleView.event_line(entry["events"][5], entry) == "", "an applied event response is not repeated as an order")
+	check(ChronicleView.event_line(entry["events"][6], entry) == "Ordem recusada: responder a evento — evento inválido.", "a rejected event response appears as a rejection")
+	check(ChronicleView.event_line(entry["events"][7], entry) == "", "an applied diplomacy command is not duplicated by its resolution")
+	check(entry["responses"].size() == 1, "only an applied event response is recorded")
 	check(ChronicleView.response_line(entry["responses"][0]) == "Entropia: respondeu a “Estiagem do vale” com “Racionar alimentos”.", "Entropy response joins the remembered title and label")
 	check(ChronicleView.command_label({}) == "ordem" and ChronicleView.rejection_label("") == "motivo desconhecido", "unknown command and reason fall back without crashing")
 	check(ChronicleView.city_name({}, 4) == "Cidade 5", "unknown city id falls back to an ordinal name")
