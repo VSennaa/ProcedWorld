@@ -23,6 +23,14 @@ Prioridade ordenada pelo que impede fechar contratos ou aprovar a especificaçã
 - **Opções:** (1) Entropia com mais eventos de pressão (seca, tensão de grupo, exposição); (2) guerra e
   ameaça (`W`) vindas da diplomacia entrando na pressão; (3) baixar a meta para 5; (4) combinar 1 e 2.
 - **Recomendação:** (4), medido no harness antes de mexer em pesos. Até lá a meta é aviso, não teste vermelho.
+- **Medição B1 (2026-10-07):** com `W` implementado, a média segue **4** nas sementes 20261001, 42 e 7: zero
+  pares em tensão ou guerra (o Mandato proíbe iniciar guerra e quebrar tratado, e nada mais leva a tensão), e
+  a Entropia, mesmo acima do orçamento do GDD 08 (`b[c] = 6`, epidemias habilitadas, exposição pela duração
+  inteira), só soma `E ≈ 0,1`. Ver `engine/DIAGNOSTICO-P7.md`, seção "B1". Novas opções: (5) bots não
+  governados sem a linha vermelha de guerra e uma fonte de disputa de fronteira (GDD 07) para gerar tensão;
+  (6) carga administrativa reduzindo `S` (prevista em 06/SDD 15, regra a definir); (7) efeitos mecânicos das
+  escolhas (ex.: racionar ⇒ tensão de grupos +3/turno, GDD 08) e `E` por tile de GDD 12; (8) meta 5 para o
+  cenário pacífico e um cenário de conflito separado para exercitar `W`.
 - **Bloqueia:** critério de saída da Fase 3 (partida longa com crises plausíveis).
 
 ### Árvore de pesquisa no cliente (levantado pelo usuário em 2026-10-03)

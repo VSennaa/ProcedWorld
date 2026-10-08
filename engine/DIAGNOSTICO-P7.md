@@ -353,3 +353,44 @@ balanceamento para elevar a pressão sem enfraquecer esse gate.
   depois de ela ser paga (salinas não pagam a própria manutenção). Regra de obra abandonada explicitada.
 - Harness após a correção: `cities 27 population 108 average_pressure 4 crises 0 collapses 0 events 251 ms/turn 12.144`,
   hash final idêntico (11416498987709273344): o bot T0 não tinha melhoria de riqueza inadimplida nessa semente.
+
+# B1 — Pressão: Entropia + guerra (2026-10-07)
+## Medição (passo 1), VPS Docker `rust:1-slim`, 8 civilizações, 300 turnos
+O harness passou a imprimir a média ponderada por população de cada termo de `P_c` em todos os turnos
+(`pressure_terms`), os pares-turno em tensão/guerra, as declarações de guerra/ataque e os eventos da
+Entropia por categoria (`contagem/custo`). Só métrica: não altera estado, comandos nem hash.
+
+| seed | antes (base `60b01e2`) | depois (`W` implementado) |
+|---|---|---|
+| 20261001 | `cities 27 population 108 average_pressure 4 crises 0 collapses 0 events 252`, hash 12561671341498683472 | idêntico (mesmo hash) |
+| 42 | — | `cities 34 population 136 average_pressure 4 crises 0 collapses 0 events 256` |
+| 7 | — | `cities 30 population 120 average_pressure 4 crises 0 collapses 0 events 261` |
+
+Termos (as três sementes): `D 0.0 G 0.0 W 0.0 E 0.0 S 0.0 C 3.9`; `tension_pair_turns 0 war_pair_turns 0`;
+`declare_war 0 declare_attack 0`. Eventos (seed 20261001): `climate=74/148 discovery=67/67 magic=38/76
+technology=73/73`. Toda a pressão média vem da coesão (26 em todas as civilizações ⇒ `-(26-50)/5 = +4`).
+
+## `W` pela diplomacia
+Regra inteira de GDD 12 + termo de tensão do brief, documentada no SDD 15 §4.2: `W_c = min(20, 4 × confrontos
+no raio 3 no turno + 6 × [guerra com civilização com cidade a ≤ 5] + 2 × [tensão com essa civilização])`.
+Testes: guerra/tensão de fronteira, fim da hostilidade zera `W`, confrontos com teto 20, combate real no `step`.
+No cenário de saúde ela vale **0 legitimamente**: nenhum par chega a tensão ou guerra. O Mandato
+`GrowCautiously` tem as linhas vermelhas `NoStartWar` e `NoBreakTreaty` (GDD 09), e as únicas transições
+para tensão (GDD 07) são agressão registrada e quebra de tratado — ambas bloqueadas. Os templates
+diplomáticos da Entropia exigem tags (`ledger.recent_offense`, `border.disputed`) que nenhum sistema
+produz, e `WorldView::related` não fornece contraparte.
+
+## Entropia: teto medido
+Experimento descartado (não commitado), acima do que o GDD 08 permite: reserva `b[c] = 6` para toda
+civilização (o GDD dá `2 + P/25`, ou seja 2 aqui), `city.sanitary_stock = 0` (habilita as epidemias) e
+exposição mantida pela duração inteira do evento mesmo depois da resposta. Resultado: `events 355`,
+`epidemic=110/277 magic=72/178`, `E 0.1`, **`average_pressure 4`**. Motivo: `E` de um evento vale o seu custo
+(≤ 3) numa única cidade por 1–3 turnos, com no máximo um evento pendente por civilização, proteções de
+3/2 turnos e orçamento `B = 28` por era de 8 turnos; isso dá décimos de ponto por cidade-turno, contra os
+~6 pontos médios que faltam. `D` e `G` não sobem: o T0 mantém os estoques e nenhum efeito de template
+mexe em satisfação de grupo (tags como `group.tension` não têm regra no motor).
+
+## Conclusão
+A meta (média ≥ 10, ≤ 2 colapsos, ≤ 80) **não é alcançável** neste cenário sem regra que o GDD não tem
+ou proíbe. O piso continua como aviso; o teto ≤ 80 segue como asserção. Opções para decisão do usuário
+estão no relatório do B1 e em `docs/PERGUNTAS-ABERTAS.md`.

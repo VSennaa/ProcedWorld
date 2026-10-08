@@ -8,7 +8,32 @@ pub const SNAPSHOT_INTERVAL: u32 = 100;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)] pub struct RunConfig { pub seed: u64, pub civilizations: u32, pub turns: u32 }
 impl Default for RunConfig { fn default() -> Self { Self { seed: 1, civilizations: 8, turns: 1_000 } } }
 #[derive(Clone, Debug, Serialize, Deserialize)] pub struct StoredRun { pub snapshot: WorldSnapshot, pub log: CommandLog, pub home_tiles: BTreeMap<CivId, TileIndex> }
-#[derive(Clone, Debug)] pub struct SimulationRun { pub stored: StoredRun, pub final_state: WorldState, pub final_events: Vec<DomainEvent>, pub audits: Vec<DiplomaticAudit>, pressure_sum: u64, pressure_samples: u64 }
+#[derive(Clone, Debug)] pub struct SimulationRun { pub stored: StoredRun, pub final_state: WorldState, pub final_events: Vec<DomainEvent>, pub audits: Vec<DiplomaticAudit>, pub terms: PressureTerms, pressure_sum: u64, pressure_samples: u64 }
+/// Population-weighted sums of the `P_c` terms over every resolved turn (harness metric only, GDD 12):
+/// `D`, `G`, `W`, `E`, `(100 - S)/10` and `-(C - 50)/5`, plus pair-turns spent in tension and war.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)] pub struct PressureTerms { pub deprivation: i64, pub group_tension: i64, pub war_threat: i64, pub exposure: i64, pub stability: i64, pub cohesion: i64, pub population: i64, pub tension_pair_turns: u64, pub war_pair_turns: u64 }
+impl PressureTerms {
+    fn sample(&mut self, state: &WorldState) {
+        for city in state.cities.values() {
+            let Some(civ) = state.civilizations.get(&city.owner) else { continue; };
+            let population = i64::from(city.population);
+            self.deprivation += population * i64::from(city.deprivation);
+            self.group_tension += population * i64::from(city.group_tension);
+            self.war_threat += population * i64::from(city.war_threat);
+            self.exposure += population * i64::from(city.environmental_exposure);
+            self.stability += population * ((100 - i64::from(city.stability)) / 10);
+            self.cohesion += population * -((i64::from(civ.cohesion) - 50) / 5);
+            self.population += population;
+        }
+        for row in state.diplomacy.relations.values() {
+            for record in row.values() {
+                match record.state { pw_engine::diplomacy::RelationState::Tension => self.tension_pair_turns += 1, pw_engine::diplomacy::RelationState::War => self.war_pair_turns += 1, _ => {} }
+            }
+        }
+    }
+    /// Population-weighted mean of one term sum, in tenths.
+    pub fn tenths(&self, sum: i64) -> i64 { if self.population == 0 { 0 } else { sum * 10 / self.population } }
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)] pub struct Metrics { pub cities: u32, pub population: u32, pub average_pressure: u8, pub crises: u32, pub collapses: u32, pub events: u32 }
 
 impl SimulationRun {
@@ -25,7 +50,7 @@ pub fn run_simulation(config: RunConfig) -> Result<SimulationRun, String> {
     if config.civilizations == 0 || config.turns == 0 { return Err("civilizations and turns must be greater than zero".into()); }
     let (mut state, versions, homes) = initial_world(config.seed, config.civilizations)?;
     let snapshot = WorldSnapshot::new(state.clone(), versions);
-    let mut log = CommandLog::default(); let mandate = Mandate::preset(MandatePreset::GrowCautiously, 1); let catalog = bundled_catalog(); let director = EntropyDirector { catalog: &catalog, decision_port: None }; let mut command_id = 1_u64; let mut final_events = Vec::new(); let mut audits = Vec::new(); let mut pressure_sum = 0_u64; let mut pressure_samples = 0_u64;
+    let mut log = CommandLog::default(); let mandate = Mandate::preset(MandatePreset::GrowCautiously, 1); let catalog = bundled_catalog(); let director = EntropyDirector { catalog: &catalog, decision_port: None }; let mut command_id = 1_u64; let mut final_events = Vec::new(); let mut audits = Vec::new(); let mut pressure_sum = 0_u64; let mut pressure_samples = 0_u64; let mut terms = PressureTerms::default();
     for _ in 0..config.turns {
         let mut commands = Vec::new();
         for civilization in rotating_order(config.seed, state.turn, &homes) {
@@ -47,10 +72,11 @@ pub fn run_simulation(config: RunConfig) -> Result<SimulationRun, String> {
         let turn = state.turn; let result = step(&state, &commands, state.seed, &snapshot.versions);
         pressure_sum = pressure_sum.checked_add(result.state.civilizations.values().map(|civ| u64::from(civ.crisis_pressure)).sum()).ok_or_else(|| "pressure total exhausted".to_string())?;
         pressure_samples = pressure_samples.checked_add(result.state.civilizations.len() as u64).ok_or_else(|| "pressure sample count exhausted".to_string())?;
+        terms.sample(&result.state);
         audits.extend(audit_records(&commands, &result.events));
         log.record_turn(turn, result.state_hash); final_events = result.events; state = result.state;
     }
-    Ok(SimulationRun { stored: StoredRun { snapshot, log, home_tiles: homes }, final_state: state, final_events, audits, pressure_sum, pressure_samples })
+    Ok(SimulationRun { stored: StoredRun { snapshot, log, home_tiles: homes }, final_state: state, final_events, audits, terms, pressure_sum, pressure_samples })
 }
 
 pub fn replay_log(stored: &StoredRun) -> Result<StateHash, String> { replay(&stored.snapshot, &stored.log).map(|result| result.state.state_hash()).map_err(|error| format!("replay failed: {error:?}")) }
@@ -157,7 +183,7 @@ fn yields(biome: &str) -> TileYields { match biome { "forest" => TileYields { fo
         assert!(metrics.events >= 10, "expected the Entropy director to open events, got {}", metrics.events);
         // Upper bound only. The floor of 10 is a balance goal not reached yet (cohesion term centered on 50,
         // user decision 2026-10-02): reported as a warning, not a red test (docs/process/agentes-e-cotas.md §4).
-        // See engine/DIAGNOSTICO-P7.md, "P12b".
+        // See engine/DIAGNOSTICO-P7.md, "P12b" and "B1" (measured 4 with W from diplomacy; the gap needs a design decision).
         if metrics.average_pressure < 10 {
             eprintln!("warning: average pressure {} below the balance goal of 10 (events {}, crises {})", metrics.average_pressure, metrics.events, metrics.crises);
         }
