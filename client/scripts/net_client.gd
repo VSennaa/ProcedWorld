@@ -27,7 +27,27 @@ func connect_to_server(url: String = DEFAULT_URL) -> Error:
 	_ever_open = false
 	_active = true
 	_connect_deadline = Time.get_ticks_msec() + CONNECT_TIMEOUT_MS
-	return _peer.connect_to_url(url)
+	# Credentials in the URL (wss://user:pass@host/ws) become an HTTP Basic header for the proxy;
+	# the socket connects to the URL without them.
+	var parts := split_credentials(url)
+	if not parts["auth"].is_empty():
+		_peer.handshake_headers = PackedStringArray(["Authorization: Basic " + Marshalls.utf8_to_base64(parts["auth"])])
+	return _peer.connect_to_url(parts["url"])
+
+
+## Splits "scheme://user:pass@host/path" into {url: "scheme://host/path", auth: "user:pass"}.
+## Without credentials, auth is "". Used so a password is sent but never stored with the URL.
+static func split_credentials(url: String) -> Dictionary:
+	var scheme_end := url.find("://")
+	if scheme_end < 0:
+		return {"url": url, "auth": ""}
+	var rest := url.substr(scheme_end + 3)
+	var slash := rest.find("/")
+	var authority := rest if slash < 0 else rest.substr(0, slash)
+	var at := authority.rfind("@")
+	if at < 0:
+		return {"url": url, "auth": ""}
+	return {"url": url.substr(0, scheme_end + 3) + rest.substr(at + 1), "auth": authority.substr(0, at).uri_decode()}
 
 
 func close() -> void:

@@ -4,6 +4,7 @@ extends SceneTree
 
 const Hex := preload("res://scripts/hex.gd")
 const Protocol := preload("res://scripts/protocol.gd")
+const NetClient := preload("res://scripts/net_client.gd")
 const WorldView := preload("res://scripts/world_view.gd")
 const ServerView := preload("res://scripts/server_view.gd")
 const CatalogView := preload("res://scripts/catalog_view.gd")
@@ -27,11 +28,20 @@ var _failures := 0
 var _checks := 0
 
 
+func test_url_credentials() -> void:
+	var with_auth := NetClient.split_credentials("wss://jogador:s%40nha@exemplo.org/ws")
+	check(with_auth["url"] == "wss://exemplo.org/ws" and with_auth["auth"] == "jogador:s@nha", "credentials are split out of the URL and decoded")
+	var plain := NetClient.split_credentials("ws://127.0.0.1:8100/ws")
+	check(plain["url"] == "ws://127.0.0.1:8100/ws" and plain["auth"] == "", "a URL without credentials is unchanged")
+	check(NetClient.split_credentials("wss://exemplo.org/a@b")["auth"] == "", "an @ in the path is not a credential")
+
+
 func _init() -> void:
 	test_hex_neighbors()
 	test_distance_and_wrap()
 	test_center_and_pixel_to_cell()
 	test_envelope()
+	test_url_credentials()
 	test_fixture()
 	test_agenda_limits()
 	test_push_envelopes()

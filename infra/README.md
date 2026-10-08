@@ -20,7 +20,7 @@
 - Acesso externo a painéis/DB: túnel SSH (`ssh -L 5432:127.0.0.1:5432 deploy@<VPS_HOST>`).
 - Segredos em `/opt/stacks/procedworld/.env` com `chmod 600`, fora do git.
 
-### Faixa do ProcedWorld: 8100–8199 (reservas, ainda não em uso)
+### Faixa do ProcedWorld: 8100–8199 (8100 e 8110 em uso)
 
 | Porta | Serviço previsto | Exposição |
 |---|---|---|
@@ -56,6 +56,17 @@ marcando **Allow write access**. O clone já está configurado para fazer push v
   `infra/scripts/`) gera uma senha nova, guarda só o hash bcrypt, recarrega o Caddy e imprime a senha uma vez.
 - O quadro também continua acessível só por túnel em `127.0.0.1:8110`.
 
+## Servidor do jogo permanente (2026-10-07, aprovado pelo usuário)
+
+- Container `pw-server` (imagem `pw-server:latest`, Debian slim), `restart unless-stopped`, rede `proxy`,
+  porta `127.0.0.1:8100`. Mundos persistidos em `/opt/stacks/procedworld/server/data` (`PW_DATA_DIR`).
+- Caddy roteia `/ws` e `/health` para `pw-server:8100` atrás do mesmo HTTP Basic do quadro; o resto
+  continua indo para o quadro. Backup do Caddyfile anterior ao lado dele (`Caddyfile.bak-*`).
+- Deploy de uma versão: `VPS_SSH=deploy@<VPS_HOST> infra/scripts/deploy-server.sh` (compila, empacota,
+  troca o container; os mundos salvos sobrevivem).
+- Cliente: URL `wss://<usuário>:<senha>@<hostname da VPS>/ws`. O cliente manda a senha como cabeçalho
+  e nunca a grava (`user://sessions.cfg` guarda a URL sem credenciais).
+
 ## Ainda não existe (vem no SDD/Fase 2+)
 
-- `docker-compose.yml` da stack, proxy reverso com TLS, CI/CD de deploy, backups do PostgreSQL.
+- `docker-compose.yml` da stack, CI/CD de deploy, PostgreSQL e seus backups, backup dos mundos salvos.

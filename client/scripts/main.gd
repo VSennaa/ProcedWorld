@@ -478,7 +478,7 @@ func _on_envelope(envelope: Dictionary) -> void:
 			var token := String(payload.get("session_token", ""))
 			if not token.is_empty():
 				SessionStore.save_token(_session["world_id"], _session["civ"], token, _session_store_path)
-			SessionStore.save_last(_url, _session["world_id"], _session["civ"], _session_store_path)
+			SessionStore.save_last(NetClient.split_credentials(_url)["url"], _session["world_id"], _session["civ"], _session_store_path)
 		"state_snapshot":
 			_apply_view(payload, false)
 		"turn_diff":
