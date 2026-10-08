@@ -183,7 +183,7 @@ fn yields(biome: &str) -> TileYields { match biome { "forest" => TileYields { fo
         assert!(metrics.events >= 10, "expected the Entropy director to open events, got {}", metrics.events);
         // Upper bound only. The floor of 10 is a balance goal not reached yet (cohesion term centered on 50,
         // user decision 2026-10-02): reported as a warning, not a red test (docs/process/agentes-e-cotas.md §4).
-        // See engine/DIAGNOSTICO-P7.md, "P12b".
+        // See engine/DIAGNOSTICO-P7.md, "P12b" and "B1" (measured 4 with W from diplomacy; the gap needs a design decision).
         if metrics.average_pressure < 10 {
             eprintln!("warning: average pressure {} below the balance goal of 10 (events {}, crises {})", metrics.average_pressure, metrics.events, metrics.crises);
         }
