@@ -70,6 +70,13 @@ impl AppState {
         };
         let mut worlds = lock(&self.worlds);
         for id in ids {
+            if worlds.len() >= self.config.max_worlds {
+                eprintln!(
+                    "not restoring world {}: PW_MAX_WORLDS={} reached",
+                    id.0, self.config.max_worlds
+                );
+                continue;
+            }
             match self.store.load(id) {
                 Ok(Some(record)) => {
                     worlds.insert(

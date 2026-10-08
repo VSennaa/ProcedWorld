@@ -7,7 +7,7 @@ use pw_engine::{
     ids::{CivId, TurnNumber},
     world::{replay, CommandOrigin, WorldId},
 };
-use pw_server::{build_app, AppState, InMemoryStore, ServerConfig, WorldStore};
+use pw_server::{build_app, AppState, FileStore, InMemoryStore, ServerConfig, WorldStore};
 use serde_json::{json, Value};
 use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::TcpStream};
 use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
@@ -231,4 +231,64 @@ async fn join_sends_the_catalog_and_same_major_versions_are_accepted() {
         };
         assert_eq!(reply["payload"]["reason"], "protocol_version_mismatch");
     }
+}
+
+async fn start_on(store: Arc<FileStore>, max_worlds: usize) -> SocketAddr {
+    let config = ServerConfig { max_worlds, ..ServerConfig::default() };
+    let state = Arc::new(AppState::new(config, store));
+    state.restore_worlds();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let app = build_app(state);
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    addr
+}
+
+#[tokio::test]
+async fn disk_never_holds_the_session_token_and_a_restart_still_accepts_it() {
+    let root = std::env::temp_dir().join(format!("pw-server-e2e-token-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let store = Arc::new(FileStore::open(&root).unwrap());
+    let addr = start_on(store.clone(), 16).await;
+    let mut a = connect(addr).await;
+    create(&mut a, 31, 2).await;
+    let token = join(&mut a, 31, 0).await["session_token"].as_str().unwrap().to_owned();
+    let metadata = std::fs::read_to_string(root.join("31").join("metadata.json")).unwrap();
+    assert!(!metadata.contains(&token), "plaintext token on disk");
+    assert!(metadata.contains("sha256$"));
+
+    let addr = start_on(Arc::new(FileStore::open(&root).unwrap()), 16).await;
+    let mut b = connect(addr).await;
+    let forged = request(&mut b, "join", json!({ "world_id": 31, "civ": 0, "session_token": "nope" })).await;
+    assert_eq!(forged["payload"]["reason"], "invalid_session_token");
+    let resumed = request(&mut b, "join", json!({ "world_id": 31, "civ": 0, "session_token": token })).await;
+    assert_eq!(resumed["type"], "joined", "{resumed}");
+    assert_eq!(resumed["payload"]["session_token"], token.as_str());
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[tokio::test]
+async fn restore_loads_at_most_max_worlds_in_stable_id_order() {
+    let root = std::env::temp_dir().join(format!("pw-server-e2e-max-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let store = Arc::new(FileStore::open(&root).unwrap());
+    for seed in [43u64, 41, 42] {
+        let (state, versions, homes) = pw_harness::initial_world(seed, 2).unwrap();
+        store
+            .create(pw_server::WorldRecord {
+                snapshot: pw_engine::world::WorldSnapshot::new(state.clone(), versions),
+                log: Default::default(),
+                home_tiles: homes,
+                session_tokens: Default::default(),
+                state,
+            })
+            .unwrap();
+    }
+    let addr = start_on(store, 2).await;
+    for (world, expected) in [(41, "joined"), (42, "joined"), (43, "error")] {
+        let mut ws = connect(addr).await;
+        let reply = request(&mut ws, "join", json!({ "world_id": world, "civ": 0 })).await;
+        assert_eq!(reply["type"], expected, "world {world}: {reply}");
+    }
+    let _ = std::fs::remove_dir_all(&root);
 }

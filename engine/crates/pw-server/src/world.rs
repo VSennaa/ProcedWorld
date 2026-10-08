@@ -6,8 +6,7 @@
 //! without a present human.
 
 use std::{
-    collections::{hash_map::RandomState, BTreeMap},
-    hash::{BuildHasher, Hasher},
+    collections::BTreeMap,
     sync::Arc,
 };
 
@@ -37,7 +36,8 @@ pub struct Conn {
 
 /// A civilization claimed by a human. Without a seat, a civilization is a bot (Governor-played).
 struct Seat {
-    token: String,
+    /// Salted verifier of the session token (`session::make_verifier`); the token itself is never kept.
+    verifier: String,
     conn: Option<Conn>,
     ready: bool,
     /// Reconnect grace expired: the Governor plays this civilization until the human returns.
@@ -72,18 +72,6 @@ pub struct LiveWorld {
     next_command_id: u64,
     mandate: Mandate,
     store: Arc<dyn WorldStore>,
-}
-
-/// Session tokens come from the OS-seeded `RandomState`. They are unguessable enough for the
-/// current stage but are not cryptographic; real authentication replaces them (docs/sdd/10 sec. 4).
-fn new_token() -> String {
-    let mut token = String::new();
-    for round in 0..2u64 {
-        let mut hasher = RandomState::new().build_hasher();
-        hasher.write_u64(round);
-        token.push_str(&format!("{:016x}", hasher.finish()));
-    }
-    token
 }
 
 fn kind_of(payload: &CommandPayload) -> CommandKind {
@@ -152,11 +140,11 @@ impl LiveWorld {
         let seats = record
             .session_tokens
             .into_iter()
-            .map(|(civ, token)| {
+            .map(|(civ, verifier)| {
                 (
                     civ,
                     Seat {
-                        token,
+                        verifier,
                         conn: None,
                         ready: false,
                         absent: true,
@@ -181,7 +169,7 @@ impl LiveWorld {
         let tokens = self
             .seats
             .iter()
-            .map(|(civ, seat)| (*civ, seat.token.clone()))
+            .map(|(civ, seat)| (*civ, seat.verifier.clone()))
             .collect();
         self.store
             .save_session_tokens(self.state.world_id, &tokens)
@@ -227,35 +215,36 @@ impl LiveWorld {
         match self.seats.get_mut(&civ) {
             Some(seat) => match token {
                 None => Err(ErrorReason::CivTaken),
-                Some(given) if given != seat.token => Err(ErrorReason::InvalidSessionToken),
-                Some(_) => {
+                Some(given) if !crate::session::verify(given, &seat.verifier) => Err(ErrorReason::InvalidSessionToken),
+                Some(given) => {
                     if seat.absent {
                         seat.ready = false;
                     }
                     seat.absent = false;
                     seat.generation += 1;
                     seat.conn = Some(conn);
-                    Ok(seat.token.clone())
+                    Ok(given.to_owned())
                 }
             },
             None => {
                 if token.is_some() {
                     return Err(ErrorReason::InvalidSessionToken);
                 }
-                let token = new_token();
+                let token = crate::session::new_token();
+                let verifier = crate::session::make_verifier(&token);
                 let mut tokens: BTreeMap<_, _> = self
                     .seats
                     .iter()
-                    .map(|(seat_civ, seat)| (*seat_civ, seat.token.clone()))
+                    .map(|(seat_civ, seat)| (*seat_civ, seat.verifier.clone()))
                     .collect();
-                tokens.insert(civ, token.clone());
+                tokens.insert(civ, verifier.clone());
                 self.store
                     .save_session_tokens(self.state.world_id, &tokens)
                     .map_err(|_| ErrorReason::Internal)?;
                 self.seats.insert(
                     civ,
                     Seat {
-                        token: token.clone(),
+                        verifier,
                         conn: Some(conn),
                         ready: false,
                         absent: false,

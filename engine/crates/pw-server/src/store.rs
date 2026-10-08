@@ -16,12 +16,15 @@ use pw_engine::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::session;
+
 #[derive(Clone, Debug)]
 pub struct WorldRecord {
     /// Immutable starting point; `state` is derived from this plus the sealed log.
     pub snapshot: WorldSnapshot,
     pub log: CommandLog,
     pub home_tiles: BTreeMap<CivId, TileIndex>,
+    /// Per-seat salted verifiers (`session::make_verifier`), never the tokens themselves.
     pub session_tokens: BTreeMap<CivId, String>,
     pub state: WorldState,
 }
@@ -157,6 +160,9 @@ impl FileStore {
     fn world_dir(&self, world: WorldId) -> PathBuf {
         self.root.join(world.0.to_string())
     }
+    fn staging_dir(&self, world: WorldId) -> PathBuf {
+        self.root.join(format!("{}.creating", world.0))
+    }
     fn read_json<T: for<'de> Deserialize<'de>>(&self, path: &Path) -> Result<T, StoreError> {
         serde_json::from_slice(&fs::read(path).map_err(io_error)?)
             .map_err(|e| StoreError::Invalid(format!("{}: {e}", path.display())))
@@ -170,8 +176,8 @@ impl FileStore {
         file.sync_all().map_err(io_error)?;
         fs::rename(&temp, path).map_err(io_error)
     }
-    fn write_record(&self, record: &WorldRecord) -> Result<(), StoreError> {
-        let dir = self.world_dir(record.state.world_id);
+    /// Writes the three world files into `dir` (a not yet published directory).
+    fn write_record(&self, dir: &Path, record: &WorldRecord) -> Result<(), StoreError> {
         self.write_json(&dir.join("initial_snapshot.json"), &record.snapshot)?;
         self.write_json(
             &dir.join("turn.json"),
@@ -189,21 +195,39 @@ impl FileStore {
         )
     }
 }
+/// Best effort durability for a directory entry (not supported on every platform).
+fn sync_dir(path: &Path) {
+    if let Ok(dir) = fs::File::open(path) {
+        let _ = dir.sync_all();
+    }
+}
 fn io_error(error: io::Error) -> StoreError {
     StoreError::Io(error.to_string())
 }
 
 impl WorldStore for FileStore {
+    /// Snapshot, turn and metadata are written to `<id>.creating` and published by one directory
+    /// rename, so a crash leaves either no world or a complete one.
     fn create(&self, record: WorldRecord) -> Result<(), StoreError> {
         let dir = self.world_dir(record.state.world_id);
-        match fs::create_dir(&dir) {
-            Ok(()) => {}
-            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
-                return Err(StoreError::AlreadyExists)
-            }
-            Err(e) => return Err(io_error(e)),
+        if dir.exists() {
+            return Err(StoreError::AlreadyExists);
         }
-        self.write_record(&record)
+        let staging = self.staging_dir(record.state.world_id);
+        if staging.exists() {
+            fs::remove_dir_all(&staging).map_err(io_error)?;
+        }
+        fs::create_dir(&staging).map_err(io_error)?;
+        let written = self.write_record(&staging, &record).and_then(|()| {
+            sync_dir(&staging);
+            fs::rename(&staging, &dir).map_err(io_error)
+        });
+        if written.is_err() {
+            let _ = fs::remove_dir_all(&staging);
+        }
+        written?;
+        sync_dir(&self.root);
+        Ok(())
     }
     fn append_command(&self, world: WorldId, command: &AcceptedCommand) -> Result<(), StoreError> {
         let mut record = self.load(world)?.ok_or(StoreError::NotFound)?;
@@ -257,11 +281,32 @@ impl WorldStore for FileStore {
         if !dir.is_dir() {
             return Ok(None);
         }
+        if ["initial_snapshot.json", "turn.json", "metadata.json"]
+            .iter()
+            .any(|name| !dir.join(name).is_file())
+        {
+            eprintln!(
+                "ignoring incomplete world directory {} (interrupted creation)",
+                world.0
+            );
+            return Ok(None);
+        }
         let snapshot: WorldSnapshot = self.read_json(&dir.join("initial_snapshot.json"))?;
         let turn: TurnState = self.read_json(&dir.join("turn.json"))?;
         let head = turn.snapshot;
         let log = turn.log;
-        let metadata: Metadata = self.read_json(&dir.join("metadata.json"))?;
+        let mut metadata: Metadata = self.read_json(&dir.join("metadata.json"))?;
+        // Migration: files written before verifiers existed hold the plaintext token. Convert them
+        // in place; the original token keeps working because the verifier is derived from it.
+        if metadata.session_tokens.values().any(|v| !session::is_verifier(v)) {
+            for value in metadata.session_tokens.values_mut() {
+                if !session::is_verifier(value) {
+                    *value = session::make_verifier(value);
+                }
+            }
+            self.write_json(&dir.join("metadata.json"), &metadata)?;
+            eprintln!("migrated plaintext session tokens of world {} to verifiers", world.0);
+        }
         if snapshot.state.world_id != world || head.state.world_id != world {
             return Err(StoreError::Invalid(
                 "world id does not match its directory".into(),
@@ -290,8 +335,11 @@ impl WorldStore for FileStore {
             if !entry.file_type().map_err(io_error)?.is_dir() {
                 continue;
             }
-            if let Ok(id) = entry.file_name().to_string_lossy().parse::<u64>() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if let Ok(id) = name.parse::<u64>() {
                 worlds.push(WorldId(id));
+            } else if name.ends_with(".creating") {
+                eprintln!("ignoring interrupted world creation {name}");
             }
         }
         worlds.sort();
@@ -362,9 +410,59 @@ mod tests {
         let loaded = store.load(world).unwrap().expect("saved world");
         assert_eq!(loaded.state.turn, result.state.turn);
         assert_eq!(loaded.state.state_hash(), result.state_hash);
-        let tokens = BTreeMap::from([(CivId(0), "resume-token".to_owned())]);
+        let tokens = BTreeMap::from([(CivId(0), session::make_verifier("resume-token"))]);
         store.save_session_tokens(world, &tokens).unwrap();
         assert_eq!(store.load(world).unwrap().unwrap().session_tokens, tokens);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn plaintext_tokens_are_migrated_on_load_and_still_verify() {
+        let root = test_dir("migrate");
+        let _ = fs::remove_dir_all(&root);
+        let store = FileStore::open(&root).unwrap();
+        let (record, _) = record(94);
+        let world = record.state.world_id;
+        store.create(record).unwrap();
+        // Simulate a legacy file: plaintext token in metadata.
+        let path = store.world_dir(world).join("metadata.json");
+        let mut metadata: Metadata = store.read_json(&path).unwrap();
+        metadata.session_tokens.insert(CivId(0), "legacy-plain-token".to_owned());
+        store.write_json(&path, &metadata).unwrap();
+
+        let loaded = store.load(world).unwrap().unwrap();
+        let verifier = &loaded.session_tokens[&CivId(0)];
+        assert!(session::is_verifier(verifier));
+        assert!(session::verify("legacy-plain-token", verifier));
+        let on_disk = fs::read_to_string(&path).unwrap();
+        assert!(!on_disk.contains("legacy-plain-token"), "token must be gone from disk");
+        // Second load is stable (already migrated).
+        assert_eq!(store.load(world).unwrap().unwrap().session_tokens[&CivId(0)], *verifier);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn interrupted_world_creation_is_ignored_and_can_be_retried() {
+        let root = test_dir("creating");
+        let _ = fs::remove_dir_all(&root);
+        let store = FileStore::open(&root).unwrap();
+        let (record, _) = record(95);
+        let world = record.state.world_id;
+        // Crash during creation: staging directory with only some files.
+        let staging = store.staging_dir(world);
+        fs::create_dir(&staging).unwrap();
+        fs::write(staging.join("initial_snapshot.json"), b"{}").unwrap();
+        assert!(store.list().unwrap().is_empty());
+        assert!(store.load(world).unwrap().is_none());
+        // Old-style half-written directory under the final name is skipped, not fatal.
+        let half = store.world_dir(WorldId(777));
+        fs::create_dir(&half).unwrap();
+        fs::write(half.join("initial_snapshot.json"), b"{}").unwrap();
+        assert!(store.load(WorldId(777)).unwrap().is_none());
+        // Retrying the creation succeeds and publishes all files at once.
+        store.create(record).unwrap();
+        assert!(!staging.exists());
+        assert!(store.load(world).unwrap().is_some());
         let _ = fs::remove_dir_all(&root);
     }
 
