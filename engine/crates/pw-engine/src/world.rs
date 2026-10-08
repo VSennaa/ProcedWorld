@@ -1721,6 +1721,19 @@ fn resolve_diplomacy(state: &mut WorldState, seed: u64) {
     }
     let turn = state.turn;
     for (low, high) in met { state.diplomacy.establish_contact(turn, low, high); }
+    // Bordering pairs: a city of each civilization within `BORDER_DISPUTE_DISTANCE`, in id order.
+    let mut borders = BTreeSet::new();
+    if let Ok(grid) = grid_for(state) {
+        let cells: Vec<(CivId, crate::hex::Cell)> = state.cities.values().filter_map(|city| Some((city.owner, grid.cell(city.tile).ok()?))).collect();
+        for (index, (owner, cell)) in cells.iter().enumerate() {
+            for (other, other_cell) in &cells[index + 1..] {
+                if owner != other && grid.distance(*cell, *other_cell).is_ok_and(|distance| distance <= crate::diplomacy::BORDER_DISPUTE_DISTANCE) {
+                    borders.insert(if owner < other { (*owner, *other) } else { (*other, *owner) });
+                }
+            }
+        }
+    }
+    state.diplomacy.advance_disputes(turn, &borders);
     state.diplomacy.advance(turn);
 }
 fn resolve_synthesis(_state: &mut WorldState, seed: u64) { let _rng = Rng::derive(seed, "synthesis"); }

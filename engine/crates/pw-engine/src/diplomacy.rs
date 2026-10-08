@@ -42,6 +42,18 @@ pub const REPARATION_STEP: u8 = 2;
 pub const CLAIM_MIN_INTENSITY: u8 = 3;
 const AGGRESSION_INTENSITY: u8 = 4;
 const WAR_INTENSITY: u8 = 4;
+/// Two civilizations share a border when one city of each is at most this far (hexes): their radius-2
+/// work areas touch or overlap. Same distance as the border of `W` (SDD 15 §4.2). B2, 2026-10-07.
+pub const BORDER_DISPUTE_DISTANCE: u32 = 5;
+/// A shared border left in peace without a treaty for this many consecutive turns becomes a dispute.
+pub const BORDER_DISPUTE_TURNS: u32 = 8;
+/// Intensity of a `border.disputed` claim: exactly enough to justify a war (`CLAIM_MIN_INTENSITY`).
+pub const BORDER_DISPUTE_INTENSITY: u8 = 3;
+/// A dispute claim expires after this many turns if nobody acts on it.
+pub const BORDER_DISPUTE_CLAIM_TURNS: u32 = 30;
+/// War weariness: the utility of a truce grows by this much per two turns at war, up to `MAX_TRUCE_UTILITY`.
+pub const TRUCE_UTILITY_PER_TWO_WAR_TURNS: i32 = 3;
+pub const MAX_TRUCE_UTILITY: i32 = 20;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -158,7 +170,8 @@ const fn terms(kind: ProposalKind) -> Terms {
         ProposalKind::Pact => Terms { utility: 16, cost: 4, threshold: 60, duration: 50, intensity: 3 },
         ProposalKind::Alliance => Terms { utility: 20, cost: 4, threshold: 65, duration: 0, intensity: 5 },
         ProposalKind::Reparation => Terms { utility: 14, cost: 2, threshold: 60, duration: 0, intensity: 2 },
-        ProposalKind::Truce => Terms { utility: 20, cost: 4, threshold: 50, duration: 10, intensity: 2 },
+        // The truce utility is war weariness, computed in `evaluate` from the turns at war.
+        ProposalKind::Truce => Terms { utility: 0, cost: 4, threshold: 50, duration: 10, intensity: 2 },
     }
 }
 
@@ -224,6 +237,9 @@ pub struct DiplomacyState {
     pub era: u32,
     /// Rolling digest of every entry ever recorded, so the state hash covers the full history in O(1).
     pub digest: u64,
+    /// Consecutive turns each bordering pair (lower id, then higher) spent in peace without a treaty.
+    #[serde(default)]
+    pub disputes: BTreeMap<CivId, BTreeMap<CivId, u32>>,
 }
 
 impl DiplomacyState {
@@ -338,9 +354,15 @@ impl DiplomacyState {
 
     /// `A = 40 + 0.30(Cf-50) - 0.25R + 0.20Dv + U - K`, clamped to 0..100, in integers
     /// (hundredths, floor division). `Cf`, `R` and `Dv` are the recipient's view of the issuer.
-    pub fn evaluate(&self, issuer: CivId, recipient: CivId, kind: ProposalKind) -> AcceptanceComponents {
+    /// For a truce `U` is war weariness: `min(20, 3 × turns at war / 2)` (B2, 2026-10-07).
+    pub fn evaluate(&self, issuer: CivId, recipient: CivId, kind: ProposalKind, now: TurnNumber) -> AcceptanceComponents {
         let view = self.balance(recipient, issuer);
-        let table = terms(kind);
+        let mut table = terms(kind);
+        if kind == ProposalKind::Truce {
+            let record = self.relation(issuer, recipient);
+            let turns = if record.state == RelationState::War { now.0.saturating_sub(record.since.0) } else { 0 };
+            table.utility = (TRUCE_UTILITY_PER_TWO_WAR_TURNS * turns.min(100) as i32 / 2).min(MAX_TRUCE_UTILITY);
+        }
         let severity: i32 = if kind == ProposalKind::Reparation { 0 } else {
             self.marks.iter().filter(|mark| mark.offender == issuer && mark.affected == recipient).map(|mark| i32::from(mark.severity)).sum()
         };
@@ -367,7 +389,7 @@ impl DiplomacyState {
         let target = self.check_proposal(issuer, recipient, kind, turn)?;
         let record = self.relation(issuer, recipient);
         let from = record.state;
-        let components = self.evaluate(issuer, recipient, kind);
+        let components = self.evaluate(issuer, recipient, kind, turn);
         let acceptance = i32::from(components.acceptance);
         if acceptance < REFUSE_BELOW {
             self.refusals.retain(|refusal| turn.0 <= refusal.turn.0.saturating_add(REFUSAL_BLOCK_TURNS));
@@ -468,6 +490,53 @@ impl DiplomacyState {
         }
     }
 
+    /// Border disputes (GDD 07; decided on 2026-10-07 by delegation of the user, B2). `borders` holds the
+    /// bordering pairs (lower id first). A pair in `peace` keeps a counter of consecutive turns; any
+    /// other state (contact, tension, pact, alliance, war, truce) resets it, so a treaty settles the
+    /// border. At `BORDER_DISPUTE_TURNS` both sides record a `border.disputed` claim (category `Border`,
+    /// intensity 3, `Cf -2`, `R +3`, expires in 30 turns) and the pair moves to `tension`.
+    pub(crate) fn advance_disputes(&mut self, turn: TurnNumber, borders: &BTreeSet<(CivId, CivId)>) {
+        let mut next: BTreeMap<CivId, BTreeMap<CivId, u32>> = BTreeMap::new();
+        for &(low, high) in borders {
+            if low == high || self.state(low, high) != RelationState::Peace { continue; }
+            let turns = self.disputes.get(&low).and_then(|row| row.get(&high)).copied().unwrap_or(0).saturating_add(1);
+            if turns < BORDER_DISPUTE_TURNS {
+                next.entry(low).or_default().insert(high, turns);
+                continue;
+            }
+            let due = Some(TurnNumber(turn.0.saturating_add(BORDER_DISPUTE_CLAIM_TURNS)));
+            for (holder, subject) in [(low, high), (high, low)] {
+                self.push(turn, EntryDraft::new(holder, subject, LedgerCategory::Border, BORDER_DISPUTE_INTENSITY).deltas(-2, 3, 0).due(due));
+            }
+            self.set_relation(low, high, RelationRecord { state: RelationState::Tension, since: turn, until: None, objective: None });
+        }
+        self.disputes = next;
+    }
+
+    /// Number of pairs in which `civ` is in `relation` (wars and tensions are the `active_conflicts` of
+    /// the cohesion rule, GDD 12).
+    pub fn pairs_in(&self, civ: CivId, relation: RelationState) -> u32 {
+        self.relations.iter().flat_map(|(low, row)| row.iter().map(move |(high, record)| (*low, *high, record.state)))
+            .filter(|(low, high, state)| *state == relation && (*low == civ || *high == civ)).count() as u32
+    }
+
+    pub fn active_wars(&self, civ: CivId) -> u32 { self.pairs_in(civ, RelationState::War) }
+
+    /// Commitments of `civ` kept and broken for the cohesion rule (GDD 12): treaty entries held by `civ`
+    /// fulfilled at their deadline during the previous turn's upkeep (`turn - 1`), and promises `civ`
+    /// broke this turn (breaches are only recorded by commands). Each entry is counted exactly once.
+    pub fn commitments(&self, civ: CivId, turn: TurnNumber) -> (u32, u32) {
+        let previous = turn.0.checked_sub(1);
+        let mut kept = 0;
+        let mut broken = 0;
+        for entry in self.entries.iter().rev() {
+            if entry.turn.0 < previous.unwrap_or(turn.0) { break; }
+            if entry.category == LedgerCategory::Treaty && entry.status == EntryStatus::Fulfilled && entry.holder == civ && Some(entry.turn.0) == previous { kept += 1; }
+            if entry.category == LedgerCategory::Promise && entry.status == EntryStatus::Breached && entry.subject == civ && entry.turn == turn { broken += 1; }
+        }
+        (kept, broken)
+    }
+
     /// Per-turn upkeep: due entries close, pacts and truces lapse to peace, eras decay the balances.
     pub(crate) fn advance(&mut self, turn: TurnNumber) {
         let due: Vec<u64> = self.active.iter().copied().filter(|id| self.entries[*id as usize].due.is_some_and(|due| due.0 <= turn.0)).collect();
@@ -556,6 +625,13 @@ impl DiplomacyState {
             hasher.write_u8(refusal.kind as u8);
             hasher.write_u32(refusal.turn.0);
         }
+        for (low, row) in &self.disputes {
+            for (high, turns) in row {
+                hasher.write_u32(low.0);
+                hasher.write_u32(high.0);
+                hasher.write_u32(*turns);
+            }
+        }
     }
 }
 
@@ -572,37 +648,102 @@ fn preferred_kinds(relation: RelationState) -> &'static [ProposalKind] {
     }
 }
 
+/// How readily a T0 bot turns a registered claim into a war (bot personalities, B2 2026-10-07).
+/// It never bypasses the Mandate: the engine still rejects a war that violates a red line.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WarAppetite {
+    /// War only when no peaceful proposal to that civilization would be accepted (the default T0 order).
+    LastResort,
+    /// War first when the claim is a border dispute (`recover_territory`), last resort otherwise.
+    BorderFirst,
+    /// War first on any claim.
+    Eager,
+}
+
+/// War policy of a T0 bot: appetite plus prudence limits.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WarPolicy {
+    pub appetite: WarAppetite,
+    /// No declaration while the actor's cohesion is below this value.
+    pub min_cohesion: u8,
+    /// No declaration while the actor is already at war with someone.
+    pub single_front: bool,
+    /// Whether the bot proposes pacts and alliances (binding treaties settle borders). It still accepts
+    /// them by the engine's formula when another civilization proposes.
+    pub seeks_treaties: bool,
+}
+
+impl Default for WarPolicy {
+    /// The behaviour of the T0 bot before personalities: last resort, no prudence limits.
+    fn default() -> Self { Self { appetite: WarAppetite::LastResort, min_cohesion: 0, single_front: false, seeks_treaties: true } }
+}
+
+fn ledger_grounding(state: &WorldState, actor: CivId, other: CivId) -> Option<Vec<GroundingRef>> {
+    let diplomacy = &state.diplomacy;
+    let anchor = diplomacy.latest_entry(actor, other)?;
+    let mut grounding = vec![GroundingRef::Civilization { civilization: actor }, GroundingRef::Turn { turn: state.turn }, GroundingRef::Ledger { entry: anchor }];
+    if let Some(reverse) = diplomacy.latest_entry(other, actor) { grounding.push(GroundingRef::Ledger { entry: reverse }); }
+    Some(grounding)
+}
+
+/// T0 diplomacy for one civilization with the default war policy (see `t0_proposal_with`).
+pub fn t0_proposal(state: &WorldState, actor: CivId) -> Option<(CommandPayload, Vec<GroundingRef>)> {
+    t0_proposal_with(state, actor, WarPolicy::default())
+}
+
 /// T0 diplomacy for one civilization: at most one action per turn, the first valid one in
 /// civilization and preference order. A proposal is only made when the engine's own formula says
 /// the counterpart would accept. Every action cites Ledger entries that involve the actor.
-pub fn t0_proposal(state: &WorldState, actor: CivId) -> Option<(CommandPayload, Vec<GroundingRef>)> {
+/// Order (B2): (1) a truce the enemy would accept, (2) an eager war, (3) peaceful proposals, each
+/// civilization in tension followed by a last-resort war.
+pub fn t0_proposal_with(state: &WorldState, actor: CivId, policy: WarPolicy) -> Option<(CommandPayload, Vec<GroundingRef>)> {
     let me = state.civilizations.get(&actor)?;
     if me.frozen { return None; }
     let diplomacy = &state.diplomacy;
-    for (other, civ) in &state.civilizations {
-        if *other == actor || civ.frozen { continue; }
+    let others = || state.civilizations.iter().filter(move |(other, civ)| **other != actor && !civ.frozen);
+    let at_war = others().any(|(other, _)| diplomacy.state(actor, *other) == RelationState::War);
+    for (other, _) in others() {
+        if diplomacy.state(actor, *other) != RelationState::War || diplomacy.check_proposal(actor, *other, ProposalKind::Truce, state.turn).is_err() { continue; }
+        let components = diplomacy.evaluate(actor, *other, ProposalKind::Truce, state.turn);
+        if components.acceptance < components.threshold { continue; }
+        let Some(grounding) = ledger_grounding(state, actor, *other) else { continue; };
+        return Some((CommandPayload::ProposeDiplomacy { recipient: *other, kind: ProposalKind::Truce }, grounding));
+    }
+    let may_declare = me.cohesion >= policy.min_cohesion && !(policy.single_front && at_war);
+    let war = |other: CivId, eager_only: bool| -> Option<(CommandPayload, Vec<GroundingRef>)> {
+        if !may_declare || diplomacy.state(actor, other) != RelationState::Tension { return None; }
+        let (cause, objective) = diplomacy.war_basis(actor, other)?;
+        let eager = match policy.appetite {
+            WarAppetite::LastResort => false,
+            WarAppetite::BorderFirst => objective == WarObjective::RecoverTerritory,
+            WarAppetite::Eager => true,
+        };
+        if eager_only && !eager { return None; }
+        let mut grounding = ledger_grounding(state, actor, other)?;
+        grounding.push(GroundingRef::Ledger { entry: cause });
+        Some((CommandPayload::DeclareWar { target: other, objective: objective.id().into(), cause }, grounding))
+    };
+    if policy.appetite != WarAppetite::LastResort {
+        if let Some(found) = others().find_map(|(other, _)| war(*other, true)) { return Some(found); }
+    }
+    for (other, civ) in others() {
         let relation = diplomacy.state(actor, *other);
-        let Some(anchor) = diplomacy.latest_entry(actor, *other) else { continue; };
-        let mut grounding = vec![GroundingRef::Civilization { civilization: actor }, GroundingRef::Turn { turn: state.turn }, GroundingRef::Ledger { entry: anchor }];
-        if let Some(reverse) = diplomacy.latest_entry(*other, actor) { grounding.push(GroundingRef::Ledger { entry: reverse }); }
+        let Some(grounding) = ledger_grounding(state, actor, *other) else { continue; };
         for kind in preferred_kinds(relation) {
             let wanted = match kind {
                 ProposalKind::Trade => !diplomacy.has_active(actor, *other, LedgerCategory::Trade),
                 ProposalKind::Aid => me.treasury_wealth >= 20 && (civ.deprivation > 0 || civ.crisis_pressure >= 30),
+                ProposalKind::Pact | ProposalKind::Alliance => policy.seeks_treaties,
                 _ => true,
             };
             if !wanted || diplomacy.check_proposal(actor, *other, *kind, state.turn).is_err() { continue; }
-            let components = diplomacy.evaluate(actor, *other, *kind);
+            let components = diplomacy.evaluate(actor, *other, *kind, state.turn);
             if components.acceptance >= components.threshold {
                 return Some((CommandPayload::ProposeDiplomacy { recipient: *other, kind: *kind }, grounding));
             }
         }
-        if relation == RelationState::Tension {
-            if let Some((cause, objective)) = diplomacy.war_basis(actor, *other) {
-                grounding.push(GroundingRef::Ledger { entry: cause });
-                return Some((CommandPayload::DeclareWar { target: *other, objective: objective.id().into(), cause }, grounding));
-            }
-        }
+        if let Some(found) = war(*other, false) { return Some(found); }
     }
     None
 }
@@ -725,16 +866,16 @@ mod tests {
         let mut diplomacy = DiplomacyState::default();
         diplomacy.balances.entry(B).or_default().insert(A, Balance { cf: 70, r: 20, dv: 10 });
         // 40 + 0.30*20 - 0.25*20 + 0.20*10 + 20 - 0 = 63 for trade; floor of 4000+600-500+200+2000 = 6300.
-        let first = diplomacy.evaluate(A, B, ProposalKind::Trade);
+        let first = diplomacy.evaluate(A, B, ProposalKind::Trade, TurnNumber::ZERO);
         assert_eq!((first.cf, first.r, first.dv, first.utility, first.cost, first.acceptance, first.threshold), (70, 20, 10, 20, 0, 63, 60));
-        assert_eq!(first, diplomacy.evaluate(A, B, ProposalKind::Trade));
+        assert_eq!(first, diplomacy.evaluate(A, B, ProposalKind::Trade, TurnNumber::ZERO));
         // Floor division on a fractional hundredth: 4000 + 30*3 + 2000 = 6090 -> 60.
         diplomacy.balances.entry(B).or_default().insert(A, Balance { cf: 53, r: 0, dv: 0 });
-        assert_eq!(diplomacy.evaluate(A, B, ProposalKind::Trade).acceptance, 60);
+        assert_eq!(diplomacy.evaluate(A, B, ProposalKind::Trade, TurnNumber::ZERO).acceptance, 60);
         diplomacy.balances.entry(B).or_default().insert(A, Balance { cf: 0, r: 100, dv: -100 });
-        assert_eq!(diplomacy.evaluate(A, B, ProposalKind::Trade).acceptance, 0);
+        assert_eq!(diplomacy.evaluate(A, B, ProposalKind::Trade, TurnNumber::ZERO).acceptance, 0);
         diplomacy.balances.entry(B).or_default().insert(A, Balance { cf: 100, r: 0, dv: 100 });
-        assert_eq!(diplomacy.evaluate(A, B, ProposalKind::Trade).acceptance, 95);
+        assert_eq!(diplomacy.evaluate(A, B, ProposalKind::Trade, TurnNumber::ZERO).acceptance, 95);
     }
 
     #[test]
@@ -772,14 +913,14 @@ mod tests {
         assert_eq!(diplomacy.marks.len(), 1);
         let mark = diplomacy.marks[0].clone();
         assert_eq!((mark.offender, mark.affected, mark.severity), (A, B, 4));
-        let baseline = diplomacy.evaluate(A, B, ProposalKind::Trade).cost;
+        let baseline = diplomacy.evaluate(A, B, ProposalKind::Trade, TurnNumber::ZERO).cost;
         let resentment = diplomacy.balance(B, A).r;
         assert!(resentment >= 4);
         for _ in 0..200 { diplomacy.close_era(); }
         assert_eq!(diplomacy.marks, vec![mark]);
         assert_eq!(diplomacy.balance(B, A).r, 0, "ordinary resentment decays");
         assert_eq!(diplomacy.balance(B, A).cf, 50, "trust returns to the neutral baseline");
-        assert_eq!(diplomacy.evaluate(A, B, ProposalKind::Trade).cost, baseline, "the mark keeps raising the offender's cost");
+        assert_eq!(diplomacy.evaluate(A, B, ProposalKind::Trade, TurnNumber::ZERO).cost, baseline, "the mark keeps raising the offender's cost");
         assert!(baseline >= MARK_COST_PER_SEVERITY * 4);
     }
 
@@ -831,8 +972,15 @@ mod tests {
         let mut state = world();
         state.diplomacy.establish_contact(TurnNumber::ZERO, A, B);
         state.diplomacy.set_relation(A, B, RelationRecord { state: RelationState::War, since: TurnNumber::ZERO, until: None, objective: Some(WarObjective::ProtectRoute) });
-        let result = run(&state, &[player(1, 1, A, CommandPayload::ProposeDiplomacy { recipient: B, kind: ProposalKind::Truce })]);
-        assert_eq!(resolution(&result, 1).outcome, DiplomaticOutcome::Accepted);
+        // War weariness: no utility on the day of the declaration, 3 per two turns at war afterwards.
+        let truce = |id: u64, turn: TurnNumber| AcceptedCommand { turn, ..player(id, id, A, CommandPayload::ProposeDiplomacy { recipient: B, kind: ProposalKind::Truce }) };
+        assert_eq!(state.diplomacy.evaluate(A, B, ProposalKind::Truce, TurnNumber::ZERO).utility, 0);
+        assert_eq!(state.diplomacy.evaluate(A, B, ProposalKind::Truce, TurnNumber(4)).utility, 6);
+        assert_eq!(state.diplomacy.evaluate(A, B, ProposalKind::Truce, TurnNumber(40)).utility, MAX_TRUCE_UTILITY);
+        assert_ne!(resolution(&run(&state, &[truce(1, TurnNumber::ZERO)]), 1).outcome, DiplomaticOutcome::Accepted);
+        state.turn = TurnNumber(10);
+        let result = run(&state, &[truce(2, TurnNumber(10))]);
+        assert_eq!(resolution(&result, 2).outcome, DiplomaticOutcome::Accepted);
         let mut state = result.state;
         assert_eq!(state.diplomacy.state(A, B), RelationState::Truce);
         for _ in 0..12 { let next = step(&state, &[], state.seed, &versions(&state)); state = next.state; }
@@ -956,5 +1104,120 @@ mod tests {
         // An absent player's Governor never takes an irreversible step.
         let absent = Governor { mandate: &mandate, decision_port: None }.decide(&state, A, TileIndex(0), true, 1, 1);
         assert!(!absent.commands.iter().any(|command| matches!(command.payload, CommandPayload::DeclareWar { .. })));
+    }
+
+    fn bordering_peace() -> WorldState {
+        let mut state = world();
+        state.cities.insert(CityId(0), city(A, 0));
+        state.cities.insert(CityId(1), city(B, 2));
+        state.diplomacy.establish_contact(TurnNumber::ZERO, A, B);
+        state.diplomacy.set_relation(A, B, RelationRecord { state: RelationState::Peace, since: TurnNumber::ZERO, until: None, objective: None });
+        state
+    }
+
+    fn steps(mut state: WorldState, turns: u32) -> WorldState {
+        for _ in 0..turns { state = step(&state, &[], state.seed, &versions(&state)).state; }
+        state
+    }
+
+    #[test]
+    fn an_unsettled_border_becomes_a_dispute_claim_and_tension() {
+        let state = steps(bordering_peace(), BORDER_DISPUTE_TURNS - 1);
+        assert_eq!(state.diplomacy.state(A, B), RelationState::Peace);
+        assert_eq!(state.diplomacy.war_basis(A, B), None);
+        let state = steps(state, 1);
+        assert_eq!(state.diplomacy.state(A, B), RelationState::Tension);
+        for (holder, subject) in [(A, B), (B, A)] {
+            let (cause, objective) = state.diplomacy.war_basis(holder, subject).expect("a border claim");
+            let claim = state.diplomacy.entry(cause).unwrap();
+            assert_eq!((claim.category, claim.intensity, objective), (LedgerCategory::Border, BORDER_DISPUTE_INTENSITY, WarObjective::RecoverTerritory));
+        }
+        assert!(state.diplomacy.balance(A, B).r >= 3);
+        // The claim expires if nobody acts on it; the pair stays in tension until a treaty or reparation.
+        let later = steps(state.clone(), BORDER_DISPUTE_CLAIM_TURNS);
+        assert_eq!(later.diplomacy.war_basis(A, B), None);
+        // Determinism: the same history gives the same hash.
+        assert_eq!(steps(bordering_peace(), BORDER_DISPUTE_TURNS).state_hash(), state.state_hash());
+    }
+
+    #[test]
+    fn a_treaty_or_distance_prevents_border_disputes() {
+        let mut pact = bordering_peace();
+        pact.diplomacy.set_relation(A, B, RelationRecord { state: RelationState::Pact, since: TurnNumber::ZERO, until: None, objective: None });
+        assert_eq!(steps(pact, BORDER_DISPUTE_TURNS + 2).diplomacy.state(A, B), RelationState::Pact);
+        let mut far = bordering_peace();
+        far.map_width = 20;
+        far.tiles = vec![TileState::default(); 40];
+        far.cities.get_mut(&CityId(1)).unwrap().tile = TileIndex(10);
+        assert_eq!(steps(far, BORDER_DISPUTE_TURNS + 2).diplomacy.state(A, B), RelationState::Peace);
+    }
+
+    #[test]
+    fn commitments_count_fulfilled_treaties_once_and_breaches_on_their_turn() {
+        let mut diplomacy = DiplomacyState::default();
+        diplomacy.push_pair(TurnNumber::ZERO, A, B, LedgerCategory::Treaty, 3, (2, 0, 0), Some(TurnNumber(3)), 0);
+        diplomacy.push_pair(TurnNumber::ZERO, A, B, LedgerCategory::Trade, 2, (2, 0, 0), Some(TurnNumber(3)), 0);
+        diplomacy.advance(TurnNumber(3));
+        assert_eq!(diplomacy.commitments(A, TurnNumber(3)), (0, 0), "fulfilled after this turn's society");
+        assert_eq!(diplomacy.commitments(A, TurnNumber(4)), (1, 0), "trade is not a binding commitment");
+        assert_eq!(diplomacy.commitments(B, TurnNumber(4)), (1, 0));
+        assert_eq!(diplomacy.commitments(A, TurnNumber(5)), (0, 0), "counted exactly once");
+        let mut state = world();
+        with_pact(&mut state);
+        let broken = run(&state, &[player(1, 1, A, CommandPayload::BreakTreaty { counterpart: B })]).state.diplomacy;
+        assert_eq!(broken.commitments(A, TurnNumber::ZERO), (0, 1));
+        assert_eq!(broken.commitments(B, TurnNumber::ZERO), (0, 0));
+        assert_eq!(broken.active_wars(A), 0);
+    }
+
+    #[test]
+    fn war_policy_orders_war_truce_and_peaceful_proposals() {
+        let mut state = steps(bordering_peace(), BORDER_DISPUTE_TURNS);
+        assert_eq!(state.diplomacy.state(A, B), RelationState::Tension);
+        // A trade the counterpart would accept comes first for a last-resort bot.
+        assert!(matches!(t0_proposal(&state, A), Some((CommandPayload::ProposeDiplomacy { kind: ProposalKind::Trade, .. }, _))));
+        let eager = WarPolicy { appetite: WarAppetite::Eager, min_cohesion: 10, single_front: true, seeks_treaties: false };
+        let border_first = WarPolicy { appetite: WarAppetite::BorderFirst, ..eager };
+        for policy in [eager, border_first] {
+            let Some((CommandPayload::DeclareWar { target, objective, cause }, grounding)) = t0_proposal_with(&state, A, policy) else { panic!("expected a war for {policy:?}") };
+            assert_eq!((target, objective.as_str()), (B, "objective.recover_territory"));
+            assert!(grounding.contains(&GroundingRef::Ledger { entry: cause }));
+        }
+        // Prudence: no war below the cohesion floor or on a second front.
+        state.civilizations.get_mut(&A).unwrap().cohesion = 9;
+        assert!(!matches!(t0_proposal_with(&state, A, eager), Some((CommandPayload::DeclareWar { .. }, _))));
+        state.civilizations.get_mut(&A).unwrap().cohesion = 50;
+        let c = CivId(2);
+        state.civilizations.insert(c, CivilizationState::default());
+        state.diplomacy.set_relation(A, c, RelationRecord { state: RelationState::War, since: state.turn, until: None, objective: Some(WarObjective::ContainIncursion) });
+        state.diplomacy.push_pair(state.turn, A, c, LedgerCategory::Incident, 4, (0, 0, 0), None, 0);
+        assert!(!matches!(t0_proposal_with(&state, A, eager), Some((CommandPayload::DeclareWar { .. }, _))));
+        // A wearied war ends: once the enemy would accept a truce it is proposed before anything else.
+        state.turn = TurnNumber(state.turn.0 + 12);
+        assert!(matches!(t0_proposal_with(&state, A, eager), Some((CommandPayload::ProposeDiplomacy { recipient, kind: ProposalKind::Truce }, _)) if recipient == c));
+    }
+
+    #[test]
+    fn belligerent_bots_declare_grounded_wars_and_cautious_bots_cannot() {
+        use crate::personality::BotPersonality;
+        let state = steps(bordering_peace(), BORDER_DISPUTE_TURNS);
+        let decide = |personality: BotPersonality| {
+            let mandate = personality.mandate(1);
+            let decision = Governor { mandate: &mandate, decision_port: None }.decide_with(&state, A, TileIndex(0), false, 1, 1, personality.war_policy());
+            (decision.clone(), run(&state, &decision.commands))
+        };
+        let (decision, result) = decide(BotPersonality::Belligerent);
+        let audits = audit_records(&decision.commands, &result.events);
+        let war = audits.iter().find(|audit| matches!(audit.action, Some(DiplomaticAction::DeclareWar { .. }))).expect("a war audit");
+        assert_eq!(war.outcome, Some(DiplomaticOutcome::Executed));
+        assert!(war.is_grounded(&result.state.diplomacy));
+        assert_eq!(result.state.diplomacy.state(A, B), RelationState::War);
+        let (cautious, result) = decide(BotPersonality::Cautious);
+        assert!(!cautious.commands.iter().any(|command| matches!(command.payload, CommandPayload::DeclareWar { .. })));
+        assert_ne!(result.state.diplomacy.state(A, B), RelationState::War);
+        // The engine still enforces the red line of the Mandate carried by the command.
+        let mut forged = decision.commands.iter().find(|command| matches!(command.payload, CommandPayload::DeclareWar { .. })).unwrap().clone();
+        forged.mandate = Some(BotPersonality::Cautious.mandate(1));
+        assert_eq!(rejection(&run(&state, &[forged.clone()]), forged.command_id), Some(RejectionReason::MandateViolation));
     }
 }

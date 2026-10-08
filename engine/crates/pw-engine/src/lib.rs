@@ -15,6 +15,7 @@ pub mod ai;
 pub mod dsl;
 pub mod entropy;
 pub mod governor;
+pub mod personality;
 pub mod improvements;
 pub mod world;
 

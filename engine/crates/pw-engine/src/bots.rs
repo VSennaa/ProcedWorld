@@ -27,6 +27,11 @@ impl BotT0 {
     /// Produces a small ordered proposal set for one civilization. `home_tile` is
     /// supplied by world setup and makes the first settlement fair and reproducible.
     pub fn decide(&self, state: &WorldState, civilization: CivId, home_tile: TileIndex) -> Vec<BotProposal> {
+        self.decide_with(state, civilization, home_tile, crate::diplomacy::WarPolicy::default())
+    }
+
+    /// `decide` with an explicit diplomatic war policy (bot personalities, B2).
+    pub fn decide_with(&self, state: &WorldState, civilization: CivId, home_tile: TileIndex, war_policy: crate::diplomacy::WarPolicy) -> Vec<BotProposal> {
         let mut proposals = Vec::new();
         let cities: Vec<(CityId, _)> = state.cities.iter().filter(|(_, city)| city.owner == civilization).map(|(id, city)| (*id, city)).collect();
         if state.civilizations.get(&civilization).is_some_and(|civ| civ.frozen) { return proposals; }
@@ -106,7 +111,7 @@ impl BotT0 {
             proposals.push(BotProposal { payload: CommandPayload::SetUnitOrder { unit_id: *unit_id, order }, grounding });
         }
         // At most one diplomatic action per turn, always grounded in Ledger entries (diplomacy slot).
-        if let Some((payload, grounding)) = crate::diplomacy::t0_proposal(state, civilization) {
+        if let Some((payload, grounding)) = crate::diplomacy::t0_proposal_with(state, civilization, war_policy) {
             proposals.push(BotProposal { payload, grounding });
         }
         proposals

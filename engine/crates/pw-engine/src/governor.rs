@@ -136,7 +136,14 @@ impl<'a> Governor<'a> {
     /// Returns a conflict-free command set: at most one command per slot, best utility first
     /// (ties by id). Command ids and sequences are assigned consecutively from the given bases.
     pub fn decide(&self, state: &WorldState, civilization: CivId, home: TileIndex, absent: bool, command_id: u64, accepted_sequence: u64) -> GovernorDecision {
-        let candidates = self.candidates(state, civilization, home);
+        self.decide_with(state, civilization, home, absent, command_id, accepted_sequence, crate::diplomacy::WarPolicy::default())
+    }
+
+    /// `decide` with the T0 war policy of a bot personality (B2). The Mandate filter and the engine's
+    /// red-line check apply unchanged.
+    #[allow(clippy::too_many_arguments)]
+    pub fn decide_with(&self, state: &WorldState, civilization: CivId, home: TileIndex, absent: bool, command_id: u64, accepted_sequence: u64, war_policy: crate::diplomacy::WarPolicy) -> GovernorDecision {
+        let candidates = self.candidates(state, civilization, home, war_policy);
         let mut report = GovernorReport::default();
         let mut allowed = Vec::new();
         for candidate in candidates {
@@ -172,8 +179,8 @@ impl<'a> Governor<'a> {
         GovernorDecision { commands, report }
     }
 
-    fn candidates(&self, state: &WorldState, civilization: CivId, home: TileIndex) -> Vec<CandidateAction> {
-        BotT0.decide(state, civilization, home).into_iter()
+    fn candidates(&self, state: &WorldState, civilization: CivId, home: TileIndex, war_policy: crate::diplomacy::WarPolicy) -> Vec<CandidateAction> {
+        BotT0.decide_with(state, civilization, home, war_policy).into_iter()
             .filter(|proposal| match &proposal.payload {
                 CommandPayload::SetCityFocus { city_id, focus } => state.cities.get(city_id).is_some_and(|city| city.focus != *focus),
                 _ => true,
