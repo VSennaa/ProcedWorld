@@ -14,6 +14,9 @@ const UnitPanel := preload("res://scripts/unit_panel.gd")
 const CityPanel := preload("res://scripts/city_panel.gd")
 const TechView := preload("res://scripts/tech_view.gd")
 const SocietyView := preload("res://scripts/society_view.gd")
+const RelationsView := preload("res://scripts/relations_view.gd")
+const Chronicle := preload("res://scripts/chronicle.gd")
+const ChronicleView := preload("res://scripts/chronicle_view.gd")
 const ConnectView := preload("res://scripts/connect_view.gd")
 const ReadyFab := preload("res://scripts/ready_fab.gd")
 const EventView := preload("res://scripts/event_view.gd")
@@ -48,6 +51,8 @@ func _init() -> void:
 	test_commands()
 	test_hex_index()
 	test_server_view_adapter()
+	test_relations_view()
+	test_chronicle()
 	test_adapter_tolerates_missing_fields()
 	test_adapter_rejects_bad_input()
 	test_idle_queue_and_gate()
@@ -325,6 +330,107 @@ func test_adapter_rejects_bad_input() -> void:
 	payload = _load_view_payload()
 	payload.erase("tiles")
 	check(not ServerView.from_payload(payload)["ok"], "missing tiles rejected")
+
+
+func test_relations_view() -> void:
+	var view := _adapt(_load_view_payload(), _load_catalog())
+	check(view.relations.size() == 1, "one known civilization is adapted")
+	var relation: Dictionary = view.relations[0]
+	check(relation["civ"] == 1 and relation["name"] == "Civilização 2" and relation["state"] == "peace", "relation identity and state")
+	check(relation["confidence"] == 64 and relation["resentment"] == 12 and relation["debt"] == -5, "directional balances are adapted")
+	check(relation["ledger"].size() == 3, "recent ledger entries are adapted")
+	check(relation["ledger"][0]["category"] == "treaty" and int(relation["ledger"][0]["counterpart"]) == 1, "ledger entry fields are adapted")
+	check(ServerView.relation_state_label("peace") == "Paz" and ServerView.relation_state_label("war") == "Guerra" and ServerView.relation_state_label("tension") == "Tensão", "diplomacy states are PT-BR")
+	check(ServerView.ledger_category_label("treaty") == "Tratado" and ServerView.ledger_category_label("offense") == "Ofensa", "ledger categories are PT-BR")
+	check(ServerView.ledger_status_label("breached") == "quebrada" and ServerView.ledger_status_label("active") == "ativa", "ledger statuses are PT-BR")
+	check(RelationsView.relation_title(relation) == "Civilização 2 — Paz", "relation title")
+	check(RelationsView.balance_text(relation) == "Cf 64/100 · R 12/100 · Dv -5 (−100..100)", "balance line carries the GDD 12 scales: %s" % RelationsView.balance_text(relation))
+	check(RelationsView.ledger_line(relation["ledger"][0], 0) == "Turno 40 · Tratado (ativa) · contraparte: Civilização 2", "ledger line is readable in PT-BR")
+	check(RelationsView.ledger_line(relation["ledger"][1], 0) == "Turno 33 · Fronteira (cumprida) · contraparte: você", "the viewer side reads as you")
+
+	# Tolerant of an older server that does not publish relations yet.
+	var older := _load_view_payload()
+	older.erase("relations")
+	check(_adapt(older).relations.is_empty(), "missing relations field yields an empty list")
+	# The screen renders the entries and stays read-only (no button without effect).
+	var screen := RelationsView.new()
+	root.add_child(screen)
+	screen.build(view)
+	var texts: Array = screen.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text)
+	check(texts.any(func(text: String) -> bool: return text == "Relações"), "relations screen shows its title")
+	check(texts.any(func(text: String) -> bool: return text.contains("Cf 64/100") and text.contains("−100..100")), "relations screen shows the balances with scale")
+	check(texts.any(func(text: String) -> bool: return text.begins_with("Turno 40 · Tratado")), "relations screen lists a readable ledger entry")
+	check(screen.find_children("*", "Button", true, false).is_empty(), "read-only screen has no action button")
+	# Empty state.
+	var empty_view := _adapt(_load_view_payload(), _load_catalog())
+	empty_view.relations = []
+	screen.build(empty_view)
+	texts = screen.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text)
+	check(texts.any(func(text: String) -> bool: return text.contains("ainda não encontrou")), "empty relations explain the state")
+	screen.queue_free()
+
+
+func test_chronicle() -> void:
+	var chronicle := Chronicle.new()
+	chronicle.record_start(42)
+	check(chronicle.session_start_turn == 42, "chronicle remembers the session start turn")
+	chronicle.record_start(99)
+	check(chronicle.session_start_turn == 42, "a later snapshot never moves the session start")
+
+	# An Entropy event seen in a previous view stays readable once the response resolves.
+	chronicle.remember_events([{"id": "event-7", "event_id": 7, "title": "Estiagem do vale", "options": [{"id": "ration", "label": "Racionar alimentos"}]}])
+	var cities := {0: "Capital", 1: "Capital da civilização 2"}
+	var payload := {
+		"from_turn": 42, "turn": 43,
+		"commands": [
+			{"command_id": 1, "kind": "found_city", "payload": {"type": "found_city", "data": {"city_id": 0, "target": 178}}},
+			{"command_id": 3, "kind": "declare_attack", "payload": {"type": "declare_attack", "data": {"attacker": 4, "target": 20}}},
+			{"command_id": 2, "kind": "respond_to_event", "payload": {"type": "respond_to_event", "data": {"event_id": 7, "choice_id": "ration"}}},
+		],
+		"events": [
+			{"type": "command_applied", "data": {"command_id": 1}},
+			{"type": "command_rejected", "data": {"command_id": 3, "reason": "attack_out_of_range"}},
+			{"type": "population_migrated", "data": {"from": 0, "to": 1, "group": "labor"}},
+			{"type": "collapse_triggered", "data": {"civilization": 2}},
+			{"type": "diplomacy_resolved", "data": {"command_id": 4, "actor": 0, "other": 1, "action": {"type": "propose", "data": {"kind": "trade"}}, "resolution": {"outcome": "accepted", "from": "contact", "to": "peace"}}},
+		],
+	}
+	chronicle.record_turn(payload, cities)
+	check(chronicle.entries.size() == 1 and int(chronicle.entries[0]["turn"]) == 42, "a resolved turn is recorded")
+	chronicle.record_turn(payload, cities)
+	check(chronicle.entries.size() == 1, "a repeated diff for the same turn is ignored")
+	var entry: Dictionary = chronicle.entries[0]
+	check(ChronicleView.event_line(entry["events"][0], entry) == "Ordem aplicada: fundar cidade.", "applied command is PT-BR")
+	check(ChronicleView.event_line(entry["events"][1], entry) == "Ordem recusada: atacar — alvo fora de alcance.", "rejected command names the PT-BR reason")
+	check(ChronicleView.event_line(entry["events"][2], entry) == "População migrou de Capital para Capital da civilização 2.", "migration names both cities")
+	check(ChronicleView.event_line(entry["events"][3], entry) == "Colapso da Civilização 3.", "collapse names the civilization")
+	check(ChronicleView.event_line(entry["events"][4], entry) == "Diplomacia com Civilização 2: propôs um acordo de comércio — aceita (Contato → Paz).", "diplomatic resolution is PT-BR")
+	check(ChronicleView.response_line(entry["responses"][0]) == "Entropia: respondeu a “Estiagem do vale” com “Racionar alimentos”.", "Entropy response joins the remembered title and label")
+	check(ChronicleView.command_label({}) == "ordem" and ChronicleView.rejection_label("") == "motivo desconhecido", "unknown command and reason fall back without crashing")
+	check(ChronicleView.city_name({}, 4) == "Cidade 5", "unknown city id falls back to an ordinal name")
+
+	# Older server / reconnect: a turn without a report must not break the history.
+	var sparse := Chronicle.new()
+	sparse.record_turn({"turn": 5}, {})
+	check(sparse.entries.size() == 1 and sparse.entries[0]["events"].is_empty() and sparse.entries[0]["responses"].is_empty(), "a turn without a report is tolerated")
+
+	var screen := ChronicleView.new()
+	root.add_child(screen)
+	screen.build(chronicle)
+	var texts: Array = screen.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text)
+	check(texts.any(func(text: String) -> bool: return text == "Crônica"), "chronicle screen shows its title")
+	check(texts.any(func(text: String) -> bool: return text.contains("Somente esta sessão")), "chronicle marks the history as this-session only")
+	check(texts.any(func(text: String) -> bool: return text == "Turno 42"), "chronicle lists the resolved turn")
+	check(texts.any(func(text: String) -> bool: return text.begins_with("Ordem aplicada: fundar cidade")), "chronicle lists an applied command")
+	check(texts.any(func(text: String) -> bool: return text.contains("Entropia: respondeu")), "chronicle lists an Entropy response")
+	check(screen.find_children("*", "Button", true, false).is_empty(), "read-only chronicle has no action button")
+	screen.build(Chronicle.new())
+	texts = screen.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text)
+	check(texts.any(func(text: String) -> bool: return text.contains("Nenhum turno resolvido")), "empty chronicle explains the state")
+	screen.build(sparse)
+	texts = screen.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text)
+	check(texts.any(func(text: String) -> bool: return text.contains("Sem fatos registrados")), "a turn without facts says so")
+	screen.queue_free()
 
 
 func test_idle_queue_and_gate() -> void:

@@ -194,6 +194,8 @@ static func from_payload(payload: Dictionary, catalog: RefCounted = null) -> Dic
 			view.agenda.append(card["card"])
 	view.agenda = WorldView._limit_agenda(view.agenda)
 
+	view.relations = _parse_relations(payload.get("relations", []), civ)
+
 	view.capital = first_own_city
 	if view.capital.x < 0 and view.home_cell.x >= 0:
 		view.capital = view.home_cell
@@ -217,6 +219,44 @@ static func _name_cities(view: RefCounted) -> void:
 		ordinal[owner] = int(ordinal.get(owner, 0)) + 1
 		var label := "Capital" if ordinal[owner] == 1 else "Cidade %d" % ordinal[owner]
 		city["name"] = label if city["own"] else "%s da civilização %d" % [label, owner + 1]
+
+
+## Relations published by `relations_for` (C2a): one row per known civilization with the viewer's
+## directional balances and the recent Ledger entries between the two. Missing or partial fields are
+## tolerated so an older server still yields a valid (possibly empty) list.
+static func _parse_relations(raw: Variant, civ: int) -> Array:
+	var result: Array = []
+	if typeof(raw) != TYPE_ARRAY:
+		return result
+	for entry in raw:
+		if typeof(entry) != TYPE_DICTIONARY:
+			continue
+		var other := int(entry.get("civ", -1))
+		if other < 0 or other == civ:
+			continue
+		var ledger: Array = []
+		if typeof(entry.get("ledger")) == TYPE_ARRAY:
+			for fact in entry["ledger"]:
+				if typeof(fact) != TYPE_DICTIONARY:
+					continue
+				ledger.append({
+					"id": int(fact.get("id", 0)),
+					"turn": int(fact.get("turn", 0)),
+					"category": String(fact.get("category", "")),
+					"status": String(fact.get("status", "")),
+					"counterpart": int(fact.get("counterpart", -1)),
+				})
+		result.append({
+			"civ": other,
+			"name": "Civilização %d" % (other + 1),
+			"color": "#" + civ_color(other).to_html(false),
+			"state": String(entry.get("state", "unknown")),
+			"confidence": int(entry.get("confidence", 0)),
+			"resentment": int(entry.get("resentment", 0)),
+			"debt": int(entry.get("debt", 0)),
+			"ledger": ledger,
+		})
+	return result
 
 
 static func _fill_civilization(view: RefCounted, state: Dictionary, payload: Dictionary) -> void:
@@ -328,6 +368,33 @@ static func category_label(category: String) -> String:
 
 static func resource_label(resource: String) -> String:
 	return RESOURCE_LABELS.get(resource, humanize(resource))
+
+
+## PT-BR labels for the diplomacy state machine (GDD 07) and the Ledger (C2b).
+const RELATION_STATE_LABELS := {
+	"unknown": "Desconhecido", "contact": "Contato", "peace": "Paz", "tension": "Tensão",
+	"pact": "Pacto", "alliance": "Aliança", "war": "Guerra", "truce": "Trégua",
+}
+const LEDGER_CATEGORY_LABELS := {
+	"promise": "Promessa", "debt": "Dívida", "offense": "Ofensa", "aid": "Ajuda",
+	"trade": "Comércio", "border": "Fronteira", "incident": "Incidente", "treaty": "Tratado",
+}
+const LEDGER_STATUS_LABELS := {
+	"active": "ativa", "fulfilled": "cumprida", "expired": "expirada",
+	"breached": "quebrada", "superseded": "substituída",
+}
+
+
+static func relation_state_label(state: String) -> String:
+	return RELATION_STATE_LABELS.get(state, humanize(state) if not state.is_empty() else "Desconhecido")
+
+
+static func ledger_category_label(category: String) -> String:
+	return LEDGER_CATEGORY_LABELS.get(category, humanize(category) if not category.is_empty() else "Fato")
+
+
+static func ledger_status_label(status: String) -> String:
+	return LEDGER_STATUS_LABELS.get(status, humanize(status) if not status.is_empty() else "—")
 
 
 ## PT-BR names of the event catalog tags (engine ids are never shown raw when known).

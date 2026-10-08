@@ -18,6 +18,9 @@ const AgendaView := preload("res://scripts/agenda_view.gd")
 const MapView := preload("res://scripts/map_view.gd")
 const TechView := preload("res://scripts/tech_view.gd")
 const SocietyView := preload("res://scripts/society_view.gd")
+const RelationsView := preload("res://scripts/relations_view.gd")
+const Chronicle := preload("res://scripts/chronicle.gd")
+const ChronicleView := preload("res://scripts/chronicle_view.gd")
 const UnitPanel := preload("res://scripts/unit_panel.gd")
 const CityPanel := preload("res://scripts/city_panel.gd")
 const ConnectView := preload("res://scripts/connect_view.gd")
@@ -39,10 +42,7 @@ const SCREENS: Array[Array] = [
 	["pauta", "Pauta"], ["mapa", "Mapa"], ["pesquisa", "Pesquisa"], ["sociedade", "Sociedade"],
 	["relacoes", "Relações"], ["cronica", "Crônica"],
 ]
-const PLACEHOLDERS := {
-	"relacoes": "Em quem confiar e o que é devido: ledger, tratados e propostas.",
-	"cronica": "O que aconteceu e quanto custou a IA: fatos, narrativa e consumo.",
-}
+const PLACEHOLDERS := {}
 const ENGINE_REASON_TEXT := {
 	"wrong_turn": "Essa ordem é de um turno que já passou.",
 	"unknown_civilization": "Civilização desconhecida.",
@@ -132,6 +132,9 @@ var _agenda
 var _map
 var _tech
 var _society
+var _relations
+var _chronicle: RefCounted
+var _chronicle_view
 var _unit_panel
 var _city_panel
 var _event
@@ -289,6 +292,15 @@ func _build_shell() -> void:
 	_society.set_anchors_preset(Control.PRESET_FULL_RECT)
 	content.add_child(_society)
 	_screens["sociedade"] = _society
+	_relations = RelationsView.new()
+	_relations.set_anchors_preset(Control.PRESET_FULL_RECT)
+	content.add_child(_relations)
+	_screens["relacoes"] = _relations
+	_chronicle = Chronicle.new()
+	_chronicle_view = ChronicleView.new()
+	_chronicle_view.set_anchors_preset(Control.PRESET_FULL_RECT)
+	content.add_child(_chronicle_view)
+	_screens["cronica"] = _chronicle_view
 	_event = EventView.new()
 	_event.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_event.choice_selected.connect(_on_event_choice_selected)
@@ -484,6 +496,7 @@ func _on_envelope(envelope: Dictionary) -> void:
 		"turn_diff":
 			if typeof(payload.get("view")) == TYPE_DICTIONARY:
 				_apply_view(payload["view"], true)
+				_record_chronicle(payload)
 				_report("Turno %d resolvido." % int(payload.get("turn", 0)), false)
 		"catalog":
 			_apply_catalog(payload)
@@ -524,7 +537,23 @@ func _apply_view(payload: Dictionary, new_turn: bool) -> void:
 	_enter_game(first)
 
 
+## Records the resolved turn report (brief C2c) into the session chronicle. The server sends its
+## own commands and the filtered `events_for` report in the `turn_diff` payload; this only stores
+## facts and refreshes the read-only Crônica screen.
+func _record_chronicle(payload: Dictionary) -> void:
+	if _chronicle == null or world == null:
+		return
+	var cities: Dictionary = {}
+	for city in world.cities:
+		cities[int(city["id"])] = String(city["name"])
+	_chronicle.record_turn(payload, cities)
+	_chronicle_view.build(_chronicle)
+
+
 func _enter_game(first: bool) -> void:
+	if first:
+		_chronicle = Chronicle.new()
+		_chronicle.record_start(world.turn)
 	_show_game()
 	_populate(first)
 	if first:
@@ -652,6 +681,9 @@ func _populate(first: bool) -> void:
 	_map.set_selected_unit(_selected_unit if not world.unit_by_id(_selected_unit).is_empty() else -1)
 	_refresh_tech()
 	_society.build(world)
+	_relations.build(world)
+	_chronicle.remember_events(world.agenda)
+	_chronicle_view.build(_chronicle)
 	if _selected_unit >= 0 and world.unit_by_id(_selected_unit).is_empty():
 		_selected_unit = -1
 		_unit_panel.clear()

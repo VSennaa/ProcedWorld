@@ -41,6 +41,10 @@ var home_cell := Vector2i(-1, -1)
 ## Cities seen by this civilization. Each: {id, name, cell, owner, own, population, housing, focus,
 ## food_stock, stability, queue: Array[String], unit_production, yields: {food, production, ...}}.
 var cities: Array = []
+## Relations with known civilizations (C2b): one entry per civilization the server has put this one
+## in contact with. Each: {civ, name, color, state, confidence, resentment, debt, ledger: Array}.
+## Empty against a server that does not send the `relations` field yet.
+var relations: Array = []
 ## Cells where a founding was accepted this turn but the city does not exist yet.
 var founding_cells: Array = []
 

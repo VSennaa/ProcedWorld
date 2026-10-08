@@ -1,9 +1,11 @@
 //! Per-civilization view of the world. Uses the engine visibility map: a civilization sees
 //! terrain for Visible/Remembered tiles, its own cities, units and state in full, and foreign
-//! cities and units only on currently Visible tiles. Foreign civilization internals and the
-//! relations ledger are never sent.
+//! cities and units only on currently Visible tiles. Foreign civilization internals are never
+//! sent, and of the relations ledger only the viewer's own entries with civilizations it has
+//! already met (SDD 07, SDD 16).
 
 use pw_engine::{
+    diplomacy::RelationState,
     ids::{CivId, TileIndex},
     improvements,
     world::{effective_unit_orders, idle_units_with, AcceptedCommand, DomainEvent, Visibility, WorldState},
@@ -90,11 +92,66 @@ pub fn view_for(state: &WorldState, civ: CivId, home: Option<TileIndex>, pending
         "tiles": tiles,
         "cities": cities,
         "units": units,
+        // Known civilizations only: one entry per civilization the engine has put this one in
+        // contact with, carrying the viewer's directional balances and the recent Ledger entries
+        // between the two (never third-party relations).
+        "relations": relations_for(state, civ),
         // Own units awaiting an order: they block `ready` until ordered or skipped this turn.
         "idle_units": idle_units_with(state, civ, pending),
         // Entropy events awaiting this civilization's response (other civilizations' are never sent).
         "pending_events": state.entropy.pending.iter().filter(|(_, event)| event.civilization == civ).map(|(id, event)| json!({ "id": id, "event": event })).collect::<Vec<Value>>(),
     })
+}
+
+/// Ledger entries published per known civilization, most recent first (SDD 07).
+const RECENT_LEDGER_LIMIT: usize = 5;
+
+/// Relations visible to `civ`: one entry per civilization the engine has put it in contact with
+/// (`relation_state != Unknown`, i.e. contact was established). Each entry carries the viewer's
+/// directional balance (`Cf`/`R`/`Dv`) and the most recent Ledger entries **between the two**.
+/// Entries between third parties are never included, and a civilization never met stays absent.
+fn relations_for(state: &WorldState, civ: CivId) -> Vec<Value> {
+    state
+        .civilizations
+        .keys()
+        .copied()
+        .filter(|other| *other != civ)
+        .filter_map(|other| {
+            let relation_state = state.diplomacy.state(civ, other);
+            if relation_state == RelationState::Unknown { return None; }
+            // Directional: the viewer's own view of `other` (SDD 07, GDD 07).
+            let balance = state.diplomacy.balance(civ, other);
+            let ledger: Vec<Value> = state
+                .diplomacy
+                .entries
+                .iter()
+                .rev()
+                .filter(|entry| {
+                    (entry.holder == civ && entry.subject == other)
+                        || (entry.holder == other && entry.subject == civ)
+                })
+                .take(RECENT_LEDGER_LIMIT)
+                .map(|entry| {
+                    let counterpart = if entry.holder == civ { entry.subject } else { entry.holder };
+                    json!({
+                        "id": entry.id,
+                        "turn": entry.turn,
+                        "category": entry.category,
+                        "status": entry.status,
+                        "counterpart": counterpart,
+                    })
+                })
+                .collect();
+            Some(json!({
+                "civ": other,
+                "state": relation_state,
+                "confidence": balance.cf,
+                "resentment": balance.r,
+                "debt": balance.dv,
+                "ledger": ledger,
+            }))
+        })
+        .collect()
 }
 
 /// Domain events relevant to `civ`: results of its own commands, migrations between its cities
@@ -118,6 +175,8 @@ pub fn events_for(state: &WorldState, civ: CivId, turn_commands: &[AcceptedComma
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pw_engine::diplomacy::{Balance, EntryStatus, LedgerCategory, LedgerEntry, RelationRecord, RelationState};
+    use pw_engine::ids::TurnNumber;
     use pw_engine::improvements::TileBuild;
     use std::collections::BTreeMap;
 
@@ -141,5 +200,61 @@ mod tests {
         assert_eq!(tiles[1]["improvement"], Value::Null);
         assert_eq!(tiles[1]["build_progress"], Value::Null);
         assert!(tiles[0]["biome"].is_string());
+    }
+
+    fn ledger_entry(id: u64, turn: u32, holder: CivId, subject: CivId, category: LedgerCategory) -> LedgerEntry {
+        LedgerEntry {
+            id, turn: TurnNumber(turn), holder, subject, category, status: EntryStatus::Active,
+            intensity: 1, cf_delta: 0, resentment_delta: 0, debt_delta: 0,
+            due: None, cause_command: None, supersedes: None,
+        }
+    }
+
+    #[test]
+    fn relations_only_include_met_civilizations_and_their_own_ledger_entries() {
+        let (mut state, _, _) = pw_harness::initial_world(5, 3).expect("world builds");
+        let a = CivId(0);
+        let b = CivId(1);
+        let c = CivId(2);
+        // A has met B; B and C are at war with each other. A has never made contact with C.
+        state.diplomacy.relations.insert(a, BTreeMap::from([(b, RelationRecord { state: RelationState::Peace, since: TurnNumber(3), until: None, objective: None })]));
+        state.diplomacy.relations.insert(b, BTreeMap::from([(c, RelationRecord { state: RelationState::War, since: TurnNumber(4), until: None, objective: None })]));
+        // Balances are directional: A's view of B differs from B's view of A, and B also views C.
+        state.diplomacy.balances.insert(a, BTreeMap::from([(b, Balance { cf: 71, r: 12, dv: -8 })]));
+        state.diplomacy.balances.insert(b, BTreeMap::from([(a, Balance { cf: 30, r: 40, dv: 5 }), (c, Balance { cf: 10, r: 90, dv: 0 })]));
+        state.diplomacy.entries = vec![
+            ledger_entry(0, 1, a, b, LedgerCategory::Border),
+            ledger_entry(1, 2, b, a, LedgerCategory::Offense),
+            // Third-party facts shared between B and C: never visible to A.
+            ledger_entry(2, 5, b, c, LedgerCategory::Trade),
+            ledger_entry(3, 6, c, b, LedgerCategory::Incident),
+        ];
+
+        let view = view_for(&state, a, None, &[]);
+        let relations = view["relations"].as_array().expect("relations");
+        assert_eq!(relations.len(), 1, "only the civilization A has met is listed; C stays unknown");
+        let relation = &relations[0];
+        assert_eq!(relation["civ"], json!(1));
+        assert_eq!(relation["state"], json!("peace"));
+        // The viewer's own directional balances.
+        assert_eq!(relation["confidence"], json!(71));
+        assert_eq!(relation["resentment"], json!(12));
+        assert_eq!(relation["debt"], json!(-8));
+
+        let ledger = relation["ledger"].as_array().expect("ledger");
+        assert_eq!(ledger.len(), 2, "only the entries between A and B");
+        // Most recent first, each naming the counterpart of the pair.
+        assert_eq!(ledger[0]["id"], json!(1));
+        assert_eq!(ledger[0]["category"], json!("offense"));
+        assert_eq!(ledger[0]["counterpart"], json!(1));
+        assert_eq!(ledger[1]["id"], json!(0));
+        assert_eq!(ledger[1]["category"], json!("border"));
+        assert_eq!(ledger[1]["counterpart"], json!(1));
+
+        // No leak: A's relations carry no trace of the B<->C war or its ledger.
+        let visible = serde_json::to_string(relations).expect("serializes");
+        assert!(!visible.contains("\"counterpart\":2"), "third-party counterpart leaks: {visible}");
+        assert!(!visible.contains("trade") && !visible.contains("incident"), "third-party ledger leaks: {visible}");
+        assert!(!visible.contains("war"), "third-party state leaks: {visible}");
     }
 }
