@@ -68,6 +68,8 @@ pub const INITIAL_TREASURY_WEALTH: u32 = 12;
 /// Starter housing is an initial balance value. No housing construction slice
 /// exists yet, so a lower value would make the health simulation impossible.
 pub const INITIAL_CITY_HOUSING: u32 = 4;
+/// Production floor of every city (GDD 03, decided 2026-10-07).
+pub const CITY_CENTRE_MIN_PRODUCTION: u8 = 1;
 /// A founding city starts with the one-turn food reserve required for growth.
 /// This lets a one-food opening support its second worker instead of trapping
 /// the civilization before it can allocate production or wealth.
@@ -1397,6 +1399,9 @@ fn resolve_economy(state: &mut WorldState, seed: u64) {
             total.knowledge = total.knowledge.saturating_add(yields.knowledge);
             total.culture = total.culture.saturating_add(yields.culture);
         }
+        // The city centre always yields at least CITY_CENTRE_MIN_PRODUCTION (user decision 2026-10-07),
+        // so a food focus can never stall the production queue for good.
+        total.production = total.production.max(CITY_CENTRE_MIN_PRODUCTION);
         city_yields.insert(city_id, (workplaces, total));
     }
     for (city_id, city) in &mut state.cities {
@@ -1826,6 +1831,14 @@ mod tests {
     }
 
     #[test]
+    fn a_food_focused_city_still_produces_one() {
+        let mut initial = state();
+        for tile in initial.tiles.iter_mut() { tile.yields.production = 0; }
+        let result = step(&initial, &[], 99, &versions());
+        assert!(result.state.cities.values().all(|city| city.last_yields.production >= CITY_CENTRE_MIN_PRODUCTION));
+    }
+
+    #[test]
     fn client_catalog_includes_event_and_improvement_fields() {
         let catalog = client_catalog();
         let events = catalog["event_templates"].as_array().expect("event templates");
@@ -1969,7 +1982,9 @@ mod tests {
         let command = command(1, 1, CivId(1), CommandPayload::RemoveQueuedUnit { city_id: CityId(1), index: 0 });
         let result = step(&initial, &[command], 99, &versions());
         assert_eq!(queue_of(&result.state), vec!["unit.scout"]);
-        assert_eq!(result.state.cities[&CityId(1)].unit_production, 7);
+        // The 7 accumulated points survive the removal; this turn's output (at least the city floor) adds on top.
+        let city = &result.state.cities[&CityId(1)];
+        assert_eq!(city.unit_production, 7 + u32::from(city.last_yields.production));
     }
 
     #[test]

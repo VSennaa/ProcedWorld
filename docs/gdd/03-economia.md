@@ -1,6 +1,8 @@
 # 03 — Economia
 
 ## Decidido
+- **Piso de produção da cidade** (decidido em 2026-10-07): o centro da cidade garante pelo menos
+  1 de produção por turno, como no *Civilization*; foco em comida nunca trava a fila de produção.
 - **Moeda e escambo**: riqueza é a moeda, e contratos podem ser **pacotes mistos livres** — bens e
   riqueza dos dois lados (ex.: 2 metal + 3 riqueza por 5 comida). O motor valida cada item; o Ledger
   registra o valor de referência em riqueza para comparação. Decidido em 2026-10-01.

@@ -181,6 +181,9 @@ Correção de alinhamento com a fórmula compartilhada do GDD 12, aplicada em 20
 
 ### 4.2.1 Fila de produção (decidido em 2026-10-03)
 
+- Toda cidade rende pelo menos `CITY_CENTRE_MIN_PRODUCTION = 1` de produção por turno, aplicado ao
+  total da cidade depois dos postos de trabalho (decidido em 2026-10-07, GDD 03).
+
 - Comandos: `QueueUnit { city_id, unit_type }` (fim da fila), `RemoveQueuedUnit { city_id, index }` e
   `MoveQueuedUnit { city_id, from, to }`; índices fora da fila ⇒ rejeição. Remover o primeiro item
   mantém a produção acumulada (`unit_production`) para o próximo item, sem reembolso de comida.
