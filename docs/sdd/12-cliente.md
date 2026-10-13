@@ -46,9 +46,9 @@ serializáveis e renderer hexagonal. Isso não torna `TileMap` a única implemen
 
 ## Experiência e navegação propostas
 
-A barra principal contém **Pauta**, **Mapa**, **Sociedade**, **Relações** e **Crônica**. O Mandato
-abre pela Pauta ou perfil do Governador. Ao retornar, a rota é sempre Pauta; links no relatório levam
-ao detalhe sem exigir memória do painel anterior.
+A barra principal contém **Pauta**, **Mapa**, **Sociedade**, **Relações**, **Mandato** e **Crônica**.
+O Mandato também abre pelo perfil do Governador na Pauta. Ao retornar, a rota é sempre Pauta; links no
+relatório levam ao detalhe sem exigir memória do painel anterior.
 
 | Superfície | Pergunta | Ação que pode emitir |
 |---|---|---|
@@ -56,6 +56,7 @@ ao detalhe sem exigir memória do painel anterior.
 | Mapa | Onde ocorre e o que se conecta? | ordem espacial sobre alvo legal |
 | Sociedade | O que sustenta a civilização? | resposta de crise ou foco permitido |
 | Relações | Em quem confiar e o que é devido? | aceitar, recusar ou contrapor tratado |
+| Mandato | Qual autonomia o Governador tem? | trocar o preset do Governador |
 | Crônica | O que ocorreu e qual foi o custo de IA? | consultar fatos, narrativa e consumo |
 
 Cartões mostram causa, prazo em turnos, alternativas legais, custo/consequência e “Por quê?”. Esse
@@ -89,6 +90,15 @@ permanecem provisórios até validação no harness.
   tecnologias dominadas, pesquisa atual e progresso; a escolha de pesquisa entra no alfa mini.
 - **Conexão**: tela inicial com URL do servidor, criar mundo (seed, civilizações) ou entrar
   (mundo, civilização); a fixture continua como modo demonstração e nos testes headless.
+
+### Mandato (decidido em 2026-10-09)
+
+A tela **Mandato** mostra o preset atual do Governador e, em PT-BR, o que ele prioriza e o que nunca
+fará (linhas vermelhas e postura) enquanto o jogador está ausente, além da `version` recebida. Três
+botões trocam entre `Equilibrado`, `Recuperar` e `Crescer com cautela`; o preset atual fica
+desabilitado. A troca **só envia** `set_mandate` (D1): o cliente não aplica estado otimista e a tela
+só muda quando chega o `state_snapshot` do servidor, que é a fonte da verdade. Sem Mandato na visão
+(servidor antigo ou demonstração) a tela é só leitura e não oferece botão sem efeito.
 
 ## Mapa e interação espacial
 

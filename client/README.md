@@ -47,11 +47,12 @@ Capturas em `client/docs/` (`inicio`, `pauta`, `pauta-unidades`, `mapa`, `mapa-p
 - Botão **Pronto** compacto (`scripts/ready_fab.gd`) fora da Pauta: selo com as decisões restantes (capital por fundar, eventos sem escolha, unidades ociosas). Com decisões, leva à próxima (capital, eventos na Pauta, unidades por id); com zero, envia `ready` pelo mesmo caminho do botão da Pauta e depois espera o turno avançar. Só conta eventos que aparecem na Pauta (limite de 3 cartões).
 - Pesquisa a partir do frame `catalog`: colunas por profundidade de pré-requisito, dominadas, atual, custo, progresso e estimativa; tocar em uma tecnologia disponível envia `set_research` (`scripts/catalog_view.gd`, `scripts/tech_view.gd`).
 - Sociedade só leitura: indicadores canônicos `C`, `L`, `S`, `D`, `G`, `W`, `E`, `P` para a civilização e cidades; `P` expõe os fatores recebidos e `W`/`E` ficam marcados como provisórios (`scripts/society_view.gd`).
+- Tela **Mandato** na barra: preset atual, rumo, linhas vermelhas e postura em PT-BR; três botões enviam `set_mandate` e só refletem o `state_snapshot` devolvido pelo servidor (sem estado otimista). Em demonstração ou contra servidor sem Mandato, a tela é só leitura (`scripts/mandate_view.gd`).
 
 ## O que é placeholder ou limitado
 
 - A demonstração "pauta de exemplo" usa `fixtures/state_snapshot.json`, escrito à mão; não reflete nenhum servidor real.
-- Relações e Crônica mostram "em breve" e não fazem nada.
+- O Mandato só troca entre os três presets; edição campo a campo (rumo, reservas, escopos) ainda não existe.
 - Em demonstração, "Pronto" marca só um rascunho local e avisa que nada foi enviado; ordens de unidade valem só no cliente. onboarding BYOK, cache local, diffs nem recuperação por cursor.
 - Contrato assumido do P16 (ainda não verificado contra o servidor real): `protocol_version: "1.0"`, `order`/`skipped_turn` por unidade, `idle_units`, frame `catalog` (`technologies` e `unit_types`) e comandos `set_unit_order`/`skip_unit` no formato `{"type": ..., "data": {...}}` do `CommandPayload`.
 - O servidor não envia nomes de cidade, civilização nem prosa de eventos: o cliente mostra "Cidade N", "Civilização N" e ids de evento/escolha humanizados (em inglês). Rios chegam só como booleano por tile, sem arestas, e por isso não são desenhados no modo ao vivo.

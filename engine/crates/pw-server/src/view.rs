@@ -6,6 +6,7 @@
 
 use pw_engine::{
     diplomacy::{EntryStatus, LedgerCategory, RelationState},
+    governor::Mandate,
     ids::{CivId, TileIndex, TurnNumber},
     improvements,
     world::{effective_unit_orders, idle_units_with, AcceptedCommand, DomainEvent, Visibility, WorldState},
@@ -19,8 +20,9 @@ pub fn state_hash_string(state: &WorldState) -> String {
 /// `pending` are the open turn's accepted commands: own units show the order they will have once
 /// the turn resolves, and `idle_units` already accounts for them. `home` is the civilization's
 /// starting tile; it is only published while the civilization has no city (`home_tile`), because
-/// that is where the first city is founded without a settler.
-pub fn view_for(state: &WorldState, civ: CivId, home: Option<TileIndex>, pending: &[AcceptedCommand]) -> Value {
+/// that is where the first city is founded without a settler. `mandate` is the requesting
+/// civilization's own Governor configuration (brief D1) and is never another civilization's.
+pub fn view_for(state: &WorldState, civ: CivId, home: Option<TileIndex>, mandate: &Mandate, preset: &str, pending: &[AcceptedCommand]) -> Value {
     let effective = effective_unit_orders(state, civ, pending);
     let vis = state.visibility.get(&civ);
     let seen = |tile| vis.and_then(|map| map.get(&tile)).copied().unwrap_or(Visibility::Unknown);
@@ -96,10 +98,31 @@ pub fn view_for(state: &WorldState, civ: CivId, home: Option<TileIndex>, pending
         // contact with, carrying the viewer's directional balances and the recent Ledger entries
         // between the two (never third-party relations).
         "relations": relations_for(state, civ),
+        // The viewer's own Mandate: preset, version, direction and the limits the Governor obeys.
+        "mandate": mandate_view(mandate, preset),
         // Own units awaiting an order: they block `ready` until ordered or skipped this turn.
         "idle_units": idle_units_with(state, civ, pending),
         // Entropy events awaiting this civilization's response (other civilizations' are never sent).
         "pending_events": state.entropy.pending.iter().filter(|(_, event)| event.civilization == civ).map(|(id, event)| json!({ "id": id, "event": event })).collect::<Vec<Value>>(),
+    })
+}
+
+/// Player-facing Mandate (GDD 09, SDD 05): the chosen preset, its version, the four direction
+/// points and the limits the Governor obeys. It is built only for the requesting civilization, so
+/// `view_for` cannot leak another civilization's Mandate; a missing optional piece falls back to
+/// null rather than failing the whole view.
+pub fn mandate_view(mandate: &Mandate, preset: &str) -> Value {
+    let value = serde_json::to_value(mandate).unwrap_or(Value::Null);
+    json!({
+        "preset": preset,
+        "version": mandate.version,
+        "direction": value.get("direction").cloned().unwrap_or(Value::Null),
+        "limits": {
+            "red_lines": value.get("red_lines").cloned().unwrap_or(Value::Null),
+            "reserves": value.get("reserves").cloned().unwrap_or(Value::Null),
+            "stance": value.get("stance").cloned().unwrap_or(Value::Null),
+            "scopes": value.get("scopes").cloned().unwrap_or(Value::Null),
+        },
     })
 }
 
@@ -198,7 +221,7 @@ mod tests {
         state.tiles[1].build = Some(TileBuild { improvement: "improvement.farm".into(), progress: 2 });
         state.visibility.get_mut(&civ).unwrap().insert(TileIndex(2), Visibility::Visible);
         state.tiles[2].build = Some(TileBuild { improvement: "improvement.farm".into(), progress: 2 });
-        let view = view_for(&state, civ, None, &[]);
+        let view = view_for(&state, civ, None, &Mandate::balanced(1), "balanced", &[]);
         let tiles = view["tiles"].as_array().expect("tiles");
         assert_eq!(tiles[0]["improvement"], json!("improvement.farm"));
         assert_eq!(tiles[0]["build_progress"], Value::Null);
@@ -241,7 +264,7 @@ mod tests {
             ledger_entry(5, 7, b, a, LedgerCategory::Promise),
         ];
 
-        let view = view_for(&state, a, None, &[]);
+        let view = view_for(&state, a, None, &Mandate::balanced(1), "balanced", &[]);
         let relations = view["relations"].as_array().expect("relations");
         assert_eq!(relations.len(), 1, "only the civilization A has met is listed; C stays unknown");
         let relation = &relations[0];
@@ -273,5 +296,22 @@ mod tests {
         assert!(!visible.contains("\"counterpart\":2"), "third-party counterpart leaks: {visible}");
         assert!(!visible.contains("trade") && !visible.contains("incident"), "third-party ledger leaks: {visible}");
         assert!(!visible.contains("war"), "third-party state leaks: {visible}");
+    }
+
+    #[test]
+    fn mandate_is_published_with_preset_version_direction_and_limits() {
+        let (state, _, _) = pw_harness::initial_world(5, 2).expect("world builds");
+        let civ = CivId(0);
+        let mandate = pw_engine::governor::Mandate::preset(pw_engine::governor::MandatePreset::Recover, 4);
+        let view = view_for(&state, civ, None, &mandate, "recover", &[]);
+        assert_eq!(view["mandate"]["preset"], json!("recover"));
+        assert_eq!(view["mandate"]["version"], json!(4));
+        assert_eq!(view["mandate"]["direction"], json!({ "security": 30, "sustenance": 40, "development": 10, "relations": 20 }));
+        assert_eq!(view["mandate"]["limits"]["stance"], json!("reciprocal"));
+        assert_eq!(view["mandate"]["limits"]["red_lines"], json!(["no_start_war", "no_break_treaty", "no_cede_city"]));
+        assert_eq!(view["mandate"]["limits"]["scopes"], json!(["act_within_limits", "act_within_limits", "act_within_limits", "act_within_limits", "act_within_limits"]));
+        // The view carries only the Mandate handed to it: no snapshot of any other civilization.
+        let visible = serde_json::to_string(&view["mandate"]).expect("serializes");
+        assert!(!visible.contains("balanced"), "the viewer's own preset is the only one exposed: {visible}");
     }
 }

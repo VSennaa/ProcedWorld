@@ -29,7 +29,7 @@ use crate::{
     config::ServerConfig,
     protocol::{
         error_frame, frame, units_awaiting_frame, version_compatible, CreateWorld, Envelope,
-        ErrorReason, Join, SubmitCommand, PROTOCOL_VERSION,
+        ErrorReason, Join, SetMandate, SubmitCommand, PROTOCOL_VERSION,
     },
     store::{StoreError, WorldRecord, WorldStore},
     view::state_hash_string,
@@ -270,6 +270,20 @@ async fn handle(
             )],
             None => fail(ErrorReason::NotJoined, "join first"),
         },
+        "set_mandate" => {
+            let params: SetMandate = match decode(envelope.payload) {
+                Ok(params) => params,
+                Err(detail) => return fail(ErrorReason::MalformedMessage, &detail),
+            };
+            let Some(b) = bound else {
+                return fail(ErrorReason::NotJoined, "join first");
+            };
+            let mut live = lock(&b.world);
+            match live.set_mandate(b.civ, &params.preset) {
+                Ok(()) => vec![frame(rid, "state_snapshot", live.snapshot_for(b.civ))],
+                Err(reason) => vec![error_frame(rid, reason, "mandate refused", None)],
+            }
+        }
         "submit_command" => {
             let params: SubmitCommand = match decode(envelope.payload) {
                 Ok(params) => params,
@@ -359,6 +373,7 @@ async fn create_world(app: &Arc<AppState>, rid: Option<&str>, params: CreateWorl
         log: CommandLog::default(),
         home_tiles: homes.clone(),
         session_tokens: Default::default(),
+        mandates: Default::default(),
         state: state.clone(),
     };
     let world_id: WorldId = state.world_id;

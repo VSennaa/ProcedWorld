@@ -139,5 +139,11 @@ static func command_respond_to_event(event_id: int, choice_id: String) -> Dictio
 	return {"command": {"type": "respond_to_event", "data": {"event_id": event_id, "choice_id": choice_id}}}
 
 
+## `set_mandate` (brief D1): a top-level message, not a `submit_command`. The server validates the
+## preset, bumps the Mandate version and answers with the updated state snapshot.
+static func set_mandate_payload(preset: String) -> Dictionary:
+	return {"preset": preset}
+
+
 static func _fail(message: String) -> Dictionary:
 	return {"ok": false, "error": message, "envelope": {}}

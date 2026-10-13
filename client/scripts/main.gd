@@ -19,6 +19,7 @@ const MapView := preload("res://scripts/map_view.gd")
 const TechView := preload("res://scripts/tech_view.gd")
 const SocietyView := preload("res://scripts/society_view.gd")
 const RelationsView := preload("res://scripts/relations_view.gd")
+const MandateView := preload("res://scripts/mandate_view.gd")
 const Chronicle := preload("res://scripts/chronicle.gd")
 const ChronicleView := preload("res://scripts/chronicle_view.gd")
 const UnitPanel := preload("res://scripts/unit_panel.gd")
@@ -40,7 +41,7 @@ const BIOME_NAMES := {
 }
 const SCREENS: Array[Array] = [
 	["pauta", "Pauta"], ["mapa", "Mapa"], ["pesquisa", "Pesquisa"], ["sociedade", "Sociedade"],
-	["relacoes", "Relações"], ["cronica", "Crônica"],
+	["relacoes", "Relações"], ["mandato", "Mandato"], ["cronica", "Crônica"],
 ]
 const PLACEHOLDERS := {}
 const ENGINE_REASON_TEXT := {
@@ -96,6 +97,7 @@ const ERROR_TEXT := {
 	"already_ready": "Você já marcou Pronto neste turno.",
 	"command_rejected": "O servidor recusou a ordem.",
 	"units_awaiting_orders": "Ainda há unidades aguardando ordem: dê uma ordem ou pule.",
+	"invalid_mandate": "Preset de mandato inválido.",
 	"internal": "Erro interno do servidor.",
 }
 
@@ -133,6 +135,7 @@ var _map
 var _tech
 var _society
 var _relations
+var _mandate_view
 var _chronicle: RefCounted
 var _chronicle_view
 var _unit_panel
@@ -296,6 +299,11 @@ func _build_shell() -> void:
 	_relations.set_anchors_preset(Control.PRESET_FULL_RECT)
 	content.add_child(_relations)
 	_screens["relacoes"] = _relations
+	_mandate_view = MandateView.new()
+	_mandate_view.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_mandate_view.preset_requested.connect(_on_mandate_requested)
+	content.add_child(_mandate_view)
+	_screens["mandato"] = _mandate_view
 	_chronicle = Chronicle.new()
 	_chronicle_view = ChronicleView.new()
 	_chronicle_view.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -682,6 +690,7 @@ func _populate(first: bool) -> void:
 	_refresh_tech()
 	_society.build(world)
 	_relations.build(world)
+	_mandate_view.build(world, mode == Mode.LIVE)
 	_chronicle.remember_events(world.agenda)
 	_chronicle_view.build(_chronicle)
 	if _selected_unit >= 0 and world.unit_by_id(_selected_unit).is_empty():
@@ -726,6 +735,20 @@ func _on_research_investment_requested(percent: int) -> void:
 	if not supported:
 		return
 	_issue({"kind": "research_investment", "percent": percent}, Protocol.command_set_research_investment(percent))
+
+
+## Mandato switch (brief D1b): only sends `set_mandate`; the server answers with a state snapshot.
+## Nothing is applied locally, so the screen always reflects the authoritative view.
+func _on_mandate_requested(preset: String) -> void:
+	if world == null or mode != Mode.LIVE or net == null or not net.is_open():
+		return
+	if preset == String(world.mandate.get("preset", "")):
+		return
+	var request_id: String = net.send_request("set_mandate", Protocol.set_mandate_payload(preset))
+	if request_id.is_empty():
+		_report("Sem conexão com o servidor: o mandato não foi enviado.", true)
+		return
+	_report("Mandato enviado; aguardando o servidor.", false)
 
 
 func _idle_entries() -> Array:

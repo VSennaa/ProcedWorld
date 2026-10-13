@@ -15,6 +15,7 @@ const CityPanel := preload("res://scripts/city_panel.gd")
 const TechView := preload("res://scripts/tech_view.gd")
 const SocietyView := preload("res://scripts/society_view.gd")
 const RelationsView := preload("res://scripts/relations_view.gd")
+const MandateView := preload("res://scripts/mandate_view.gd")
 const Chronicle := preload("res://scripts/chronicle.gd")
 const ChronicleView := preload("res://scripts/chronicle_view.gd")
 const ConnectView := preload("res://scripts/connect_view.gd")
@@ -52,6 +53,7 @@ func _init() -> void:
 	test_hex_index()
 	test_server_view_adapter()
 	test_relations_view()
+	test_mandate_view()
 	test_chronicle()
 	test_adapter_tolerates_missing_fields()
 	test_adapter_rejects_bad_input()
@@ -221,6 +223,7 @@ func test_commands() -> void:
 	check(Protocol.command_set_research_investment(20) == {"command": {"type": "set_research_investment", "data": {"percent": 20}}}, "SetResearchInvestment payload shape")
 	var framed := Protocol.parse_envelope(Protocol.build_envelope("submit_command", Protocol.command_skip_unit(5), "c-9"))
 	check(framed["ok"] and framed["envelope"]["payload"]["command"]["type"] == "skip_unit", "command survives the envelope round trip")
+	check(Protocol.set_mandate_payload("recover") == {"preset": "recover"}, "set_mandate payload shape")
 
 
 func test_hex_index() -> void:
@@ -367,6 +370,53 @@ func test_relations_view() -> void:
 	screen.build(empty_view)
 	texts = screen.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text)
 	check(texts.any(func(text: String) -> bool: return text.contains("ainda não encontrou")), "empty relations explain the state")
+	screen.queue_free()
+
+
+func test_mandate_view() -> void:
+	var view := _adapt(_load_view_payload(), _load_catalog())
+	check(view.mandate.get("preset", "") == "grow_cautiously" and int(view.mandate.get("version", 0)) == 1, "the adapter parses the mandate preset and version")
+	check(int(view.mandate["direction"]["development"]) == 35 and int(view.mandate["direction"]["sustenance"]) == 30, "the mandate direction is adapted")
+	check(view.mandate["limits"]["red_lines"] == ["no_start_war", "no_break_treaty", "no_cede_city"], "red lines are adapted")
+	check(MandateView.preset_label("recover") == "Recuperar" and MandateView.preset_label("grow_cautiously") == "Crescer com cautela", "preset names are PT-BR")
+	check(MandateView.preset_description("recover").contains("sustento"), "each preset has a PT-BR description")
+	check(MandateView.direction_text(view.mandate["direction"]) == "Segurança 20 · Sustento 30 · Desenvolvimento 35 · Relações 15", "direction line names all four priorities")
+	var limits := MandateView.limits_text(view.mandate["limits"])
+	check(limits.contains("não inicia guerra") and limits.contains("Postura Recíproca"), "limits say what the Governor will not do and the stance: %s" % limits)
+
+	# The screen builds the current preset and one button per preset; the current one is disabled.
+	var screen := MandateView.new()
+	root.add_child(screen)
+	var requested: Array = []
+	screen.preset_requested.connect(func(preset: String) -> void: requested.append(preset))
+	screen.build(view, true)
+	var buttons: Array = screen.find_children("*", "Button", true, false)
+	check(buttons.size() == 3, "one button per preset")
+	for button in buttons:
+		check(button.custom_minimum_size.y >= 44, "mandate buttons are at least 44 px tall")
+	var disabled: Array = buttons.filter(func(button: Button) -> bool: return button.disabled)
+	check(disabled.size() == 1 and disabled[0].text.begins_with("Crescer com cautela"), "the current preset is not offered again")
+	var enabled: Array = buttons.filter(func(button: Button) -> bool: return not button.disabled)
+	enabled[0].pressed.emit()
+	check(requested.size() == 1 and requested[0] != "grow_cautiously", "tapping another preset asks to switch: %s" % [requested])
+
+	# A read-only screen (demo, or a server with no Mandate) offers no switch.
+	var read_only := MandateView.new()
+	root.add_child(read_only)
+	read_only.build(view, false)
+	check(read_only.find_children("*", "Button", true, false).is_empty(), "read-only mandate screen has no switch button")
+	var texts: Array = read_only.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text)
+	check(texts.any(func(text: String) -> bool: return text == "Mandato"), "mandate screen shows its title")
+	read_only.queue_free()
+	var older := _adapt(_load_view_payload(), _load_catalog())
+	older.mandate = {}
+	var missing := MandateView.new()
+	root.add_child(missing)
+	missing.build(older, true)
+	check(missing.find_children("*", "Button", true, false).is_empty(), "no server mandate: no switch buttons")
+	texts = missing.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text)
+	check(texts.any(func(text: String) -> bool: return text.contains("ainda não informa o Mandato")), "missing mandate explains the state")
+	missing.queue_free()
 	screen.queue_free()
 
 

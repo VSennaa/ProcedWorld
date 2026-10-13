@@ -45,6 +45,9 @@ var cities: Array = []
 ## in contact with. Each: {civ, name, color, state, confidence, resentment, debt, ledger: Array}.
 ## Empty against a server that does not send the `relations` field yet.
 var relations: Array = []
+## The viewer's own Mandate (D1): {preset, version, direction: {security, sustenance, development,
+## relations}, limits: {red_lines, reserves, stance, scopes}}. Empty against an older server.
+var mandate: Dictionary = {}
 ## Cells where a founding was accepted this turn but the city does not exist yet.
 var founding_cells: Array = []
 

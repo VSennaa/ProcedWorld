@@ -18,6 +18,16 @@ use serde::{Deserialize, Serialize};
 
 use crate::session;
 
+/// The player's Mandate choice for one civilization (brief D1). Only presets exist for now, so the
+/// full engine `Mandate` is rebuilt from the preset and the version (`Mandate::preset`). The Mandate
+/// is Governor configuration, not part of the deterministic `WorldState`: it lives with the world
+/// metadata, while replay reproduces the Governor's resulting commands from the command log.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MandateChoice {
+    pub preset: String,
+    pub version: u32,
+}
+
 #[derive(Clone, Debug)]
 pub struct WorldRecord {
     /// Immutable starting point; `state` is derived from this plus the sealed log.
@@ -26,6 +36,8 @@ pub struct WorldRecord {
     pub home_tiles: BTreeMap<CivId, TileIndex>,
     /// Per-seat salted verifiers (`session::make_verifier`), never the tokens themselves.
     pub session_tokens: BTreeMap<CivId, String>,
+    /// Per-civilization Mandate choice (player-configured Governor preset).
+    pub mandates: BTreeMap<CivId, MandateChoice>,
     pub state: WorldState,
 }
 
@@ -64,6 +76,11 @@ pub trait WorldStore: Send + Sync {
         &self,
         world: WorldId,
         tokens: &BTreeMap<CivId, String>,
+    ) -> Result<(), StoreError>;
+    fn save_mandates(
+        &self,
+        world: WorldId,
+        mandates: &BTreeMap<CivId, MandateChoice>,
     ) -> Result<(), StoreError>;
     fn load(&self, world: WorldId) -> Result<Option<WorldRecord>, StoreError>;
     fn list(&self) -> Result<Vec<WorldId>, StoreError>;
@@ -124,6 +141,17 @@ impl WorldStore for InMemoryStore {
             .session_tokens = tokens.clone();
         Ok(())
     }
+    fn save_mandates(
+        &self,
+        world: WorldId,
+        mandates: &BTreeMap<CivId, MandateChoice>,
+    ) -> Result<(), StoreError> {
+        self.lock()
+            .get_mut(&world)
+            .ok_or(StoreError::NotFound)?
+            .mandates = mandates.clone();
+        Ok(())
+    }
     fn load(&self, world: WorldId) -> Result<Option<WorldRecord>, StoreError> {
         Ok(self.lock().get(&world).cloned())
     }
@@ -142,6 +170,9 @@ pub struct FileStore {
 struct Metadata {
     home_tiles: BTreeMap<CivId, TileIndex>,
     session_tokens: BTreeMap<CivId, String>,
+    /// Older files predate Mandates; default to the empty map (the server seeds defaults on load).
+    #[serde(default)]
+    mandates: BTreeMap<CivId, MandateChoice>,
 }
 
 /// Mutable turn data is one file so a replacement never exposes a new log with an old snapshot.
@@ -191,6 +222,7 @@ impl FileStore {
             &Metadata {
                 home_tiles: record.home_tiles.clone(),
                 session_tokens: record.session_tokens.clone(),
+                mandates: record.mandates.clone(),
             },
         )
     }
@@ -273,8 +305,19 @@ impl WorldStore for FileStore {
             &Metadata {
                 home_tiles: record.home_tiles,
                 session_tokens: tokens.clone(),
+                mandates: record.mandates,
             },
         )
+    }
+    fn save_mandates(
+        &self,
+        world: WorldId,
+        mandates: &BTreeMap<CivId, MandateChoice>,
+    ) -> Result<(), StoreError> {
+        let path = self.world_dir(world).join("metadata.json");
+        let mut metadata: Metadata = self.read_json(&path)?;
+        metadata.mandates = mandates.clone();
+        self.write_json(&path, &metadata)
     }
     fn load(&self, world: WorldId) -> Result<Option<WorldRecord>, StoreError> {
         let dir = self.world_dir(world);
@@ -325,6 +368,7 @@ impl WorldStore for FileStore {
             log,
             home_tiles: metadata.home_tiles,
             session_tokens: metadata.session_tokens,
+            mandates: metadata.mandates,
             state,
         }))
     }
@@ -366,6 +410,7 @@ mod tests {
                 log: CommandLog::default(),
                 home_tiles: homes,
                 session_tokens: BTreeMap::new(),
+                mandates: BTreeMap::new(),
                 state,
             },
             versions,

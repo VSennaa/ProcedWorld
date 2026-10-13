@@ -42,6 +42,18 @@ func _run() -> void:
 		return
 	check(_main._catalog.techs.size() == 17, "catalog has the 17 technologies")
 	check(_main._catalog.unit_types["unit.scout"].has("cost"), "catalog carries unit costs")
+
+	# Mandato (D1): switching the preset sends set_mandate; the server bumps the version.
+	var mandate_version: int = int(_main.world.mandate.get("version", 0))
+	_main.show_screen("mandato")
+	var mandate_buttons: Array = _main._mandate_view.find_children("*", "Button", true, false)
+	check(mandate_buttons.size() == 3, "the live server view carries the Mandate with its three presets")
+	var recover: Button = mandate_buttons.filter(func(button: Button) -> bool: return button.text.begins_with("Recuperar"))[0]
+	recover.pressed.emit()
+	check(await _wait(func() -> bool: return String(_main.world.mandate.get("preset", "")) == "recover"), "set_mandate switches the preset against the real server")
+	check(int(_main.world.mandate.get("version", 0)) == mandate_version + 1, "the Mandate version rises after the switch")
+	_main.show_screen("pauta")
+
 	var world = _main.world
 	check(world.needs_capital() and world.home_cell.x >= 0, "a new world starts without a city and names the starting tile")
 	check(not _main._agenda._capital_box.find_children("*", "Button", true, false).is_empty(), "the Pauta offers Fundar a capital")

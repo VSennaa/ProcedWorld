@@ -24,7 +24,7 @@ use tokio::sync::mpsc::Sender;
 
 use crate::{
     protocol::{frame, ErrorReason},
-    store::WorldStore,
+    store::{MandateChoice, WorldStore},
     view::{events_for, state_hash_string, view_for},
 };
 
@@ -62,6 +62,40 @@ impl SubmitError {
     }
 }
 
+/// One civilization's chosen Mandate: the preset the player picked (shown in the view) and the
+/// engine `Mandate` the Governor uses. Only presets exist today, so the engine value is always
+/// `Mandate::preset(preset, version)`.
+#[derive(Clone)]
+struct SelectedMandate {
+    preset: MandatePreset,
+    mandate: Mandate,
+}
+
+/// Wire names of the three presets; they match `MandatePreset`'s `snake_case` spelling.
+fn preset_name(preset: MandatePreset) -> &'static str {
+    match preset {
+        MandatePreset::Balanced => "balanced",
+        MandatePreset::Recover => "recover",
+        MandatePreset::GrowCautiously => "grow_cautiously",
+    }
+}
+
+fn preset_from_name(name: &str) -> Option<MandatePreset> {
+    match name {
+        "balanced" => Some(MandatePreset::Balanced),
+        "recover" => Some(MandatePreset::Recover),
+        "grow_cautiously" => Some(MandatePreset::GrowCautiously),
+        _ => None,
+    }
+}
+
+fn default_mandate() -> SelectedMandate {
+    SelectedMandate {
+        preset: MandatePreset::GrowCautiously,
+        mandate: Mandate::preset(MandatePreset::GrowCautiously, 1),
+    }
+}
+
 pub struct LiveWorld {
     state: WorldState,
     versions: SimulationVersions,
@@ -70,7 +104,8 @@ pub struct LiveWorld {
     /// Commands accepted in the open turn, in `accepted_sequence` order.
     pending: Vec<AcceptedCommand>,
     next_command_id: u64,
-    mandate: Mandate,
+    /// Per-civilization Mandate choice. Seeded for every civilization; not part of `WorldState`.
+    mandates: BTreeMap<CivId, SelectedMandate>,
     store: Arc<dyn WorldStore>,
 }
 
@@ -107,6 +142,11 @@ impl LiveWorld {
         homes: BTreeMap<CivId, TileIndex>,
         store: Arc<dyn WorldStore>,
     ) -> Self {
+        let mandates = state
+            .civilizations
+            .keys()
+            .map(|civ| (*civ, default_mandate()))
+            .collect();
         Self {
             state,
             versions,
@@ -114,7 +154,7 @@ impl LiveWorld {
             seats: BTreeMap::new(),
             pending: Vec::new(),
             next_command_id: 1,
-            mandate: Mandate::preset(MandatePreset::GrowCautiously, 1),
+            mandates,
             store,
         }
     }
@@ -153,6 +193,24 @@ impl LiveWorld {
                 )
             })
             .collect();
+        // Persisted choices win; civilizations without one (older files) get the default.
+        let mut mandates: BTreeMap<CivId, SelectedMandate> = record
+            .mandates
+            .into_iter()
+            .filter_map(|(civ, choice)| {
+                let preset = preset_from_name(&choice.preset)?;
+                Some((
+                    civ,
+                    SelectedMandate {
+                        preset,
+                        mandate: Mandate::preset(preset, choice.version),
+                    },
+                ))
+            })
+            .collect();
+        for civ in record.state.civilizations.keys() {
+            mandates.entry(*civ).or_insert_with(default_mandate);
+        }
         Self {
             state: record.state,
             versions: record.snapshot.versions,
@@ -160,7 +218,7 @@ impl LiveWorld {
             seats,
             pending,
             next_command_id,
-            mandate: Mandate::preset(MandatePreset::GrowCautiously, 1),
+            mandates,
             store,
         }
     }
@@ -184,13 +242,61 @@ impl LiveWorld {
         self.state.civilizations.keys().map(|civ| civ.0).collect()
     }
 
+    fn mandate_for(&self, civ: CivId) -> SelectedMandate {
+        self.mandates.get(&civ).cloned().unwrap_or_else(default_mandate)
+    }
+
     pub fn snapshot_for(&self, civ: CivId) -> Value {
+        let selected = self.mandate_for(civ);
         view_for(
             &self.state,
             civ,
             self.homes.get(&civ).copied(),
+            &selected.mandate,
+            preset_name(selected.preset),
             &self.pending,
         )
+    }
+
+    /// Records the player's preset choice for their own civilization (brief D1). The mandate is
+    /// Governor configuration, not part of the deterministic `WorldState`, so it is persisted with
+    /// the world metadata (replay still reproduces the Governor's commands from the command log).
+    /// The version starts at 1 and rises on every accepted change.
+    pub fn set_mandate(&mut self, civ: CivId, preset: &str) -> Result<(), ErrorReason> {
+        self.seats
+            .get(&civ)
+            .filter(|seat| !seat.absent)
+            .ok_or(ErrorReason::NotJoined)?;
+        let preset = preset_from_name(preset).ok_or(ErrorReason::InvalidMandate)?;
+        let version = self
+            .mandates
+            .get(&civ)
+            .map_or(1, |selected| selected.mandate.version.saturating_add(1));
+        let mut updated = self.mandates.clone();
+        updated.insert(
+            civ,
+            SelectedMandate {
+                preset,
+                mandate: Mandate::preset(preset, version),
+            },
+        );
+        let choices: BTreeMap<CivId, MandateChoice> = updated
+            .iter()
+            .map(|(civ, selected)| {
+                (
+                    *civ,
+                    MandateChoice {
+                        preset: preset_name(selected.preset).to_owned(),
+                        version: selected.mandate.version,
+                    },
+                )
+            })
+            .collect();
+        self.store
+            .save_mandates(self.state.world_id, &choices)
+            .map_err(|_| ErrorReason::Internal)?;
+        self.mandates = updated;
+        Ok(())
     }
 
     /// Idle units that block `ready` (SDD 03 / SDD 15 section 4.3): only for a present human seat,
@@ -394,8 +500,9 @@ impl LiveWorld {
             let Some(home) = self.homes.get(&civ).copied() else {
                 continue;
             };
+            let selected = self.mandate_for(civ);
             let governor = Governor {
-                mandate: &self.mandate,
+                mandate: &selected.mandate,
                 decision_port: None,
             };
             let decision = governor.decide(
@@ -413,7 +520,7 @@ impl LiveWorld {
             let responses = respond_commands(
                 &self.state,
                 civ,
-                &self.mandate,
+                &selected.mandate,
                 next_id,
                 turn_commands.len() as u64 + 1,
             );
@@ -454,6 +561,7 @@ impl LiveWorld {
                 .iter()
                 .filter(|command| command.actor_id == *civ)
                 .collect();
+            let selected = self.mandate_for(*civ);
             // The engine has no delta representation yet: the diff carries the civilization's
             // filtered full view plus its own command results (see README, protocol gaps).
             let payload = json!({
@@ -462,7 +570,7 @@ impl LiveWorld {
                 "state_hash": state_hash_string(&self.state),
                 "commands": own,
                 "events": events_for(&self.state, *civ, &turn_commands, &result.events),
-                "view": view_for(&self.state, *civ, self.homes.get(civ).copied(), &[]),
+                "view": view_for(&self.state, *civ, self.homes.get(civ).copied(), &selected.mandate, preset_name(selected.preset), &[]),
             });
             let _ = conn.tx.try_send(frame(None, "turn_diff", payload));
         }
@@ -498,6 +606,7 @@ mod tests {
                 log: CommandLog::default(),
                 home_tiles: homes.clone(),
                 session_tokens: Default::default(),
+                mandates: Default::default(),
                 state: state.clone(),
             })
             .expect("store accepts the world");
@@ -518,6 +627,7 @@ mod tests {
         fn append_command(&self, _: pw_engine::world::WorldId, _: &AcceptedCommand) -> Result<(), StoreError> { Ok(()) }
         fn commit_turn(&self, _: pw_engine::world::WorldId, _: &[AcceptedCommand], _: pw_engine::ids::TurnNumber, _: pw_engine::hash::StateHash, _: &WorldState) -> Result<(), StoreError> { Ok(()) }
         fn save_session_tokens(&self, _: pw_engine::world::WorldId, _: &BTreeMap<CivId, String>) -> Result<(), StoreError> { Err(StoreError::Io("disk unavailable".into())) }
+        fn save_mandates(&self, _: pw_engine::world::WorldId, _: &BTreeMap<CivId, MandateChoice>) -> Result<(), StoreError> { Ok(()) }
         fn load(&self, _: pw_engine::world::WorldId) -> Result<Option<WorldRecord>, StoreError> { Ok(None) }
         fn list(&self) -> Result<Vec<pw_engine::world::WorldId>, StoreError> { Ok(Vec::new()) }
     }
@@ -528,6 +638,35 @@ mod tests {
         let mut live = LiveWorld::new(state, versions, homes, Arc::new(RejectSessionsStore));
         assert_eq!(live.join(CivId(0), None, conn(1)), Err(ErrorReason::Internal));
         assert_eq!(live.join(CivId(0), None, conn(2)), Err(ErrorReason::Internal));
+    }
+
+    #[test]
+    fn mandate_choice_rises_in_version_survives_reload_and_never_leaks() {
+        let mut live = live_with_idle_unit();
+        // Version starts at 1 with the default preset for every civilization.
+        assert_eq!(live.snapshot_for(CivId(0))["mandate"]["preset"], json!("grow_cautiously"));
+        assert_eq!(live.snapshot_for(CivId(0))["mandate"]["version"], json!(1));
+        // Only a seated civilization may change its own mandate, and unknown presets are refused.
+        assert_eq!(live.set_mandate(CivId(0), "recover"), Err(ErrorReason::NotJoined));
+        live.join(CivId(0), None, conn(1)).unwrap();
+        assert_eq!(live.set_mandate(CivId(0), "bogus"), Err(ErrorReason::InvalidMandate));
+        assert_eq!(live.set_mandate(CivId(0), "recover"), Ok(()));
+        let view = live.snapshot_for(CivId(0));
+        assert_eq!(view["mandate"]["preset"], json!("recover"));
+        assert_eq!(view["mandate"]["version"], json!(2));
+        assert_eq!(view["mandate"]["direction"]["sustenance"], json!(40));
+        // Another civilization keeps its own mandate: a view never carries someone else's.
+        let other = live.snapshot_for(CivId(1));
+        assert_eq!(other["mandate"]["preset"], json!("grow_cautiously"));
+        assert_eq!(other["mandate"]["version"], json!(1));
+        assert_ne!(other["mandate"], view["mandate"]);
+        // Reload from disk: the chosen preset and its version survive the restart.
+        let world = live.state.world_id;
+        let record = live.store.load(world).unwrap().expect("the store has the world");
+        let restored = LiveWorld::restore(record, live.store.clone());
+        let restored_view = restored.snapshot_for(CivId(0));
+        assert_eq!(restored_view["mandate"]["preset"], json!("recover"));
+        assert_eq!(restored_view["mandate"]["version"], json!(2));
     }
 
     fn unit_json(live: &LiveWorld) -> Value {

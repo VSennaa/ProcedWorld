@@ -161,6 +161,19 @@ ao reiniciar; replay do log tem de reproduzir o mesmo hash.
 
 Correção de implementação: o envelope usa `protocol_version: "1.0"` (texto, §3) em ambos os lados.
 
+### 5.3 Mandato do jogador (decidido em 2026-10-09)
+
+O jogador escolhe o preset do Governador da própria civilização por `set_mandate { preset }`, uma
+mensagem de sessão (não `submit_command`), autenticada como as demais: ela só vale para a
+civilização conectada. `preset` é `balanced`, `recover` ou `grow_cautiously`; nome desconhecido
+volta como `error` com motivo `invalid_mandate`, sem mudar nada. A troca incrementa a `version`
+do Mandato (começa em 1) e é persistida com o mundo nos metadados, sobrevivendo a reinício;
+o servidor responde com `state_snapshot` atualizado.
+
+A visão da civilização passa a incluir `mandate { preset, version, direction, limits }`, sempre
+apenas o da própria civilização — `mandate` de outra civilização nunca é enviado. Edição campo a
+campo do Mandato fica para depois; nesta versão só os três presets existentes são aceitos.
+
 ## 6. Comandos, confirmação e resolução
 
 O cliente envia intenção de ação em uma forma que o servidor valida contra estado autoritativo.

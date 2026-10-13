@@ -47,6 +47,7 @@ pub enum ErrorReason {
     AlreadyReady,
     UnitsAwaitingOrders,
     CommandRejected,
+    InvalidMandate,
     Internal,
 }
 
@@ -67,6 +68,13 @@ pub struct Join {
 #[derive(Debug, Deserialize)]
 pub struct SubmitCommand {
     pub command: CommandPayload,
+}
+
+/// `set_mandate` (brief D1): the player's Governor preset for their own civilization. The server
+/// validates the name against the three existing presets and bumps the Mandate version.
+#[derive(Debug, Deserialize)]
+pub struct SetMandate {
+    pub preset: String,
 }
 
 /// Builds a serialized outgoing frame.

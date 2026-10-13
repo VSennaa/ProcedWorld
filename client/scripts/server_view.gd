@@ -196,6 +196,8 @@ static func from_payload(payload: Dictionary, catalog: RefCounted = null) -> Dic
 
 	view.relations = _parse_relations(payload.get("relations", []), civ)
 
+	view.mandate = _parse_mandate(payload.get("mandate"))
+
 	view.capital = first_own_city
 	if view.capital.x < 0 and view.home_cell.x >= 0:
 		view.capital = view.home_cell
@@ -257,6 +259,46 @@ static func _parse_relations(raw: Variant, civ: int) -> Array:
 			"debt": int(entry.get("debt", 0)),
 			"ledger": ledger,
 		})
+	return result
+
+
+## Mandate published by `view_for` (D1): the viewer's own preset, version, direction and limits.
+## Missing or partial fields yield an empty (or partial) dictionary so an older server still works.
+static func _parse_mandate(raw: Variant) -> Dictionary:
+	if typeof(raw) != TYPE_DICTIONARY:
+		return {}
+	var result: Dictionary = {"version": int(raw.get("version", 0))}
+	var preset := String(raw.get("preset", ""))
+	if not preset.is_empty():
+		result["preset"] = preset
+	var direction: Dictionary = {}
+	var raw_direction: Variant = raw.get("direction", {})
+	if typeof(raw_direction) == TYPE_DICTIONARY:
+		for key in ["security", "sustenance", "development", "relations"]:
+			direction[key] = int(raw_direction.get(key, 0))
+	result["direction"] = direction
+	var limits: Dictionary = {}
+	var raw_limits: Variant = raw.get("limits", {})
+	if typeof(raw_limits) == TYPE_DICTIONARY:
+		var red_lines: Array = []
+		if typeof(raw_limits.get("red_lines")) == TYPE_ARRAY:
+			for line in raw_limits["red_lines"]:
+				if typeof(line) == TYPE_STRING:
+					red_lines.append(line)
+		limits["red_lines"] = red_lines
+		var reserves: Dictionary = {}
+		var raw_reserves: Variant = raw_limits.get("reserves", {})
+		if typeof(raw_reserves) == TYPE_DICTIONARY:
+			for key in ["treasury", "strategic_stock", "unit_loss"]:
+				reserves[key] = String(raw_reserves.get(key, ""))
+		limits["reserves"] = reserves
+		limits["stance"] = String(raw_limits.get("stance", ""))
+		var scopes: Array = []
+		if typeof(raw_limits.get("scopes")) == TYPE_ARRAY:
+			for scope in raw_limits["scopes"]:
+				scopes.append(String(scope))
+		limits["scopes"] = scopes
+	result["limits"] = limits
 	return result
 
 

@@ -66,6 +66,18 @@ func _run() -> void:
 	var investment: Dictionary = _received[investment_before]
 	check(investment["type"] == "submit_command" and investment["payload"]["command"]["type"] == "set_research_investment" and investment["payload"]["command"]["data"].keys() == ["percent"] and int(investment["payload"]["command"]["data"]["percent"]) == 20, "investment sends the real SetResearchInvestment command")
 	check(_main.world.research["investment"] == 20, "investment updates optimistically after command_accepted")
+	# Mandato (D1): the screen is in the bar, sends only set_mandate and shows the server's answer.
+	_main.show_screen("mandato")
+	var mandate_buttons: Array = _main._mandate_view.find_children("*", "Button", true, false)
+	check(mandate_buttons.size() == 3, "the Mandato screen offers the three presets when live")
+	var recover_button: Button = mandate_buttons.filter(func(button: Button) -> bool: return button.text.begins_with("Recuperar"))[0]
+	check(not recover_button.disabled, "a non-current preset is selectable")
+	var version_before := int(_main.world.mandate.get("version", 0))
+	recover_button.pressed.emit()
+	await _wait(func() -> bool: return String(_main.world.mandate.get("preset", "")) == "recover")
+	var mandate_sent: Dictionary = _received.filter(func(f: Dictionary) -> bool: return f["type"] == "set_mandate")[0]
+	check(mandate_sent["payload"] == {"preset": "recover"}, "the Mandato screen sends only set_mandate")
+	check(int(_main.world.mandate["version"]) == version_before + 1, "the shown version comes from the server snapshot")
 	_main.show_screen("pauta")
 	check(_main.world.idle_units == [3, 5], "idle units from the server")
 	check(_main._agenda._ready_button.disabled and _main._agenda._ready_button.text == "2 unidades aguardam ordem", "Pronto is gated in the Pauta")
@@ -312,5 +324,11 @@ func _respond(frame: Dictionary) -> void:
 			_send("command_accepted", rid, {"command_id": 1, "accepted_sequence": 1, "turn": 42})
 		"ready":
 			_send("ready_state", rid, {"turn": 42, "present": [0], "ready": [0]})
+		"set_mandate":
+			# Mirrors the real server: validate the preset, bump the version, return the snapshot.
+			var changed: Dictionary = _view()
+			changed["mandate"]["preset"] = payload["preset"]
+			changed["mandate"]["version"] = int(changed["mandate"]["version"]) + 1
+			_send("state_snapshot", rid, changed)
 		"get_snapshot":
 			_send("state_snapshot", rid, _view())

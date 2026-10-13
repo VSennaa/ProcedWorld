@@ -268,6 +268,40 @@ async fn disk_never_holds_the_session_token_and_a_restart_still_accepts_it() {
 }
 
 #[tokio::test]
+async fn set_mandate_bumps_the_version_and_survives_a_restart() {
+    let root = std::env::temp_dir().join(format!("pw-server-e2e-mandate-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let store = Arc::new(FileStore::open(&root).unwrap());
+    let addr = start_on(store.clone(), 16).await;
+    let mut a = connect(addr).await;
+    create(&mut a, 51, 2).await;
+    let token = join(&mut a, 51, 0).await["session_token"].as_str().unwrap().to_owned();
+
+    let first = request(&mut a, "get_snapshot", json!({})).await;
+    assert_eq!(first["payload"]["mandate"]["preset"], "grow_cautiously");
+    assert_eq!(first["payload"]["mandate"]["version"], 1);
+    let changed = request(&mut a, "set_mandate", json!({ "preset": "recover" })).await;
+    assert_eq!(changed["type"], "state_snapshot", "{changed}");
+    assert_eq!(changed["payload"]["mandate"]["preset"], "recover");
+    assert_eq!(changed["payload"]["mandate"]["version"], 2);
+    // An unknown preset is refused and the version does not move.
+    let refused = request(&mut a, "set_mandate", json!({ "preset": "bogus" })).await;
+    assert_eq!(refused["type"], "error");
+    assert_eq!(refused["payload"]["reason"], "invalid_mandate");
+    assert_eq!(request(&mut a, "get_snapshot", json!({})).await["payload"]["mandate"]["version"], 2);
+
+    // Restart: the world metadata keeps the choice.
+    let addr = start_on(Arc::new(FileStore::open(&root).unwrap()), 16).await;
+    let mut b = connect(addr).await;
+    let resumed = request(&mut b, "join", json!({ "world_id": 51, "civ": 0, "session_token": token })).await;
+    assert_eq!(resumed["type"], "joined", "{resumed}");
+    let snapshot = request(&mut b, "get_snapshot", json!({})).await;
+    assert_eq!(snapshot["payload"]["mandate"]["preset"], "recover");
+    assert_eq!(snapshot["payload"]["mandate"]["version"], 2);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[tokio::test]
 async fn restore_loads_at_most_max_worlds_in_stable_id_order() {
     let root = std::env::temp_dir().join(format!("pw-server-e2e-max-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
@@ -280,6 +314,7 @@ async fn restore_loads_at_most_max_worlds_in_stable_id_order() {
                 log: Default::default(),
                 home_tiles: homes,
                 session_tokens: Default::default(),
+                mandates: Default::default(),
                 state,
             })
             .unwrap();

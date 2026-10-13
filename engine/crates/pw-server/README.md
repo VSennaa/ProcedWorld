@@ -26,7 +26,10 @@ Frame: `{"protocol_version":"1.0","request_id":"..","type":"..","payload":{..}}`
 `error/protocol_version_mismatch`. Replies echo `request_id`; pushes use `null`.
 
 Client to server: `create_world {seed, civs}`, `join {world_id, civ, session_token?}`,
-`get_snapshot`, `submit_command {command}` (engine `CommandPayload` JSON), `ready`, `unready`.
+`get_snapshot`, `submit_command {command}` (engine `CommandPayload` JSON), `set_mandate {preset}`,
+`ready`, `unready`. `set_mandate` (brief D1) carries `balanced`, `recover` or `grow_cautiously` for
+the connected civilization only; the server bumps the Mandate version, persists it and answers with
+`state_snapshot`.
 Server to client: `world_created`, `joined` (returns `session_token`), `catalog` (push right after
 `joined`: `{hash, versions, technologies[{id,name,branch,cost,prerequisites}], units[{id,name,role,movement,strength,requires_technology}], event_templates[{id,name,category,narrative?,choices[{id,label}]}], improvements[{id,name,cost,requires_technology,biomes}]}`),
 `state_snapshot`,
@@ -37,7 +40,10 @@ Error reasons: `protocol_version_mismatch`, `malformed_message`, `unknown_messag
 `world_not_found`, `world_exists`, `too_many_worlds`, `invalid_world_params`, `not_joined`,
 `already_joined`, `civ_not_found`, `civ_taken`, `invalid_session_token`, `already_ready`,
 `units_awaiting_orders` (`ready` refused: `detail` is the comma-separated idle unit ids, `unit_ids` the same as numbers),
-`command_rejected` (with the engine `RejectionReason` in `engine_reason`), `internal`.
+`command_rejected` (with the engine `RejectionReason` in `engine_reason`), `invalid_mandate`, `internal`.
+
+A `state_snapshot` and each `turn_diff.view` carry `mandate {preset, version, direction, limits}` with
+the viewer's own Governor configuration only; another civilization's Mandate is never sent.
 
 A command is validated by a dry-run of the open turn in the engine; rejected commands change
 nothing. Unit orders are ordinary commands: `{"type":"set_unit_order","data":{"unit_id":3,"order":{"type":"move_to","data":{"target":42}}}}`
@@ -60,7 +66,10 @@ Accepted ones get the next `accepted_sequence`, go to the command log, and are a
 `WorldStore` has an in-memory implementation and `FileStore`. Both retain the initial snapshot,
 append-only accepted commands, and a sealed hash per turn. `FileStore` reconstructs the head only by
 replay, never trusting a mutable live-state file. PostgreSQL (docs/sdd/09-persistencia.md) replaces
-the file adapter later.
+the file adapter later. The player's per-civilization Mandate choice is Governor configuration, not
+part of the deterministic `WorldState`: it is stored in the world `metadata.json` (preset and
+version), so it survives a restart while replay keeps reproducing the Governor's commands from the
+command log.
 
 ## Known gaps
 
@@ -73,6 +82,6 @@ the file adapter later.
   CSPRNG, kept on disk only as a salted verifier so a seat can resume after restart.
 - No per-connection rate limiting; only a 64 KiB message cap and a bounded outbox (slow clients
   drop pushes and recover with `get_snapshot`).
-- The Governor uses a fixed `GrowCautiously` mandate; player-configured Mandates, T1/T2 ports,
-  notifications and the Entropy director are not wired in.
+- The Governor uses each civilization's Mandate (default `GrowCautiously`, changeable by the player
+  through `set_mandate`); T1/T2 ports, notifications and the Entropy director are not wired in.
 - World generation reads catalogs through the harness path baked in at compile time.
